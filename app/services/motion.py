@@ -143,9 +143,23 @@ def frame_box(iw: int, ih: int, z: float, px: float, py: float) -> tuple[int, in
     return x0, y0, x1, y1
 
 
+def frames_for_duration_ms(duration_ms: float, fps: int = FPS) -> int:
+    """单镜帧数——全项目唯一真值口径，勿在别处另写一份。
+
+    ``plan_frames`` / ``compose.expected_frames`` / ``timing_assert`` 三处共用此式，
+    确保「渲染写出帧数」「段完成判据」「时序断言 #5」永不口径分裂。
+
+    历史坑：曾出现 ``round(Σ时长/1000*fps)``（一次舍入）与
+    ``Σ round(单镜/1000*fps)``（逐镜舍入）两种算法并存的状况，逐镜舍入会
+    累积差额——实测 laogongtuan 差 26 帧（31461 vs 31487），按 90s 切 15 段
+    时 11 段不等，导致分段渲染的「已完成段跳过」永远判不中。
+    """
+    return max(1, int(round((duration_ms or 0) / 1000.0 * fps)))
+
+
 def plan_frames(iw: int, ih: int, dur_s: float, spec, fps: int = FPS):
     """生成每一帧的裁切窗列表。纯函数，便于单测与预览。"""
-    n_frames = max(1, int(round(dur_s * fps)))
+    n_frames = frames_for_duration_ms(dur_s * 1000.0, fps)
     z0, z1, (px0, py0), (px1, py1) = resolve_motion(spec)
     easing = spec.easing if spec else "ease_in_out"
     boxes = []

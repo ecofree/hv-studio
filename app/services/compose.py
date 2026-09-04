@@ -29,7 +29,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from app.managers import save
-from app.services.motion import FPS, H, W, apply_grade
+from app.services.motion import FPS, H, W, apply_grade, frames_for_duration_ms
 from app.config.config import ROOT
 from app.services.upscale import upscale
 
@@ -38,6 +38,36 @@ from app.services.upscale import upscale
 BASE = ROOT / "episodes"
 HEAD_MS = 100
 TAIL_MS = 150
+
+
+def expected_frames(timeline_slice) -> int:
+    """段/片预期帧数——全项目唯一真值口径，勿在别处另写一份。
+
+    口径：``Σ 逐镜 round(duration_ms/1000*FPS)``，与 ``motion.plan_frames``
+    逐镜同式（二者都委托 ``motion.frames_for_duration_ms``）。
+
+    为什么不能用 ``round(Σ时长/1000*FPS)``：
+        一次舍入 vs 逐镜舍入会累积差额。实测 laogongtuan：
+        ``round(1258444ms/1000*25)=31461``，而逐镜累加 = ``31487``（差 26 帧）。
+        按 90s 切 15 段时，**11 段两者不等**（差 1~5 帧）——分段渲染若用
+        一次舍入做「段已完成则跳过」的等值判据，这 11 段永远判不完，
+        断点续跑会静默退化成每次全量重编（分段唯一的核心收益归零）。
+
+    该差额此前未暴露，是因为旧代码里 expected 只用于
+    ``n_total < expected`` 的断管检测（``>=`` 即放行），改成分段的等值
+    判据后才成为硬伤。故此处定死为逐镜求和，供：
+      - 分段渲染的「段已完成」判据
+      - 断管检测
+      - ``timing_assert`` #5（视频总帧数 = Σ镜头帧）
+    三处共用，杜绝口径分裂。
+
+    参数 timeline_slice：``[(shot, s0, s1), ...]`` 或 ``[shot, ...]`` 均可。
+    """
+    total = 0
+    for item in timeline_slice:
+        sh = item[0] if isinstance(item, (tuple, list)) else item
+        total += frames_for_duration_ms(sh.duration_ms or 0, FPS)
+    return total
 
 # 字幕排版（对齐 config.yaml subtitle 段，Task #28 修复）
 #  - font: config 声明「思源宋体」→ 本机即 Noto Serif SC（同字形，Adobe/Google 联合设计的开源思源宋体，
@@ -406,7 +436,10 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    expected = int(round(total_ms / 1000.0 * FPS))
+    # 口径统一：逐镜求和，与 plan_frames 逐镜舍入一致（见 expected_frames 文档）。
+    # 旧式 round(总时长/1000*FPS) 会少算（实测 31461 vs 31487），用作断管阈值
+    # 虽不致命（n_total>=expected 即放行），但与分段判据分裂会埋雷。
+    expected = expected_frames(timeline)
     n_total = 0
     _deadline = getattr(_compose_cfg, "timeout_sec", 0) or 0  # >0 则编码收口超时上限
     encode_ok = False   # 显式成功标志：仅编码完整收口(rc==0 且帧数达标)才置 True

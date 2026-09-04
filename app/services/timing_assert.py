@@ -37,8 +37,10 @@ class TimingError(RuntimeError):
 
 
 def _shot_frames(shot: Shot) -> int:
-    """镜头帧数（与 motion.plan_frames 同口径）。"""
-    return max(1, int(round((shot.duration_ms or 0) / 1000.0 * FPS)))
+    """镜头帧数——委托 motion.frames_for_duration_ms（全项目唯一真值口径），
+    与 plan_frames / compose.expected_frames 保证永不口径分裂。"""
+    from app.services.motion import frames_for_duration_ms
+    return frames_for_duration_ms(shot.duration_ms or 0, FPS)
 
 
 def shot_report(shot: Shot) -> dict:
