@@ -4,7 +4,7 @@
   "title": "hw-001",
   "series": "汉武大帝",
   "episode_number": 0,
-  "status": "draft",
+  "status": "composed",
   "script_path": null,
   "frames": [
     {
@@ -529,7 +529,8 @@
         "end_xy": null,
         "start_zoom": 1.0,
         "end_zoom": 1.0,
-        "easing": "ease_in_out"
+        "easing": "ease_in_out",
+        "grade": null
       }
     },
     "shot-001": {
@@ -587,7 +588,8 @@
         ],
         "start_zoom": 1.0,
         "end_zoom": 1.0,
-        "easing": "ease_in_out"
+        "easing": "ease_in_out",
+        "grade": null
       }
     },
     "shot-002": {
@@ -636,7 +638,8 @@
         "end_xy": null,
         "start_zoom": 1.0,
         "end_zoom": 1.0,
-        "easing": "ease_in_out"
+        "easing": "ease_in_out",
+        "grade": null
       }
     },
     "shot-003": {
@@ -685,7 +688,8 @@
         "end_xy": null,
         "start_zoom": 1.0,
         "end_zoom": 1.0,
-        "easing": "ease_in_out"
+        "easing": "ease_in_out",
+        "grade": null
       }
     },
     "shot-004": {
@@ -740,7 +744,8 @@
         ],
         "start_zoom": 1.0,
         "end_zoom": 1.0,
-        "easing": "ease_in_out"
+        "easing": "ease_in_out",
+        "grade": null
       }
     },
     "shot-005": {
@@ -792,7 +797,8 @@
         "end_xy": null,
         "start_zoom": 1.0,
         "end_zoom": 1.0,
-        "easing": "ease_in_out"
+        "easing": "ease_in_out",
+        "grade": null
       }
     }
   },
