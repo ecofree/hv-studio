@@ -282,6 +282,10 @@ class ComposeConfig(BaseModel):
     # P1 2.1（compose 收口超时）：>0 时 ffmpeg wait 超过该秒数即 kill 并抛错，
     # 防编码卡死导致 compose 永久挂起。0 或缺省 = 不设超时（保持历史行为，保守）。
     timeout_sec: float = 0
+    # 分段渲染（2026-09-04）：按段预渲染视频再 concat copy + 一次混音，
+    # 把 21min 长片的失败域从整段降到单段，并可断点续跑。
+    segment_max_sec: float = 90.0   # 单段最长秒数（在镜头边界切，不切镜中）
+    segment_min_frames: int = 2500  # 全片预期帧数 < 此值仍走旧单段路径（保短片行为不变）
 
 
 class VRAMConfig(BaseModel):

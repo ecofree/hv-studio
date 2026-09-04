@@ -29,7 +29,9 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 from app.managers import save
-from app.services.motion import FPS, H, W, apply_grade, frames_for_duration_ms
+from app.services.motion import (
+    FPS, H, W, apply_grade, frames_for_duration_ms, plan_frames as _plan_frames,
+)
 from app.config.config import ROOT
 from app.services.upscale import upscale
 
@@ -292,6 +294,164 @@ def _probe_nvenc(encoder: str = "h264_nvenc") -> bool:
     return _NVENC_CACHE[encoder]
 
 
+def _build_vcodec(use_nvenc: bool) -> list[str]:
+    """构造视频编码参数（NVENC High/4.1 或 libx264 退路）。config 驱动。"""
+    from app.config.config import get_settings as _gs
+    cfg = _gs().compose
+    if use_nvenc and cfg.video_encoder == "h264_nvenc":
+        return ["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1",
+                "-preset", cfg.preset, "-cq", str(cfg.cq)]
+    _crf = cfg.fallbacks[0].get("crf", 20) if cfg.fallbacks else 20
+    return ["-c:v", "libx264", "-profile:v", "high", "-level", "4.1",
+            "-preset", cfg.preset, "-crf", str(_crf)]
+
+
+def _encode_video_span(
+    timeline_slice,
+    upscaled: dict[str, Path],
+    out_mp4: str | Path,
+    vcodec: list[str],
+    timeout_sec: float = 0,
+    plan_frames=None,
+) -> int:
+    """把一段 timeline 逐镜出帧喂 ffmpeg，编码成 **无音轨** 的视频 mp4。
+
+    只出视频、不混音。分段合成的核心单元：
+      - 每段独立编码参数（vcodec 由 _build_vcodec 全片一致传入，保证可 concat）
+      - 段编码【不带 +faststart】（它在段末做 moov 前移重写，会抬内存——
+        正是低 pagefile 机器上首次 compose 崩 WinError 1455 的同类风险。
+        只有最终整片 mux 才需要 +faststart 便于流式播放）
+      - 幂等判定由调用方按返回帧数 nb_frames 决定是否跳过
+
+    返回实际写出帧数。失败/断管/未收口一律 raise（不留半截段）。
+    """
+    # 显式 -f mp4：输出名若非 .mp4 结尾（如 .tmp），ffmpeg 无法从扩展名推断
+    # muxer，必须用 -f mp4 指明。
+    cmd = [
+        "ffmpeg", "-y", "-v", "error",
+        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS),
+        "-i", "-",
+        *vcodec, "-pix_fmt", "yuv420p",
+        "-an",                      # 只出视频，音轨由最终 mux 一次加
+        "-f", "mp4", str(out_mp4),
+    ]
+    pf = plan_frames or _plan_frames
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    expected = expected_frames(timeline_slice)
+    n_total = 0
+    encode_ok = False
+    _deadline = timeout_sec or 0
+    try:
+        try:
+            import gc as _gc
+            for sh, s0, s1 in timeline_slice:
+                grade = getattr(sh.motion, "grade", None) if sh.motion else None
+                img = Image.open(upscaled[sh.id]).convert("RGB")
+                boxes = pf(*img.size, sh.duration_ms / 1000.0, sh.motion, FPS)
+                for n, box in enumerate(boxes):
+                    x0, y0, x1, y1 = box
+                    cw, ch = x1 - x0, y1 - y0
+                    if cw == W and ch == H:
+                        frame = img.crop(box)
+                    else:
+                        frame = img.crop(box).resize((W, H), Image.LANCZOS)
+                    # 光线调色在已裁帧上做（峰值内存 ~1/3，低 pagefile 避免与编码器争）
+                    if grade:
+                        frame = apply_grade(frame, grade)
+                    g_ms = s0 - sh.audio_start_ms + n * 1000.0 / FPS
+                    if s0 <= g_ms <= s1:
+                        _draw_subtitle(frame, sh.subtitle_text)
+                    proc.stdin.write(frame.tobytes())
+                    n_total += 1
+                del img, frame
+                _gc.collect()
+            proc.stdin.close()
+        except (BrokenPipeError, OSError):
+            if n_total < expected:
+                _kill_proc(proc)
+                derr = _read_stderr(proc)
+                raise RuntimeError(
+                    f"段编码中途断管：已写 {n_total}/{expected} 帧。"
+                    f"ffmpeg stderr:\n{derr[-1200:]}")
+        else:
+            rc = _wait_proc(proc, _deadline, "段编码")
+            derr = _read_stderr(proc)
+            if rc != 0 or n_total < expected:
+                _kill_proc(proc)
+                raise RuntimeError(
+                    f"段编码未完整收口：rc={rc} 已写 {n_total}/{expected} 帧。"
+                    f"ffmpeg stderr:\n{derr[-1200:]}")
+            encode_ok = True
+    finally:
+        if proc.poll() is None:
+            _kill_proc(proc)
+        if not encode_ok:
+            try:
+                Path(out_mp4).unlink(missing_ok=True)
+            except Exception:
+                pass
+    return n_total
+
+
+def _probe_segment_frames(p: Path) -> int:
+    """读段视频实际帧数（不整片解码，用容器元数据；缺失/损坏返回 -1）。"""
+    try:
+        r = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "v:0",
+             "-count_packets", "-show_entries", "stream=nb_read_packets",
+             "-of", "default=noprint_wrappers=1:nokey=1", str(p)],
+            capture_output=True, text=True, timeout=60)
+        if r.returncode != 0 or not r.stdout.strip():
+            return -1
+        return int(r.stdout.strip())
+    except Exception:
+        return -1
+
+
+def _concat_segments(seg_paths: list[Path], out_mp4: Path) -> None:
+    """ffmpeg concat demuxer -c copy 拼接无音轨段视频。要求各段编码参数一致。"""
+    list_file = out_mp4.with_suffix(".concat.txt")
+    list_file.write_text(
+        "".join(f"file '{p.as_posix()}'\n" for p in seg_paths),
+        encoding="utf-8")
+    # concat 输出同样先写 .tmp 再原子改名，中途失败不留半截
+    tmp = out_mp4.with_suffix(".mp4.concat_tmp")
+    try:
+        r = subprocess.run(
+            ["ffmpeg", "-y", "-v", "error", "-f", "concat", "-safe", "0",
+             "-i", str(list_file), "-c", "copy", "-f", "mp4", str(tmp)],
+            capture_output=True, text=True, timeout=600)
+        if r.returncode != 0:
+            raise RuntimeError(
+                f"concat 拼接失败: {r.stderr[-800:]}")
+        os.replace(tmp, out_mp4)
+    finally:
+        try:
+            list_file.unlink(missing_ok=True)
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+
+def _segments_of(timeline, max_sec: float) -> list:
+    """按镜头边界把 timeline 切成 ≤ max_sec 的段。段长仅由镜头累积时长决定，
+    绝不切开单个镜头（否则呼吸 pad / 字幕窗口会错位）。"""
+    if max_sec <= 0:
+        return [timeline]
+    segs, cur, acc = [], [], 0.0
+    for row in timeline:
+        dur = row[0].duration_ms / 1000.0
+        if cur and acc + dur > max_sec:
+            segs.append(cur)
+            cur, acc = [], 0.0
+        cur.append(row)
+        acc += dur
+    if cur:
+        segs.append(cur)
+    return segs
+
+
 def compose_episode(ep_id: str, plan_frames=None, render=None,
                     run_timing_gate: bool = True) -> Path:
     """
@@ -391,7 +551,8 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         print(f"[bgm] 接入失败，回退纯旁白：{e}")
 
     # ---------- 3) 出帧 + 编码 ----------
-    # 场景复用下多个 shot 指向同一张底图，超分只需做一次（否则 93 镜重复放大 93 次）
+    # 场景复用下多个 shot 指向同一张底图，超分只需做一次（否则 93 镜重复放大 93 次）。
+    # ★ 超分必须在切段之前全片一次性构建——若退化成段内构建，14 段 × 60 张会重复放大。
     _up_cache: dict[str, Path] = {}
     upscaled = {}
     for sh, _, _ in timeline:
@@ -399,136 +560,93 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
             _up_cache[sh.image_path] = upscale(sh.image_path)
         upscaled[sh.id] = _up_cache[sh.image_path]
     final = out_dir / f"{ep_id}_m1.mp4"
-    # 收口原子化（P1 2.1 修复）：ffmpeg 先写 .tmp，全部成功后 os.replace 成真名。
-    # 中途中断/失败只留 .tmp，绝不覆盖已存在的好片（半成品以真名留下的历史坑）。
-    final_tmp = out_dir / f"{ep_id}_m1.mp4.tmp"
-    # --- 编码参数（Task #31 配置对齐：从 config.compose 读取） ---
-    # config 声明的首选编码器是 h264_nvenc（GPU，几乎不占系统 RAM），
-    # 退路是 libx264。此前 libx264 软编在低 pagefile 机器上峰值 ~1.8GB，
-    # 与 python 出帧争抢提交额导致间歇 OOM。--threads 去掉（nvenc 走 GPU）。
+
+    # --- 编码参数（config.compose 驱动） ---
     from app.config.config import get_settings as _get_settings
     _compose_cfg = _get_settings().compose
     venc = _probe_nvenc(_compose_cfg.video_encoder)
-    if venc and _compose_cfg.video_encoder == "h264_nvenc":
-        # ★ 必须显式 High/4.1：NVENC 默认 Main/level4.0，超 1080×1920 上限，
-        #   会被 Windows Media Player / Edge / QuickTime 拒播（0xC00D36C4）。
-        vcodec = ["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1",
-                  "-preset", _compose_cfg.preset, "-cq", str(_compose_cfg.cq)]
-    else:
-        # libx264 退路：High profile 天然全兼容，crf 取自 config fallback 首项
-        _crf = _compose_cfg.fallbacks[0].get("crf", 20) if _compose_cfg.fallbacks else 20
-        vcodec = ["-c:v", "libx264", "-profile:v", "high", "-level", "4.1",
-                  "-preset", _compose_cfg.preset, "-crf", str(_crf)]
-    _ab = _compose_cfg.audio_bitrate  # 例如 "192k"
-    _ac = _compose_cfg.audio_codec     # 例如 "aac"
-    cmd = [
-        "ffmpeg", "-y", "-v", "error",
-        "-f", "rawvideo", "-pix_fmt", "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-",
-        "-i", str(audio_input),
-        *vcodec, "-pix_fmt", "yuv420p",
-        "-c:a", _ac, "-b:a", _ab, "-ar", "44100",
-        # 不用 -shortest：旁白与视频帧数均由 timeline 精确对齐（297.9s → 7448 帧），
-        # -shortest 会在低内存下 ffmpeg 缓冲波动时把成片提前截断（实测 2124 帧/85s）。
-        "-movflags", "+faststart",
-        # 显式 -f mp4：输出是 .tmp 名（非 .mp4 结尾），ffmpeg 无法从扩展名推断
-        # muxer，必须用 -f mp4 指明（否则报 Unable to choose an output format）。
-        "-f", "mp4", str(final_tmp),
-    ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    # 口径统一：逐镜求和，与 plan_frames 逐镜舍入一致（见 expected_frames 文档）。
-    # 旧式 round(总时长/1000*FPS) 会少算（实测 31461 vs 31487），用作断管阈值
-    # 虽不致命（n_total>=expected 即放行），但与分段判据分裂会埋雷。
-    expected = expected_frames(timeline)
-    n_total = 0
-    _deadline = getattr(_compose_cfg, "timeout_sec", 0) or 0  # >0 则编码收口超时上限
-    encode_ok = False   # 显式成功标志：仅编码完整收口(rc==0 且帧数达标)才置 True
-    try:
-        try:
-            # 逐镜解码+调色后立刻出帧：单次只驻留当前镜头的一张已调色底图，
-            # 出完即释放，低内存机器上避免同时驻留多张大图导致 OOM。
-            import gc as _gc
-            for sh, s0, s1 in timeline:
-                grade = getattr(sh.motion, "grade", None) if sh.motion else None
-                img = Image.open(upscaled[sh.id]).convert("RGB")
-                boxes = plan_frames(*img.size, sh.duration_ms / 1000.0, sh.motion, FPS)
-                for n, box in enumerate(boxes):
-                    x0, y0, x1, y1 = box
-                    cw, ch = x1 - x0, y1 - y0
-                    if cw == W and ch == H:
-                        frame = img.crop(box)
-                    else:
-                        frame = img.crop(box).resize((W, H), Image.LANCZOS)
-                    # 光线调色在「已裁到成片尺寸」的帧上做，而非全尺寸超分源图：
-                    # 1080×1920 帧的 grade 峰值内存只有 3344×1882 源图的 ~1/3，
-                    # 在低 pagefile 机器上避免与 ffmpeg 编码器争抢提交额。
-                    if grade:
-                        frame = apply_grade(frame, grade)
-                    g_ms = s0 - sh.audio_start_ms + n * 1000.0 / FPS
-                    if s0 <= g_ms <= s1:
-                        _draw_subtitle(frame, sh.subtitle_text)
-                    proc.stdin.write(frame.tobytes())
-                    n_total += 1
-                del img, frame
-                _gc.collect()
-            proc.stdin.close()
-        except (BrokenPipeError, OSError):
-            # Windows 下 ffmpeg 提前退出时 stdin.write 可能抛 OSError(Errno 22)
-            # 而非 BrokenPipeError。两者都表示 ffmpeg 已收口，必须报错而非静默出短片。
-            if n_total < expected:
-                _kill_proc(proc)
-                # 读取 ffmpeg stderr，露出真实退出原因（编码错误 / OOM / 输入拒绝）
-                derr = _read_stderr(proc)
-                raise RuntimeError(
-                    f"编码中途断管：已写 {n_total}/{expected} 帧 "
-                    f"(成片被 ffmpeg 提前截断)。ffmpeg stderr:\n{derr[-1200:]}")
-        else:
-            # 全部帧已写完并已发 stdin EOF。此后必须【等待 ffmpeg 真正收口】，
-            # 否则 compose 会提前返回，而 ffmpeg 仍在后台编码缓冲帧 + 用
-            # +faststart 回写 moov——此时读取/改名成片会拿到损坏的 NAL 流
-            # 或缺失 moov（历史多次「OK 但 mp4 损坏」的根因）。
-            # 带超时（P1 2.1 修复）：ffmpeg 出错 stderr 填满管道缓冲导致写阻塞时，
-            # wait 永不返回、主进程卡死。超时则 kill 并抛错。
-            rc = _wait_proc(proc, _deadline, f"{ep_id} 编码")
-            # 读取并收起 ffmpeg stderr，避免管道满导致 ffmpeg 卡死。
-            derr = _read_stderr(proc)
-            if rc != 0 or n_total < expected:
-                _kill_proc(proc)
-                raise RuntimeError(
-                    f"编码未完整收口：rc={rc} 已写 {n_total}/{expected} 帧。"
-                    f"ffmpeg stderr:\n{derr[-1200:]}")
-            encode_ok = True   # 编码完整收口，.tmp 为可用的成片，交给原子改名
-    finally:
-        # 孤儿 ffmpeg 清理（P1 2.2 修复）：任何异常/中断（含 KeyboardInterrupt）都
-        # 确保子进程被 kill；Windows 强杀主 python 不连带杀 ffmpeg 的历史坑。
-        if proc.poll() is None:
-            try:
-                proc.kill()
-            except Exception:
-                pass
-        # P0-2 修复：只删【未成功】的 .tmp。
-        # 旧写法 `if not (final_tmp.exists() and final.exists())` 在【新 episode 首产】
-        # 且编码成功时（旧成片 final 不存在 → 条件为 True）会误删成功产出的 .tmp，
-        # 随后原子改名处报 "未生成 .tmp 成片" —— 首次生产永远失败。改用显式标志：
-        # 仅 encode_ok=False（失败/中断）才清理 .tmp；成功则保留交给下方 os.replace。
-        if not encode_ok:
-            try:
-                final_tmp.unlink(missing_ok=True)
-            except Exception:
-                pass
+    vcodec = _build_vcodec(venc)
+    _ab = _compose_cfg.audio_bitrate
+    _ac = _compose_cfg.audio_codec
+    _timeout = getattr(_compose_cfg, "timeout_sec", 0) or 0
 
-    # 原子收口：编码成功（final_tmp 已生成）→ 改名成真名，覆盖旧片
-    if not final_tmp.exists():
-        raise RuntimeError(f"编码后未生成 .tmp 成片：{final_tmp}（疑似失败被清理）")
-    try:
-        os.replace(final_tmp, final)
-    except OSError as e:
-        # 极端：真名被占用（如外部播放器正读旧片）→ 保留 .tmp，明确报错
-        raise RuntimeError(f"原子改名失败 {final_tmp} → {final}: {e}。"
-                           f"请关闭正在读取旧成片的程序后重试。") from e
+    # --- 4) 编码：短片单段 / 长片分段 + concat + 一次混音 ---
+    # 预期帧数统一用逐镜求和口径（见 expected_frames）。它同时是
+    #   - 分段「段已完成则跳过」的等值判据（口径分裂会导致 11/15 段永远判不完）
+    #   - 断管检测阈值
+    #   - 是否走分段的门槛（< segment_min_frames → 旧单段路径，保短片行为不变）
+    n_total_all = expected_frames(timeline)
+
+    def _mux_full_audio(video_src: Path, out_path: Path) -> None:
+        """把无音轨视频 + 全片音轨一次 mux 成最终 mp4（+faststart 在此加）。"""
+        tmp = out_path.with_suffix(".tmp")
+        mux = [
+            "ffmpeg", "-y", "-v", "error",
+            "-i", str(video_src), "-i", str(audio_input),
+            "-map", "0:v:0", "-map", "1:a:0",
+            "-c", "copy",
+            # 不用 -shortest：旁白与视频帧数由 timeline 精确对齐（见历史注释），
+            # -shortest 会在低内存下缓冲波动时提前截断成片。
+            "-movflags", "+faststart",
+            "-f", "mp4", str(tmp),
+        ]
+        r = subprocess.run(mux, capture_output=True, text=True, timeout=1200)
+        if r.returncode != 0:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:
+                pass
+            raise RuntimeError(f"音画 mux 失败: {r.stderr[-800:]}")
+        os.replace(tmp, out_path)
+
+    if n_total_all < _compose_cfg.segment_min_frames:
+        # 短片：单段直出（纯视频无音轨），再统一 mux 音轨。
+        # 保持历史可读性且不回归：产物等价（video+h264 + audio+aac +faststart）。
+        seg_dir = build / "segments"
+        seg_dir.mkdir(parents=True, exist_ok=True)
+        vid = seg_dir / "seg-000.mp4"
+        if not (vid.exists() and _probe_segment_frames(vid) == n_total_all):
+            _encode_video_span(timeline, upscaled, vid, vcodec, _timeout,
+                               plan_frames=plan_frames)
+        _mux_full_audio(vid, final)
+        n_actual = n_total_all
+    else:
+        # 长片：按镜头边界切段，逐段编码（可断点续跑），concat copy + 一次混音
+        seg_dir = build / "segments"
+        seg_dir.mkdir(parents=True, exist_ok=True)
+        segs = _segments_of(timeline, _compose_cfg.segment_max_sec)
+        seg_paths: list[Path] = []
+        rendered_any = False
+        for i, sl in enumerate(segs):
+            exp = expected_frames(sl)
+            p = seg_dir / f"seg-{i:03d}.mp4"
+            # 断点续跑：段已存在且帧数 = 预期 → 跳过（用逐镜求和口径，11/15 段能真命中）
+            skip = False
+            if p.exists():
+                nf = _probe_segment_frames(p)
+                if nf == exp:
+                    skip = True
+                else:
+                    print(f"  [compose] 段 seg-{i:03d} 帧数 {nf}≠{exp}，重编")
+                    try:
+                        p.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+            if not skip:
+                print(f"  [compose] 渲染段 {i+1}/{len(segs)} ({len(sl)} 镜, {exp} 帧)")
+                _encode_video_span(sl, upscaled, p, vcodec, _timeout,
+                                   plan_frames=plan_frames)
+                rendered_any = True
+            seg_paths.append(p)
+        # concat 无音轨视频
+        _concat_segments(seg_paths, final)
+        # 一次 mux 全片音轨（BGM 已合进 narration，此步只加音轨，不按段 fade）
+        _mux_full_audio(final, final)
+        n_actual = n_total_all
+
     save(ep)
     print(f"成片: {final}  {final.stat().st_size/1024/1024:.1f}MB  "
-          f"{total_ms/1000:.2f}s  {n_total}帧")
+          f"{total_ms/1000:.2f}s  {n_actual}帧")
     return final
 
 
