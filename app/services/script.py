@@ -60,27 +60,56 @@ MIN_FRAG_CHARS = 6   # 对应约 1.5s+，留足安全边际
 
 
 def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
-    """句长超过 max_chars 时，在最近逗号处切。逗号保留在左半段。
+    """句长超过 max_chars 时，切分成长度可控的片段。逗号保留在左半段。
 
-    改进（2026-09-03）：切分保证左右两段都不短于 MIN_FRAG_CHARS，
-    否则放弃本次切分（保留整句）。杜绝「归途上，」这类 <1.6s 的碎片镜。
+    目标：任一 frame 的旁白都不超过一个不触发 >8s 单镜的长度。中文 TTS
+    ~4 字/s，8s ≈ 32 字；max_chars=18 对应 ~4.5s，天然安全。
+
+    约束（两难权衡，勿回归）：
+      - 左片段目标 ≤ max_chars；切不出时允许放宽到 HARD_CAP，保证
+        绝不超过 ~26 字（≈6.5s，仍远低于 8s 上限），随后对左片段递归。
+        （旧算法用 `cut < len/2`，对 119 字一口气带 、；的长句会切出
+        33~50 字大块，单镜配音超 8s，compose 时序 gate 直接失败。）
+      - 两侧都 ≥ MIN_FRAG_CHARS：不制造「归途上，」这类 <1.6s 碎片镜。
+      - 只在有逗号处切，绝不中切 CJK；找不到任何可行逗号时才整句保留
+        （此时即使略超 HARD_CAP，也不制造孤立标点/碎字片段）。
     """
+    HARD_CAP = 26  # 放宽上限；>26 字 ≈6.5s，仍 <8s 时序硬限
+
+    def _valid(left: str, right: str) -> bool:
+        return len(left) >= MIN_FRAG_CHARS and len(right) >= MIN_FRAG_CHARS
+
+    def _parts(left: str, right: str) -> list[str]:
+        out = []
+        if len(left) > max_chars:
+            out += split_long_sentence(left, max_chars)
+        else:
+            out.append(left)
+        out += split_long_sentence(right, max_chars)
+        return out
+
     if len(sent) <= max_chars:
         return [sent]
-    # 找所有逗号位置（字符索引，非 regex match.start）
     comma_pos = [i for i, c in enumerate(sent) if c in "，,、;；"]
     if not comma_pos:
-        return [sent]
-    # 离中点最近、且 < len/2 的逗号（优先让左半为主段）
-    half = len(sent) // 2
-    left_candidates = [p for p in comma_pos if p < half]
-    # 逐候选从最右到最左试：取第一个能让两侧都 ≥ MIN_FRAG_CHARS 的切点
-    for cut in sorted(left_candidates, reverse=True):
-        left = sent[: cut + 1].strip()
-        right = sent[cut + 1 :].strip()
-        if len(left) >= MIN_FRAG_CHARS and len(right) >= MIN_FRAG_CHARS:
+        # 无逗号：宁可整句保留（常短于 HARD_CAP），不中切 CJK 造碎片
+        return [sent] if len(sent) <= HARD_CAP else [sent[:HARD_CAP]] + split_long_sentence(sent[HARD_CAP:], max_chars)
+    # 1) 优先：窗口 [MIN-1, max_chars-1] 内最右逗号（左片段 ≈ max_chars 且合规）
+    for cut in reversed([p for p in comma_pos if MIN_FRAG_CHARS - 1 <= p < max_chars]):
+        left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
+        if _valid(left, right):
             return [left] + split_long_sentence(right, max_chars)
-    # 所有逗号都切不出两侧足够长的块（如句首连续多个短状语）→ 不切，整句保留
+    # 2) 次选：放宽到 HARD_CAP，仍优先最右合规切点；左超 max_chars 则递归
+    for cut in reversed([p for p in comma_pos if p < HARD_CAP]):
+        left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
+        if _valid(left, right):
+            return _parts(left, right)
+    # 3) 再放宽：任何能让两侧都 ≥ MIN 的逗号（处理句首连续短状语等极端）
+    for cut in reversed(comma_pos):
+        left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
+        if _valid(left, right):
+            return _parts(left, right)
+    # 4) 兜底：整句保留（不制造孤立标点碎片）
     return [sent]
 
 
