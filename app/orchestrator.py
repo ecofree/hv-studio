@@ -195,6 +195,12 @@ def produce(
         STAGE_FN[st](ep)            # 真实干活；失败即抛 → 不标记完成
         done.append(st)
         save(ep)                    # 每 stage 落盘，断点续跑安全
+        # 关键：compose_episode 内部按真实音频【重载重算】时间轴并落盘，
+        # 但它操作的是自载副本，不回写本函数持有的 ep。若此处不复载，
+        # 后续 verify 用的是 shot_builder 存的旧 duration（每镜含独立 +250ms
+        # pad），与成片实际帧数对不上 → #5 误报「视频帧数 ≠ Σ镜头帧」。
+        # 复载让内存态紧跟磁盘真值（各组共享 pad 的重算口径），verify 正确。
+        ep = load(ep_id)
 
     # —— 产物驱动的真值状态（不是盲迁移）——
     verify = {}
