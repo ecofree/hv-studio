@@ -1,0 +1,39 @@
+# ---- 密钥 / 本地环境 ----
+.env
+*.env
+.env.local
+.env.*.local
+!.env.example
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+
+# ---- 大体积生成产物（不入库；本地生产） ----
+episodes/*/audio/
+episodes/*/build/
+episodes/*/out/
+episodes/*/shots/
+episodes/hanwu_15min/*.mp4
+# 但保留 episode 模型 json
+!episodes/*.json
+# 清理暂存区（本仓可回收的僵尸/备份）
+.trash_hv/
+
+# ---- 运行时状态 ----
+state/
+.tmp/
+*.tmp
+*.log
+.pytest_cache/
+
+# ---- 测试产物（一次性 smoke episode） ----
+episodes/smoke-*/
+episodes/smoke-*.json
+
+# ---- Agent/实验瞬态（不入库） ----
+.workbuddy/
+.cache/

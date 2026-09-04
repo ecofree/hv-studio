@@ -1,0 +1,11 @@
+# 统一行尾：避免 Windows CRLF 在 diff 里刷屏
+* text=auto
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.toml text eol=lf
+*.bat text eol=crlf
+*.sh text eol=lf

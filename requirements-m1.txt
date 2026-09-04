@@ -1,0 +1,17 @@
+# M1 阶段追加安装：TTS / 强制对齐 / 本地超分 / Whisper 兜底
+# 装好后冻结：pip freeze > requirements-m1.lock
+# 注意 torch/torchaudio 需走 CUDA 专用 wheel
+torch==2.6.0+cu126
+torchaudio==2.6.0+cu126
+diffusers>=0.27
+transformers>=4.40
+accelerate>=0.29
+safetensors>=0.4
+realesrgan>=0.3
+basicsr>=1.4.2
+facexlib>=0.3
+gfpgan>=1.3
+ffmpeg-python>=0.2
+openai-whisper>=20231117
+faster-whisper>=1.0
+edge-tts>=6.1

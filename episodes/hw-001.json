@@ -1,0 +1,803 @@
+{
+  "id": "hw-001",
+  "schema_version": "1.0",
+  "title": "hw-001",
+  "series": "汉武大帝",
+  "episode_number": 0,
+  "status": "draft",
+  "script_path": null,
+  "frames": [
+    {
+      "id": "frame-000",
+      "text": "汉武帝建元二年，",
+      "narration_text": "汉武帝建元二年，",
+      "audio_path": "D:/hv/episodes/hw-001/audio/frame-000.wav",
+      "audio_duration_ms": 2496,
+      "char_align": [
+        {
+          "char": "汉",
+          "start_ms": 0,
+          "end_ms": 356,
+          "conf": 1.0
+        },
+        {
+          "char": "武",
+          "start_ms": 356,
+          "end_ms": 712,
+          "conf": 1.0
+        },
+        {
+          "char": "帝",
+          "start_ms": 712,
+          "end_ms": 1068,
+          "conf": 1.0
+        },
+        {
+          "char": "建",
+          "start_ms": 1068,
+          "end_ms": 1424,
+          "conf": 1.0
+        },
+        {
+          "char": "元",
+          "start_ms": 1424,
+          "end_ms": 1780,
+          "conf": 1.0
+        },
+        {
+          "char": "二",
+          "start_ms": 1780,
+          "end_ms": 2136,
+          "conf": 1.0
+        },
+        {
+          "char": "年",
+          "start_ms": 2136,
+          "end_ms": 2496,
+          "conf": 1.0
+        }
+      ],
+      "subtitle": [],
+      "shot_ids": [
+        "shot-000"
+      ]
+    },
+    {
+      "id": "frame-000-01",
+      "text": "张骞奉命出使大月氏，",
+      "narration_text": "张骞奉命出使大月支，",
+      "audio_path": "D:/hv/episodes/hw-001/audio/frame-000-01.wav",
+      "audio_duration_ms": 2736,
+      "char_align": [
+        {
+          "char": "张",
+          "start_ms": 0,
+          "end_ms": 304,
+          "conf": 1.0
+        },
+        {
+          "char": "骞",
+          "start_ms": 304,
+          "end_ms": 608,
+          "conf": 1.0
+        },
+        {
+          "char": "奉",
+          "start_ms": 608,
+          "end_ms": 912,
+          "conf": 1.0
+        },
+        {
+          "char": "命",
+          "start_ms": 912,
+          "end_ms": 1216,
+          "conf": 1.0
+        },
+        {
+          "char": "出",
+          "start_ms": 1216,
+          "end_ms": 1520,
+          "conf": 1.0
+        },
+        {
+          "char": "使",
+          "start_ms": 1520,
+          "end_ms": 1824,
+          "conf": 1.0
+        },
+        {
+          "char": "大",
+          "start_ms": 1824,
+          "end_ms": 2128,
+          "conf": 1.0
+        },
+        {
+          "char": "月",
+          "start_ms": 2128,
+          "end_ms": 2432,
+          "conf": 1.0
+        },
+        {
+          "char": "支",
+          "start_ms": 2432,
+          "end_ms": 2736,
+          "conf": 1.0
+        }
+      ],
+      "subtitle": [],
+      "shot_ids": [
+        "shot-001"
+      ]
+    },
+    {
+      "id": "frame-000-02",
+      "text": "途经匈奴领地时被俘。",
+      "narration_text": "途经匈奴领地时被俘。",
+      "audio_path": "D:/hv/episodes/hw-001/audio/frame-000-02.wav",
+      "audio_duration_ms": 2904,
+      "char_align": [
+        {
+          "char": "途",
+          "start_ms": 0,
+          "end_ms": 322,
+          "conf": 1.0
+        },
+        {
+          "char": "经",
+          "start_ms": 322,
+          "end_ms": 644,
+          "conf": 1.0
+        },
+        {
+          "char": "匈",
+          "start_ms": 644,
+          "end_ms": 966,
+          "conf": 1.0
+        },
+        {
+          "char": "奴",
+          "start_ms": 966,
+          "end_ms": 1288,
+          "conf": 1.0
+        },
+        {
+          "char": "领",
+          "start_ms": 1288,
+          "end_ms": 1610,
+          "conf": 1.0
+        },
+        {
+          "char": "地",
+          "start_ms": 1610,
+          "end_ms": 1932,
+          "conf": 1.0
+        },
+        {
+          "char": "时",
+          "start_ms": 1932,
+          "end_ms": 2254,
+          "conf": 1.0
+        },
+        {
+          "char": "被",
+          "start_ms": 2254,
+          "end_ms": 2576,
+          "conf": 1.0
+        },
+        {
+          "char": "俘",
+          "start_ms": 2576,
+          "end_ms": 2904,
+          "conf": 1.0
+        }
+      ],
+      "subtitle": [],
+      "shot_ids": [
+        "shot-002"
+      ]
+    },
+    {
+      "id": "frame-001",
+      "text": "匈奴单于威逼利诱，劝他投降。",
+      "narration_text": "匈奴缠于威逼利诱，劝他投降。",
+      "audio_path": "D:/hv/episodes/hw-001/audio/frame-001.wav",
+      "audio_duration_ms": 3984,
+      "char_align": [
+        {
+          "char": "匈",
+          "start_ms": 0,
+          "end_ms": 332,
+          "conf": 1.0
+        },
+        {
+          "char": "奴",
+          "start_ms": 332,
+          "end_ms": 664,
+          "conf": 1.0
+        },
+        {
+          "char": "缠",
+          "start_ms": 664,
+          "end_ms": 996,
+          "conf": 1.0
+        },
+        {
+          "char": "于",
+          "start_ms": 996,
+          "end_ms": 1328,
+          "conf": 1.0
+        },
+        {
+          "char": "威",
+          "start_ms": 1328,
+          "end_ms": 1660,
+          "conf": 1.0
+        },
+        {
+          "char": "逼",
+          "start_ms": 1660,
+          "end_ms": 1992,
+          "conf": 1.0
+        },
+        {
+          "char": "利",
+          "start_ms": 1992,
+          "end_ms": 2324,
+          "conf": 1.0
+        },
+        {
+          "char": "诱",
+          "start_ms": 2324,
+          "end_ms": 2755,
+          "conf": 1.0
+        },
+        {
+          "char": "劝",
+          "start_ms": 2656,
+          "end_ms": 2988,
+          "conf": 1.0
+        },
+        {
+          "char": "他",
+          "start_ms": 2988,
+          "end_ms": 3320,
+          "conf": 1.0
+        },
+        {
+          "char": "投",
+          "start_ms": 3320,
+          "end_ms": 3652,
+          "conf": 1.0
+        },
+        {
+          "char": "降",
+          "start_ms": 3652,
+          "end_ms": 3984,
+          "conf": 1.0
+        }
+      ],
+      "subtitle": [],
+      "shot_ids": [
+        "shot-003"
+      ]
+    },
+    {
+      "id": "frame-002",
+      "text": "然而张骞始终手持旌节，不肯屈服。",
+      "narration_text": "然而张骞始终手持旌节，不肯屈服。",
+      "audio_path": "D:/hv/episodes/hw-001/audio/frame-002.wav",
+      "audio_duration_ms": 4008,
+      "char_align": [
+        {
+          "char": "然",
+          "start_ms": 0,
+          "end_ms": 286,
+          "conf": 1.0
+        },
+        {
+          "char": "而",
+          "start_ms": 286,
+          "end_ms": 572,
+          "conf": 1.0
+        },
+        {
+          "char": "张",
+          "start_ms": 572,
+          "end_ms": 858,
+          "conf": 1.0
+        },
+        {
+          "char": "骞",
+          "start_ms": 858,
+          "end_ms": 1144,
+          "conf": 1.0
+        },
+        {
+          "char": "始",
+          "start_ms": 1144,
+          "end_ms": 1430,
+          "conf": 1.0
+        },
+        {
+          "char": "终",
+          "start_ms": 1430,
+          "end_ms": 1716,
+          "conf": 1.0
+        },
+        {
+          "char": "手",
+          "start_ms": 1716,
+          "end_ms": 2002,
+          "conf": 1.0
+        },
+        {
+          "char": "持",
+          "start_ms": 2002,
+          "end_ms": 2288,
+          "conf": 1.0
+        },
+        {
+          "char": "旌",
+          "start_ms": 2288,
+          "end_ms": 2574,
+          "conf": 1.0
+        },
+        {
+          "char": "节",
+          "start_ms": 2574,
+          "end_ms": 2945,
+          "conf": 1.0
+        },
+        {
+          "char": "不",
+          "start_ms": 2860,
+          "end_ms": 3146,
+          "conf": 1.0
+        },
+        {
+          "char": "肯",
+          "start_ms": 3146,
+          "end_ms": 3432,
+          "conf": 1.0
+        },
+        {
+          "char": "屈",
+          "start_ms": 3432,
+          "end_ms": 3718,
+          "conf": 1.0
+        },
+        {
+          "char": "服",
+          "start_ms": 3718,
+          "end_ms": 4008,
+          "conf": 1.0
+        }
+      ],
+      "subtitle": [],
+      "shot_ids": [
+        "shot-004"
+      ]
+    },
+    {
+      "id": "frame-003",
+      "text": "十年羁押，他终于寻得机会，逃回汉朝。",
+      "narration_text": "十年羁押，他终于寻得机会，逃回汉朝。",
+      "audio_path": "D:/hv/episodes/hw-001/audio/frame-003.wav",
+      "audio_duration_ms": 4896,
+      "char_align": [
+        {
+          "char": "十",
+          "start_ms": 0,
+          "end_ms": 326,
+          "conf": 1.0
+        },
+        {
+          "char": "年",
+          "start_ms": 326,
+          "end_ms": 652,
+          "conf": 1.0
+        },
+        {
+          "char": "羁",
+          "start_ms": 652,
+          "end_ms": 978,
+          "conf": 1.0
+        },
+        {
+          "char": "押",
+          "start_ms": 978,
+          "end_ms": 1401,
+          "conf": 1.0
+        },
+        {
+          "char": "他",
+          "start_ms": 1304,
+          "end_ms": 1630,
+          "conf": 1.0
+        },
+        {
+          "char": "终",
+          "start_ms": 1630,
+          "end_ms": 1956,
+          "conf": 1.0
+        },
+        {
+          "char": "于",
+          "start_ms": 1956,
+          "end_ms": 2282,
+          "conf": 1.0
+        },
+        {
+          "char": "寻",
+          "start_ms": 2282,
+          "end_ms": 2608,
+          "conf": 1.0
+        },
+        {
+          "char": "得",
+          "start_ms": 2608,
+          "end_ms": 2934,
+          "conf": 1.0
+        },
+        {
+          "char": "机",
+          "start_ms": 2934,
+          "end_ms": 3260,
+          "conf": 1.0
+        },
+        {
+          "char": "会",
+          "start_ms": 3260,
+          "end_ms": 3683,
+          "conf": 1.0
+        },
+        {
+          "char": "逃",
+          "start_ms": 3586,
+          "end_ms": 3912,
+          "conf": 1.0
+        },
+        {
+          "char": "回",
+          "start_ms": 3912,
+          "end_ms": 4238,
+          "conf": 1.0
+        },
+        {
+          "char": "汉",
+          "start_ms": 4238,
+          "end_ms": 4564,
+          "conf": 1.0
+        },
+        {
+          "char": "朝",
+          "start_ms": 4564,
+          "end_ms": 4896,
+          "conf": 1.0
+        }
+      ],
+      "subtitle": [],
+      "shot_ids": [
+        "shot-005"
+      ]
+    }
+  ],
+  "shots": {
+    "shot-000": {
+      "id": "shot-000",
+      "frame_id": "frame-000",
+      "index": 0,
+      "type": "ken_burns",
+      "is_hero": false,
+      "narration": "",
+      "shot_type": "medium",
+      "cast_refs": [],
+      "keywords": [],
+      "scene_ref": null,
+      "duration_ms": 2496,
+      "audio_start_ms": 0,
+      "audio_end_ms": 2496,
+      "audio_segment_path": null,
+      "prompt": "中年汉族男子，公元前二世纪的汉朝使者装束：赭色交领深衣，腰间束带，头戴汉式进贤冠，手持一根系着牦牛尾装饰的木质符节（使节之节）。 大汉未央宫，清晨。年轻使臣张骞双手接过皇帝赐下的符节，俯身拜谢。金殿宏阔，两侧列队。 ancient chinese historical painting style, cinematic composition, dramatic lighting, warm earthy tone, highly detailed, masterpiece",
+      "negative_prompt": "",
+      "expression": "",
+      "pose": "",
+      "ref_pack_id": "zhangqian",
+      "ref_pack_paths": [
+        "D:/hv/resource/ref_packs/zhangqian/01_three_quarter_left.png"
+      ],
+      "image_path": "D:/hv/episodes/hw-001/shots/shot-000.png",
+      "image_actual_size": [
+        1080,
+        1920
+      ],
+      "image_revised_prompt": null,
+      "upscaled_path": "D:/hv/episodes/hw-001/shots/shot-000@2x.png",
+      "motion_path": "D:/hv/episodes/hw-001/shots/shot-000.mp4",
+      "i2v_task_id": null,
+      "i2v_path": null,
+      "subtitle_text": "汉武帝建元二年，",
+      "face_sim": 0.8056,
+      "face_sim_warn": false,
+      "retry_count": 0,
+      "last_error": null,
+      "stage": {},
+      "motion": {
+        "type": "push",
+        "intensity": 0.1,
+        "start_xy": null,
+        "end_xy": null,
+        "start_zoom": 1.0,
+        "end_zoom": 1.0,
+        "easing": "ease_in_out"
+      }
+    },
+    "shot-001": {
+      "id": "shot-001",
+      "frame_id": "frame-000-01",
+      "index": 1,
+      "type": "ken_burns",
+      "is_hero": false,
+      "narration": "",
+      "shot_type": "medium",
+      "cast_refs": [],
+      "keywords": [],
+      "scene_ref": null,
+      "duration_ms": 2736,
+      "audio_start_ms": 0,
+      "audio_end_ms": 2736,
+      "audio_segment_path": null,
+      "prompt": "中年汉族男子，公元前二世纪的汉朝使者装束：赭色交领深衣，腰间束带，头戴汉式进贤冠，手持一根系着牦牛尾装饰的木质符节（使节之节）。 荒漠戈壁，汉使一行在旷野被一队匈奴骑兵包围。匈奴骑士执弓围拢，张骞握节立于马侧，神色警觉。 ancient chinese historical painting style, cinematic composition, dramatic lighting, warm earthy tone, highly detailed, masterpiece",
+      "negative_prompt": "",
+      "expression": "",
+      "pose": "",
+      "ref_pack_id": "zhangqian",
+      "ref_pack_paths": [
+        "D:/hv/resource/ref_packs/zhangqian/01_three_quarter_left.png"
+      ],
+      "image_path": "D:/hv/episodes/hw-001/shots/shot-001.png",
+      "image_actual_size": [
+        1080,
+        1920
+      ],
+      "image_revised_prompt": null,
+      "upscaled_path": "D:/hv/episodes/hw-001/shots/shot-001@2x.png",
+      "motion_path": "D:/hv/episodes/hw-001/shots/shot-001.mp4",
+      "i2v_task_id": null,
+      "i2v_path": null,
+      "subtitle_text": "张骞奉命出使大月氏，",
+      "face_sim": 0.765,
+      "face_sim_warn": false,
+      "retry_count": 0,
+      "last_error": "ffmpeg 失败: le filtering: Cannot allocate memory\n[vf#0:0 @ 000001dcd8333b40] Task finished with error code: -12 (Cannot allocate memory)\n[vf#0:0 @ 000001dcd8333b40] Terminating thread with return code -12 (Cannot allocate memory)\n[mp4 @ 000001dcda3d00c0] Starting second pass: moving the moov atom to ",
+      "stage": {
+        "motion": "done",
+        "image": "done"
+      },
+      "motion": {
+        "type": "pan",
+        "intensity": 0.3,
+        "start_xy": [
+          0.0,
+          0.5
+        ],
+        "end_xy": [
+          1.0,
+          0.5
+        ],
+        "start_zoom": 1.0,
+        "end_zoom": 1.0,
+        "easing": "ease_in_out"
+      }
+    },
+    "shot-002": {
+      "id": "shot-002",
+      "frame_id": "frame-000-02",
+      "index": 2,
+      "type": "ken_burns",
+      "is_hero": false,
+      "narration": "",
+      "shot_type": "medium",
+      "cast_refs": [],
+      "keywords": [],
+      "scene_ref": null,
+      "duration_ms": 3054,
+      "audio_start_ms": 0,
+      "audio_end_ms": 2904,
+      "audio_segment_path": null,
+      "prompt": "中年汉族男子，公元前二世纪的汉朝使者装束：赭色交领深衣，腰间束带，头戴汉式进贤冠，手持一根系着牦牛尾装饰的木质符节（使节之节）。 匈奴单于大帐内，火光摇曳。单于高坐兽皮宝座，摆手劝降；张骞正坐于下首，手持符节，神情坚毅不屈。 ancient chinese historical painting style, cinematic composition, dramatic lighting, warm earthy tone, highly detailed, masterpiece",
+      "negative_prompt": "",
+      "expression": "",
+      "pose": "",
+      "ref_pack_id": "zhangqian",
+      "ref_pack_paths": [
+        "D:/hv/resource/ref_packs/zhangqian/01_three_quarter_left.png"
+      ],
+      "image_path": "D:/hv/episodes/hw-001/shots/shot-002.png",
+      "image_actual_size": [
+        1080,
+        1920
+      ],
+      "image_revised_prompt": null,
+      "upscaled_path": "D:/hv/episodes/hw-001/shots/shot-002@2x.png",
+      "motion_path": "D:/hv/episodes/hw-001/shots/shot-002.mp4",
+      "i2v_task_id": null,
+      "i2v_path": null,
+      "subtitle_text": "途经匈奴领地时被俘。",
+      "face_sim": 0.807,
+      "face_sim_warn": false,
+      "retry_count": 0,
+      "last_error": "ffmpeg 失败:     : Lavc62.28.101 libx264\n    Side data:\n      CPB properties: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\nx264 [error]: malloc of size 7186688 failed\n[vost#0:0/libx264 @ 0000022870300cc0] [enc:libx264 @ 000002286e1653c0] Error submitting video frame to the encoder\n[vost#0:",
+      "stage": {},
+      "motion": {
+        "type": "push",
+        "intensity": 0.14,
+        "start_xy": null,
+        "end_xy": null,
+        "start_zoom": 1.0,
+        "end_zoom": 1.0,
+        "easing": "ease_in_out"
+      }
+    },
+    "shot-003": {
+      "id": "shot-003",
+      "frame_id": "frame-001",
+      "index": 3,
+      "type": "ken_burns",
+      "is_hero": false,
+      "narration": "",
+      "shot_type": "medium",
+      "cast_refs": [],
+      "keywords": [],
+      "scene_ref": null,
+      "duration_ms": 4234,
+      "audio_start_ms": 100,
+      "audio_end_ms": 4084,
+      "audio_segment_path": null,
+      "prompt": "中年汉族男子，公元前二世纪的汉朝使者装束：赭色交领深衣，腰间束带，头戴汉式进贤冠，手持一根系着牦牛尾装饰的木质符节（使节之节）。 张骞在匈奴营地被软禁，虽身穿胡地粗衣，仍将汉节紧握在怀，望向帐外，目光坚定。月夜，篝火，四周是匈奴毡帐。 ancient chinese historical painting style, cinematic composition, dramatic lighting, warm earthy tone, highly detailed, masterpiece",
+      "negative_prompt": "",
+      "expression": "",
+      "pose": "",
+      "ref_pack_id": "zhangqian",
+      "ref_pack_paths": [
+        "D:/hv/resource/ref_packs/zhangqian/01_three_quarter_left.png"
+      ],
+      "image_path": "D:/hv/episodes/hw-001/shots/shot-003.png",
+      "image_actual_size": [
+        1080,
+        1920
+      ],
+      "image_revised_prompt": null,
+      "upscaled_path": "D:/hv/episodes/hw-001/shots/shot-003@2x.png",
+      "motion_path": "D:/hv/episodes/hw-001/shots/shot-003.mp4",
+      "i2v_task_id": null,
+      "i2v_path": null,
+      "subtitle_text": "匈奴单于威逼利诱，劝他投降。",
+      "face_sim": 0.81,
+      "face_sim_warn": false,
+      "retry_count": 0,
+      "last_error": "ffmpeg 失败: ing demuxing: Cannot allocate memory\n[vf#0:0 @ 000001733a38ce00] Task finished with error code: -12 (Cannot allocate memory)\n[vf#0:0 @ 000001733a38ce00] Terminating thread with return code -12 (Cannot allocate memory)\n[mp4 @ 000001733c430ac0] Starting second pass: moving the moov atom to ",
+      "stage": {},
+      "motion": {
+        "type": "drift",
+        "intensity": 0.05,
+        "start_xy": null,
+        "end_xy": null,
+        "start_zoom": 1.0,
+        "end_zoom": 1.0,
+        "easing": "ease_in_out"
+      }
+    },
+    "shot-004": {
+      "id": "shot-004",
+      "frame_id": "frame-002",
+      "index": 4,
+      "type": "ken_burns",
+      "is_hero": false,
+      "narration": "",
+      "shot_type": "medium",
+      "cast_refs": [],
+      "keywords": [],
+      "scene_ref": null,
+      "duration_ms": 4258,
+      "audio_start_ms": 100,
+      "audio_end_ms": 4108,
+      "audio_segment_path": null,
+      "prompt": "中年汉族男子，公元前二世纪的汉朝使者装束：赭色交领深衣，腰间束带，头戴汉式进贤冠，手持一根系着牦牛尾装饰的木质符节（使节之节）。 大雪纷飞的塞外，张骞与匈奴随从在草原放牧，须发已见斑白，但手中的汉节始终没有放下。苍茫辽阔的北地风光。 ancient chinese historical painting style, cinematic composition, dramatic lighting, warm earthy tone, highly detailed, masterpiece",
+      "negative_prompt": "",
+      "expression": "",
+      "pose": "",
+      "ref_pack_id": "zhangqian",
+      "ref_pack_paths": [
+        "D:/hv/resource/ref_packs/zhangqian/01_three_quarter_left.png"
+      ],
+      "image_path": "D:/hv/episodes/hw-001/shots/shot-004.png",
+      "image_actual_size": [
+        1080,
+        1920
+      ],
+      "image_revised_prompt": null,
+      "upscaled_path": "D:/hv/episodes/hw-001/shots/shot-004@2x.png",
+      "motion_path": "D:/hv/episodes/hw-001/shots/shot-004.mp4",
+      "i2v_task_id": null,
+      "i2v_path": null,
+      "subtitle_text": "然而张骞始终手持旌节，不肯屈服。",
+      "face_sim": 0.851,
+      "face_sim_warn": false,
+      "retry_count": 0,
+      "last_error": "ffmpeg 失败: d\n[png @ 0000021fa8d8bb40] thread_get_buffer() failed\n[vist#0:0/png @ 0000021fa8d624c0] [dec:png @ 0000021fa8d54740] Decoding error: Cannot allocate memory\nx264 [error]: malloc of size 7186688 failed\n    Last message repeated 2 times\n[vost#0:0/libx264 @ 0000021faadf0480] [enc:libx264 @ 00",
+      "stage": {},
+      "motion": {
+        "type": "pan",
+        "intensity": 0.25,
+        "start_xy": [
+          1.0,
+          0.4
+        ],
+        "end_xy": [
+          0.0,
+          0.6
+        ],
+        "start_zoom": 1.0,
+        "end_zoom": 1.0,
+        "easing": "ease_in_out"
+      }
+    },
+    "shot-005": {
+      "id": "shot-005",
+      "frame_id": "frame-003",
+      "index": 5,
+      "type": "ken_burns",
+      "is_hero": false,
+      "narration": "",
+      "shot_type": "medium",
+      "cast_refs": [],
+      "keywords": [],
+      "scene_ref": null,
+      "duration_ms": 5146,
+      "audio_start_ms": 100,
+      "audio_end_ms": 4996,
+      "audio_segment_path": null,
+      "prompt": "中年汉族男子，公元前二世纪的汉朝使者装束：赭色交领深衣，腰间束带，头戴汉式进贤冠，手持一根系着牦牛尾装饰的木质符节（使节之节）。 张骞独自骑驼穿越无垠沙漠，衣袍猎猎，前方地平线隐约可见汉地烽燧与长城轮廓，落日金光。他终于踏上归途。 ancient chinese historical painting style, cinematic composition, dramatic lighting, warm earthy tone, highly detailed, masterpiece",
+      "negative_prompt": "",
+      "expression": "",
+      "pose": "",
+      "ref_pack_id": "zhangqian",
+      "ref_pack_paths": [
+        "D:/hv/resource/ref_packs/zhangqian/01_three_quarter_left.png"
+      ],
+      "image_path": "D:/hv/episodes/hw-001/shots/shot-005.png",
+      "image_actual_size": [
+        1080,
+        1920
+      ],
+      "image_revised_prompt": null,
+      "upscaled_path": "D:/hv/episodes/hw-001/shots/shot-005@2x.png",
+      "motion_path": "D:/hv/episodes/hw-001/shots/shot-005.mp4",
+      "i2v_task_id": null,
+      "i2v_path": null,
+      "subtitle_text": "十年羁押，他终于寻得机会，逃回汉朝。",
+      "face_sim": 0.869,
+      "face_sim_warn": false,
+      "retry_count": 1,
+      "last_error": "name 'embed_face' is not defined",
+      "stage": {
+        "image": "done",
+        "motion": "done"
+      },
+      "motion": {
+        "type": "pull",
+        "intensity": 0.12,
+        "start_xy": null,
+        "end_xy": null,
+        "start_zoom": 1.0,
+        "end_zoom": 1.0,
+        "easing": "ease_in_out"
+      }
+    }
+  },
+  "profile": "ancient-realistic",
+  "notes": "",
+  "created_at": "2026-09-03T10:56:47.678275",
+  "updated_at": "2026-09-03T10:56:47.678296"
+}

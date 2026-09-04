@@ -1,0 +1,61 @@
+# 音色注册表
+#
+# ⚠️ 状态说明：下列 speaker id 为待验证占位值。
+#    部署 TTS 引擎后，必须先枚举引擎实际可用音色列表，再回填此处。
+#    不同版本 Kokoro / Qwen3-TTS 的音色 id 命名不一致，不可凭记忆填写。
+version: 1.0
+
+engines:
+  kokoro-82m:
+    path: kokoro
+    runtime: cpu
+    lang: zh
+    # 枚举命令（部署后执行，回填下方 speakers）：
+    #   python -c "from kokoro import KPipeline; KPipeline(lang_code='z').list_voices()"
+    # Kokoro 命名惯例：zf_xxx = 女声，zm_xxx = 男声
+    speakers:
+      zm_yunxi:
+        id: zm_yunxi
+        gender: male
+        style: 沉稳男声
+        speed: 1.0
+        verified: false
+      zm_ningque:
+        id: zm_ningque
+        gender: male
+        style: 浑厚旁白
+        speed: 0.95
+        verified: false
+    status: pending_verification
+
+  qwen3-tts:
+    path: Qwen/Qwen3-TTS-0.6B
+    runtime: cuda
+    lang: zh
+    # 支持 3 秒零样本克隆；此处仅登记预置音色
+    speakers:
+      steady_male:
+        id: steady_male
+        gender: male
+        style: 沉稳解说
+        speed: 1.0
+        verified: false
+      epic_male:
+        id: epic_male
+        gender: male
+        style: 激昂旁白
+        speed: 1.05
+        verified: false
+    # 零样本克隆参考音频（可选，用于定制专属解说音色）
+    clone_refs:
+      - id: narrator_a
+        audio: assets/voices/ref_narrator_a.wav
+        transcript: null
+    status: pending_verification
+
+# 选型节奏：
+#   M1 垂直切片阶段 —— 用 Kokoro 快速迭代（CPU，210x 实时，近零等待）
+#   M4 成片阶段     —— 切 Qwen3-TTS（中文韵律最优，12GB 显存无压力）
+default_for_stage:
+  m1_slice: kokoro-82m
+  m4_final: qwen3-tts

@@ -1,0 +1,51 @@
+{
+  "base": "https://subrouter.ai",
+  "model": "gpt-image-2",
+  "channels": [
+    "aicost",
+    "qcyc",
+    "cxk"
+  ],
+  "tests": {
+    "T1_generations": {
+      "status": 200,
+      "latency_s": 32.85,
+      "has_b64": true,
+      "has_url": false,
+      "top_level_keys": [
+        "background",
+        "created",
+        "data",
+        "moderation",
+        "output_format",
+        "quality",
+        "size",
+        "usage"
+      ],
+      "item_keys": [
+        "b64_json",
+        "revised_prompt"
+      ],
+      "bytes": 2094009,
+      "png_size": [
+        948,
+        1659
+      ],
+      "saved": "D:\\hv\\assets\\probe\\t1_aicost_1024x1792.png",
+      "usage": {
+        "input_tokens": 91,
+        "input_tokens_details": {
+          "image_tokens": 0,
+          "text_tokens": 91
+        },
+        "output_tokens": 1158,
+        "output_tokens_details": {
+          "image_tokens": 1158,
+          "text_tokens": 0
+        },
+        "total_tokens": 1249
+      },
+      "revised_prompt": "西汉，戈壁黄昏。一位三十余岁的汉使，身着赭色深衣，手持褪色的旌节，独自立于沙丘之上。风沙漫卷，远处是低矮的土黄地平线。写实历史插画风格，电影感广角构图，暖橙色侧逆光，竖构图。"
+    }
+  }
+}

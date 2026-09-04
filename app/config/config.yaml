@@ -1,0 +1,278 @@
+# hv 主配置（合并自旧 config/style.yaml + config/models.yaml）
+#
+# 重大修订（2026-09-03 subrouter.ai 探测后）：
+#   - style.image.size: "1024x1792" → "1080x1920"
+#     理由：中转把总像素钳制在 1,572,864，请求 size 只控长宽比。
+#           1080x1920 (9:16 精确) → 预计产出 940x1672 → ×2 = 1880x3344。
+#           比 1024x1792 (948x1659 → 1896x3318) 垂直余量更足 (1424 vs 1398)
+#           且零比值浪费。
+#   - style.motion.input_resolution / pan_margin_px: 改为 "dynamic"
+#     实际值由 app/services/upscale.py 算（基于 gpt-image-2 返回图真实像素）。
+#   - 旧 config/models.yaml 里的 "API_BASE / API_KEY_ENV 占位 ${OPENAI_API_BASE}"
+#     全部改为具体字段，由 .env 渠道池发现机制驱动。
+
+version: 1.0
+default_profile: ancient-realistic
+
+# ===========================================================================
+# 风格 profile（继承自旧 style.yaml）
+# ===========================================================================
+profiles:
+  ancient-realistic:
+    name: 古风写实
+
+    image:
+      engine: gpt-image-2
+      size: "1080x1920"                # 9:16 精确，请求后预计产出 940x1672
+      quality: low                      # low 即可拿满 1.57MP
+      upscale: 2
+      style_suffix: >-
+        ancient chinese historical painting style, cinematic composition,
+        dramatic lighting, warm earthy tone, highly detailed, masterpiece,
+        film grain
+      negative_clause: >-
+        No modern elements, no electric wires, no concrete, no text,
+        no watermark, no signature, no extra limbs, no extra fingers,
+        no mutated hands, no cartoon, no anime, no 3d render,
+        no plastic skin.
+      identity_anchor_template: |
+        Preserve the exact identity, facial geometry, age, hairstyle,
+        headdress, and wardrobe from the reference images.
+        Do NOT copy the facial expression or body pose from the references.
+        Render exactly the expression and pose described in the scene prompt.
+      require_expression_spec: true
+      require_pose_spec: true
+
+    voice:
+      # 实际出片引擎由 app/services/voice.py 决定（cosyvoice 主 / edge 回退）
+      engine: cosyvoice
+      fallback_engine: edge
+      speaker: zm_yunxi
+      speed: 1.0
+      pitch: 0.0
+      emotion: steady
+      # ---- CosyVoice 音色塑形 ----
+      # ⚠️ 2026-09-03 试听结论：A/B 了 6 个候选后，用户选回【原生音色】。
+      #    压低音调(pitch_rate<1)会让男声发闷失真；"浑厚"指令反而更差。
+      #    所以这里保持中性：pitch_rate 1.0 = 服务端原生，instruction 不启用。
+      #    塑形能力已实现在 cosyvoice.py，需要时在此显式配置即可，勿改代码兜底。
+      pitch_rate: 1.0
+      speech_rate: null
+      volume: null
+      instruction: null
+
+    rhythm:
+      fps: 25
+      pad_head_ms: 100
+      pad_tail_ms: 150
+      min_shot_ms: 1600
+      max_shot_ms: 6000
+      split_threshold_ms: 6000
+
+    subtitle:
+      font: 思源宋体
+      font_size: 72
+      primary_colour: "&H00FFFFFF"
+      outline_colour: "&H00000000"
+      back_colour: "&H80000000"
+      outline: 4
+      shadow: 1
+      margin_bottom: 320
+      margin_top: 200
+      max_chars_per_line: 15
+      min_duration_ms: 800
+      max_duration_ms: 4000
+      keyword:
+        font_size: 80
+        primary_colour: "&H0000D7FF"
+        scale_in_ms: 150
+
+    motion:
+      default_type: drift
+      default_intensity: 0.08
+      easing: ease_in_out
+      input_resolution: dynamic           # 由 upscale.py 基于实际返回像素算
+      output_resolution: [1080, 1920]
+      crop_window: [1080, 1920]
+      pan_margin_px: dynamic              # 同上
+      max_zoom: 1.15
+      conservative_mode: true
+      conservative_pan_ratio: 0.6
+      downscale_filter: lanczos
+      forbid_consecutive_same: true
+      zoom_easing_formula: "1.0 + {i} * (1 - cos(3.1415926 * on / {N})) / 2"
+
+    bgm:
+      volume: 0.18
+      fade_out_sec: 5
+
+# ===========================================================================
+# TTS（继承自旧 models.yaml.tts）
+# ===========================================================================
+tts:
+  primary_engine: qwen3-tts
+  fallback_engines:
+    - qwen3-tts-low-vram
+    - kokoro-82m
+    - silent-placeholder
+  default_for_stage:
+    m1_slice: kokoro-82m
+    m4_final: qwen3-tts
+
+# ===========================================================================
+# 强制对齐
+# ===========================================================================
+# ⚠️ torchaudio 自带的 MMS_FA 是英文（29 token = 26 字母），不能对齐中文
+# M1: linear_estimate（按字符均分）
+# M2: faster-whisper word-level
+# M4: PaddleSpeech / FunASR 真字符级
+aligner:
+  primary_type: linear_estimate
+  primary_level: char
+  fallback_chain:
+    - faster_whisper_word_level
+    - faster_whisper_segment_level
+    - pinyin_chunked_estimate
+
+# ===========================================================================
+# 生图（继承自旧 models.yaml.image，重大修订）
+# ===========================================================================
+image:
+  primary:
+    engine: gpt-image-2
+    model: gpt-image-2
+    api_base: https://subrouter.ai          # 由 .env 中 gpt-image-2_API_BASE 覆盖
+    api_key_env: null                       # 走三渠道池，不再用单一 env
+    endpoint_generate: /v1/images/generations
+    endpoint_edit: /v1/images/edits
+    size: "1080x1920"                       # 9:16 精确
+    quality: low
+    n: 1
+    response_format: b64_json
+    timeout_s: 300                          # 实测 33s，留 9× 余量
+    max_reference_images: 16
+    concurrency: 6
+    requires_upscale: true
+    supports_seed: false
+    supports_character_id: false
+    # ★ 严格模式：subrouter 会静默忽略非法 size/quality 并真去生成
+    #   生产建议保持 false（不严格）；调试时设 true 让 image.py 主动拒绝
+    #   已知非法值，避免真去生成计费
+    strict_param_validation: false
+
+  postprocess_upscale:
+    enabled: true
+    # ★ 单一真源：engine 必须与 app/services/upscale.py 实装一致。
+    #   当前实装为 pil_lanczos（零依赖、快、够做运镜余量）。
+    #   RealESRGAN_x2plus（M2 升级）basicsr 编译问题未解决，启用会抛
+    #   NotImplementedError，故【不得】在此声明为已启用，避免配置与运行
+    #   事实冲突（2026-09-04 审计收敛）。待 M2 落地后再改回 realesrgan。
+    engine: pil_lanczos
+    model: RealESRGAN_x2plus          # 仅 realesrgan engine 时生效（占位）
+    scale: 2
+    device: cuda
+    tile: 512
+    output_size_dynamic: true               # 基于返回图实际像素 × scale 算
+
+  consistency:
+    strategy: reference_pack
+    ref_pack_size: 12
+    override_expression: true
+    override_pose: true
+    face_sim_threshold: 0.65
+    face_sim_warn: 0.50
+    max_retry: 3
+
+  fallbacks:
+    - engine: gpt-image-2
+      size: "1080x1920"
+    - engine: diffusers_sdxl
+      dtype: fp8
+      device: cuda
+      enable_attention_slicing: true
+      enable_vae_tiling: true
+      concurrency: 1
+      note: 临界可行，上线前必须跑 bin/probe_sdxl_vram.py 实测确认
+    - engine: diffusers_sd15
+      dtype: fp16
+      lora: ancient-chinese-v1
+      note: 画质明显低于 SDXL，仅作应急
+    - engine: scene_library_reuse
+    - engine: solid_color_card
+
+# ===========================================================================
+# 视频（I2V，继承自旧 models.yaml.video，subrouter 端点已确认）
+#   ★ enabled 必须是运行事实：当前【未实现生产 I2V】（app 内无生成服务，
+#     仅探测脚本 + relay 状态接口，见 app/controllers/v1/video.py）。
+#     运镜/动态由 motion(ffmpeg zoompan/crop) 承担。故 enabled=false。
+#     待 I2V 生产链路(任务查询+fallback_kenburns)落地后改回 true。
+# ===========================================================================
+video:
+  enabled: false
+  strategy: hero_shots_only
+  hero_shots_per_episode: [8, 15]
+
+  primary:
+    engine: relay_i2v
+    api_base: https://subrouter.ai
+    model: gpt-image-2
+    endpoint: /v1/videos
+    task_based: true
+    image_field: null                       # 待 T2 探测（base64 数组？image_urls？）
+    duration_sec: 5
+    timeout_s: 900
+    poll_interval_s: 10
+    concurrency: 3
+    match_duration_to_audio: true
+    max_waste_ratio: 0.35
+    face_sim_threshold: 0.60
+    on_face_drift: fallback_to_kenburns
+
+  fallbacks:
+    - ffmpeg_kenburns
+    - static_freeze
+
+# ===========================================================================
+# 运镜
+# ===========================================================================
+motion:
+  supersample: 2
+  pan_impl: crop
+  zoom_impl: zoompan
+  fallbacks:
+    - supersample: 1
+    - engine: static_freeze
+
+# ===========================================================================
+# 合成
+# ===========================================================================
+compose:
+  video_encoder: h264_nvenc
+  preset: p4
+  cq: 20
+  fallbacks:
+    - video_encoder: libx264
+      preset: medium
+      crf: 20
+    - video_encoder: libx264
+      preset: veryfast
+      crf: 23
+  audio_codec: aac
+  audio_bitrate: 192k
+  # P1 2.1：ffmpeg 收口超时秒数。0 = 不设超时（默认保守）；若担心编码卡死可设如 1200。
+  timeout_sec: 0
+
+# ===========================================================================
+# 运行时 / 显存
+# ===========================================================================
+runtime:
+  python_venv: C:\Users\coumoo\.workbuddy\binaries\python\envs\hv
+  ffmpeg: ffmpeg
+  vram:
+    reported_total_GB: 12.00
+    reported_free_GB: 10.95
+    measured_usable_GB: 6.00
+    unallocatable_GB: 4.95
+    cause: Windows WDDM 驱动模型下 mem_get_info 报告值不可分配
+    rule: 任何新模型上线前，先跑探测脚本比对 measured_usable_GB
+  nvidia_smi_available: false

@@ -1,0 +1,68 @@
+# hv —— 依赖锁定（2026-09-04 从 hv venv 实测 freeze）
+# 重建： python -m venv <venv> && <venv>\Scripts\pip install -r requirements.lock.txt
+# 说明：
+#  - insightface 为本地编译 wheel（Windows/cp313），非 PyPI 可复现，已注释；
+#    人脸一致性门控非核心生产依赖，缺失时相关 stage 会降级跳过。
+#  - torch/torchaudio 为 CUDA 12.6 大件，装自 pytorch 官方 index；注释避免 pip 误拉。
+#    非核心（本仓走云端 TTS），需时另装：
+#       pip install torch==2.14.0+cu126 torchaudio==2.11.0+cu126 \
+#         --index-url https://download.pytorch.org/whl/cu126
+
+# ===== 核心生产（运行必需） =====
+fastapi==0.141.1
+uvicorn==0.52.4
+streamlit==1.63.0
+click==8.5.0
+starlette==1.6.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+PyYAML==6.0.3
+python-multipart==0.0.32
+requests==2.34.2
+httpx==0.28.1
+dashscope==1.27.3
+edge-tts==7.2.8
+numpy==2.5.2
+pillow==12.3.0
+python-dotenv==1.2.3
+
+# ===== 传递依赖（fastapi/uvicorn/streamlit/httpx 等自动带，锁定以备审计） =====
+anyio==4.15.0
+annotated-types==0.8.0
+certifi==2026.7.22
+h11==0.16.0
+httpcore==1.0.9
+httpx-sse==0.4.3
+idna==3.19
+markdown-it-py==4.2.0
+mdurl==0.1.2
+packaging==26.3
+pydeck==0.9.3
+Pygments==2.21.0
+python-dateutil==2.9.0.post0
+rich==15.0.0
+rpds-py==2026.6.3
+shellingham==1.5.4
+six==1.17.0
+tabulate==0.10.0
+toml==0.10.2
+tqdm==4.70.0
+typer==0.27.2
+typing_extensions==4.16.0
+tzdata==2026.3
+urllib3==2.7.0
+watchdog==6.0.0
+watchfiles==1.2.0
+websockets==16.1.1
+
+# ===== 可选重型（注释，按需启用；均非核心生产路径必需） =====
+# torch==2.14.0+cu126
+# torchaudio==2.11.0+cu126
+# insightface==0.7.3          # 本地 wheel，见顶部说明
+# onnxruntime==1.29.0
+# modelscope==1.39.1
+# opencv-python-headless==5.0.0.93
+# scikit-image==0.26.0
+# albumentations==2.0.8
+# pandas==3.0.5
+# scipy==1.18.1

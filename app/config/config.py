@@ -1,0 +1,444 @@
+"""
+配置加载 + .env 渠道池发现。
+
+设计要点：
+1. 主配置走 YAML（app/config/config.yaml），可读性高、易 diff
+2. 密钥走 .env（不被 git 跟踪）
+3. subrouter.ai 的三渠道密钥自动发现：扫描 .env 中所有 "{provider}_gpt-image-2=sk-..."
+   模式，构成可轮询 + 失败降级的渠道池。命名约定来自用户：aicost/qcyc/cxk。
+4. polyphone.yaml 与 voices.yaml 是独立的"长期资产"，单独文件，频繁追加。
+"""
+from __future__ import annotations
+
+import os
+import re
+from pathlib import Path
+from typing import Any
+
+import yaml
+from pydantic import BaseModel, Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+ROOT = Path(__file__).resolve().parent.parent.parent  # D:\hv
+APP_DIR = ROOT / "app"
+CONFIG_DIR = APP_DIR / "config"
+
+
+# ---------------------------------------------------------------------------
+# 原始 .env 解析（不依赖 python-dotenv）
+# ---------------------------------------------------------------------------
+def load_env(path: Path) -> dict[str, str]:
+    env: dict[str, str] = {}
+    if not path.exists():
+        return env
+    for line in path.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        env[k.strip()] = v.strip().strip('"').strip("'")
+    return env
+
+
+# ---------------------------------------------------------------------------
+# 渠道池发现
+# ---------------------------------------------------------------------------
+class Channel(BaseModel):
+    """subrouter.ai 一个渠道 = 一个 sk- key = 一份独立配额。"""
+    name: str
+    api_key: str
+    base_url: str
+    model: str
+
+    @property
+    def auth_header(self) -> dict[str, str]:
+        return {"Authorization": f"Bearer {self.api_key}"}
+
+
+def discover_channels(env: dict[str, str], model: str) -> list[Channel]:
+    """
+    扫描 .env，发现所有 "{provider}_{model}={key}" 形式的密钥。
+    例：aicost_gpt-image-2=sk-... → Channel(name="aicost", api_key=sk-...)
+    """
+    suffix = f"_{model}"
+    # 用 \b + 后缀锚定，避免 gpt-image-2_API_BASE 之类前缀撞车
+    pattern = re.compile(rf"^([a-z0-9_-]+){re.escape(suffix)}$")
+    base = env.get(f"{model}_API_BASE", "https://subrouter.ai").rstrip("/")
+    channels: list[Channel] = []
+    for k, v in env.items():
+        m = pattern.match(k)
+        if m and v.startswith("sk-"):
+            channels.append(Channel(
+                name=m.group(1),
+                api_key=v,
+                base_url=base,
+                model=model,
+            ))
+    return channels
+
+
+# ---------------------------------------------------------------------------
+# YAML 主配置
+# ---------------------------------------------------------------------------
+class ProfileImage(BaseModel):
+    engine: str
+    # ★ 关键修订：size 不再是"分辨率"，是"长宽比选择器"。
+    #   实际分辨率由 subrouter 钳制为 1,572,864 = 1024x1536，公式：
+    #     h = sqrt(1572864 / ratio); w = ratio * h
+    #   推荐 "1080x1920"（9:16 精确），预计产出 940x1672。
+    size: str = "1080x1920"
+    quality: str = "low"      # low 即可拿满 1.57MP，high 价 35x 但分辨率相同（待验）
+    upscale: int = 2
+    style_suffix: str = ""
+    negative_clause: str = ""
+    identity_anchor_template: str = ""
+    require_expression_spec: bool = True
+    require_pose_spec: bool = True
+
+
+class ProfileVoice(BaseModel):
+    """音色塑形（CosyVoice v3.5 合成参数，可选；None = 服务端默认）。"""
+    engine: str
+    fallback_engine: str | None = None
+    speaker: str
+    speed: float = 1.0
+    pitch: float = 0.0
+    emotion: str = "steady"
+
+    # ---- CosyVoice 音色塑形 ----
+    # pitch_rate < 1 → 压低音调，声音更沉更浑厚（改善"声音薄"的首选）
+    # instruction   → 自然语言风格引导，如"用低沉浑厚、胸腔共鸣的声音朗读"
+    pitch_rate: float | None = None
+    speech_rate: float | None = None
+    volume: int | None = None
+    instruction: str | None = None
+
+
+class ProfileRhythm(BaseModel):
+    fps: int = 25
+    pad_head_ms: int = 100
+    pad_tail_ms: int = 150
+    min_shot_ms: int = 1600
+    max_shot_ms: int = 6000
+    split_threshold_ms: int = 6000
+
+
+class ProfileSubtitle(BaseModel):
+    font: str
+    font_size: int
+    primary_colour: str
+    outline_colour: str
+    back_colour: str
+    outline: int
+    shadow: int
+    margin_bottom: int
+    margin_top: int
+    max_chars_per_line: int
+    min_duration_ms: int
+    max_duration_ms: int
+    keyword: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProfileMotion(BaseModel):
+    default_type: str
+    default_intensity: float
+    easing: str
+    # ★ 输入分辨率不再是固定 [2048, 3584]，而是 dynamic 字段；
+    #   实际值由 upscale.py 计算（基于 gpt-image-2 返回图真实像素）
+    input_resolution: list[int] | str = "dynamic"
+    output_resolution: list[int]
+    crop_window: list[int]
+    # 同上：pan_margin_px 改为 dynamic
+    pan_margin_px: list[int] | str = "dynamic"
+    max_zoom: float
+    conservative_mode: bool = True
+    conservative_pan_ratio: float = 0.6
+    downscale_filter: str = "lanczos"
+    forbid_consecutive_same: bool = True
+    zoom_easing_formula: str
+
+
+class ProfileBGM(BaseModel):
+    volume: float
+    fade_out_sec: int
+
+
+class StyleProfile(BaseModel):
+    name: str
+    image: ProfileImage
+    voice: ProfileVoice
+    rhythm: ProfileRhythm
+    subtitle: ProfileSubtitle
+    motion: ProfileMotion
+    bgm: ProfileBGM
+
+
+# ---------------------------------------------------------------------------
+# 模型 / 引擎配置
+# ---------------------------------------------------------------------------
+class TTSConfig(BaseModel):
+    primary_engine: str
+    fallback_engines: list[str]
+    default_for_stage: dict[str, str]
+
+
+class AlignerConfig(BaseModel):
+    primary_type: str
+    primary_level: str
+    fallback_chain: list[str]
+
+
+class ImageEngineConfig(BaseModel):
+    """单引擎配置。降级链中的非 API 项可能只填 engine。"""
+    model_config = {"extra": "allow"}
+
+    engine: str
+    model: str | None = None
+    api_base: str | None = None
+    api_key_env: str | None = None
+    endpoint_generate: str | None = None
+    endpoint_edit: str | None = None
+    size: str | None = None
+    quality: str | None = None
+    n: int | None = 1
+    response_format: str | None = "b64_json"
+    timeout_s: int | None = 300
+    max_reference_images: int | None = 16
+    concurrency: int | None = 6
+    requires_upscale: bool | None = True
+    supports_seed: bool | None = False
+    supports_character_id: bool | None = False
+    strict_param_validation: bool | None = False
+    # 降级项附注（不参与运行逻辑）
+    note: str | None = None
+
+
+class ImagePostprocessUpscale(BaseModel):
+    enabled: bool
+    engine: str
+    model: str
+    scale: int
+    device: str
+    tile: int
+    output_size_dynamic: bool = True   # 由 upscale.py 算（基于返回图真实像素 × scale）
+
+
+class ImageConsistencyConfig(BaseModel):
+    strategy: str
+    ref_pack_size: int
+    override_expression: bool
+    override_pose: bool
+    face_sim_threshold: float
+    face_sim_warn: float
+    max_retry: int
+
+
+class ImageConfig(BaseModel):
+    primary: ImageEngineConfig
+    postprocess_upscale: ImagePostprocessUpscale
+    consistency: ImageConsistencyConfig
+    fallbacks: list[ImageEngineConfig]
+
+
+class VideoPrimaryConfig(BaseModel):
+    engine: str
+    api_base: str
+    model: str
+    endpoint: str
+    task_based: bool = True
+    image_field: str | None = None      # 待 T2 探测确定
+    duration_sec: int = 5
+    timeout_s: int = 900
+    poll_interval_s: int = 10
+    concurrency: int = 3
+    match_duration_to_audio: bool = True
+    max_waste_ratio: float = 0.35
+    face_sim_threshold: float = 0.60
+    on_face_drift: str = "fallback_to_kenburns"
+
+
+class VideoConfig(BaseModel):
+    enabled: bool
+    strategy: str
+    hero_shots_per_episode: list[int]
+    primary: VideoPrimaryConfig
+    fallbacks: list[str]
+
+
+class MotionConfig(BaseModel):
+    supersample: int
+    pan_impl: str
+    zoom_impl: str
+    fallbacks: list[dict[str, Any]]
+
+
+class ComposeConfig(BaseModel):
+    video_encoder: str
+    preset: str
+    cq: int
+    fallbacks: list[dict[str, Any]]
+    audio_codec: str
+    audio_bitrate: str
+    # P1 2.1（compose 收口超时）：>0 时 ffmpeg wait 超过该秒数即 kill 并抛错，
+    # 防编码卡死导致 compose 永久挂起。0 或缺省 = 不设超时（保持历史行为，保守）。
+    timeout_sec: float = 0
+
+
+class VRAMConfig(BaseModel):
+    reported_total_GB: float
+    reported_free_GB: float
+    measured_usable_GB: float
+    unallocatable_GB: float
+    cause: str
+    rule: str
+
+
+class RuntimeConfig(BaseModel):
+    python_venv: str
+    ffmpeg: str
+    vram: VRAMConfig
+    nvidia_smi_available: bool
+
+
+# ---------------------------------------------------------------------------
+# 总 Settings
+# ---------------------------------------------------------------------------
+class Settings(BaseSettings):
+    """
+    总配置。从 .env 读密钥，从 config.yaml 读结构。
+    渠道池在 init 时通过 discover_channels() 动态构建。
+    """
+    model_config = SettingsConfigDict(
+        env_file=str(ROOT / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    # ---- 来自 .env ----
+    image_model: str = "gpt-image-2"
+    image_size: str = "1080x1920"
+    image_quality: str = "low"
+    gpt_image_2_api_base: str = "https://subrouter.ai"
+    video_model: str = "gpt-image-2"
+    video_endpoint: str = "/v1/videos"
+    video_timeout_s: int = 900
+    video_poll_interval_s: int = 10
+
+    @field_validator("gpt_image_2_api_base", mode="before")
+    @classmethod
+    def _norm_base(cls, v):
+        return str(v).rstrip("/") if v else v
+
+    # ---- 来自 config.yaml ----
+    profile_name: str = "ancient-realistic"
+    profiles: dict[str, StyleProfile] = Field(default_factory=dict)
+    tts: TTSConfig
+    aligner: AlignerConfig
+    image: ImageConfig
+    video: VideoConfig
+    motion: MotionConfig
+    compose: ComposeConfig
+    runtime: RuntimeConfig
+
+    # ---- 渠道池（动态）----
+    channels: list[Channel] = Field(default_factory=list)
+
+    @classmethod
+    def load(cls) -> "Settings":
+        env = load_env(ROOT / ".env")
+        raw = yaml.safe_load((CONFIG_DIR / "config.yaml").read_text(encoding="utf-8"))
+
+        # .env 字段（用 alias-style 取值，兼容 Pydantic 的 env 命名转换）
+        env_image_model = env.get("IMAGE_MODEL", "gpt-image-2")
+        env_image_size = env.get("IMAGE_SIZE", "1080x1920")
+        env_image_quality = env.get("IMAGE_QUALITY", "low")
+        env_base = env.get(f"{env_image_model}_API_BASE", "https://subrouter.ai").rstrip("/")
+        env_video_model = env.get("VIDEO_MODEL", env_image_model)
+        env_video_endpoint = env.get("VIDEO_ENDPOINT", "/v1/videos")
+        env_video_timeout = int(env.get("VIDEO_TIMEOUT_S", "900"))
+        env_video_poll = int(env.get("VIDEO_POLL_INTERVAL_S", "10"))
+
+        profiles = {k: StyleProfile(**v) for k, v in raw.get("profiles", {}).items()}
+        profile_name = raw.get("default_profile", "ancient-realistic")
+
+        channels = discover_channels(env, env_image_model)
+
+        return cls(
+            image_model=env_image_model,
+            image_size=env_image_size,
+            image_quality=env_image_quality,
+            gpt_image_2_api_base=env_base,
+            video_model=env_video_model,
+            video_endpoint=env_video_endpoint,
+            video_timeout_s=env_video_timeout,
+            video_poll_interval_s=env_video_poll,
+            profile_name=profile_name,
+            profiles=profiles,
+            tts=TTSConfig(**raw["tts"]),
+            aligner=AlignerConfig(**raw["aligner"]),
+            image=ImageConfig(**raw["image"]),
+            video=VideoConfig(**raw["video"]),
+            motion=MotionConfig(**raw["motion"]),
+            compose=ComposeConfig(**raw["compose"]),
+            runtime=RuntimeConfig(**raw["runtime"]),
+            channels=channels,
+        )
+
+    def get_profile(self) -> StyleProfile:
+        return self.profiles[self.profile_name]
+
+    def get_image_size_requested(self) -> tuple[int, int]:
+        """请求的 size（仅用于长宽比）。"""
+        w, h = self.image_size.split("x")
+        return int(w), int(h)
+
+    def predict_actual_image_dims(self) -> tuple[int, int]:
+        """
+        预测 subrouter 返回图的真实像素。
+        公式（已实测验证，4 组数据全部吻合）：
+            MP_fixed = 1,572,864 (= 1024 * 1536)
+            ratio = w / h
+            h_actual = sqrt(MP_fixed / ratio)
+            w_actual = int(ratio * h_actual)
+        """
+        import math
+        MP_FIXED = 1024 * 1536
+        w, h = self.get_image_size_requested()
+        ratio = w / h
+        h_actual = int(math.sqrt(MP_FIXED / ratio))
+        w_actual = int(ratio * h_actual)
+        return w_actual, h_actual
+
+    def predict_upscaled_dims(self) -> tuple[int, int]:
+        """超分后尺寸 = 实测像素 × scale。"""
+        w, h = self.predict_actual_image_dims()
+        scale = self.image.postprocess_upscale.scale
+        return w * scale, h * scale
+
+
+# ---------------------------------------------------------------------------
+# 单例
+# ---------------------------------------------------------------------------
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings.load()
+    return _settings
+
+
+# 方便命令行调试
+if __name__ == "__main__":
+    s = get_settings()
+    print("=" * 60)
+    print(f"profile      : {s.profile_name}")
+    print(f"image model  : {s.image_model}")
+    print(f"image size   : {s.image_size}  (请求)")
+    print(f"actual dims  : {s.predict_actual_image_dims()}  (subrouter 预测)")
+    print(f"upscaled     : {s.predict_upscaled_dims()}")
+    print(f"channels     : {[c.name for c in s.channels]}")
+    print(f"tts engines  : {s.tts.primary_engine} → {s.tts.fallback_engines}")
+    print(f"video        : {s.video.primary.engine} ({s.video.primary.endpoint})")
+    print(f"vram         : measured={s.runtime.vram.measured_usable_GB}GB")

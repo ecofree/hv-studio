@@ -1,0 +1,44 @@
+{
+  "reported_total_GB": 12.0,
+  "reported_free_GB": 10.95,
+  "measured_usable_GB": 6.0,
+  "unallocatable_GB": 4.95,
+  "models": {
+    "SDXL fp16 全量": {
+      "need_GB": 9.45,
+      "ok": false
+    },
+    "SDXL fp8 / GGUF Q5": {
+      "need_GB": 6.7,
+      "ok": false
+    },
+    "SDXL + CPU offload": {
+      "need_GB": 7.45,
+      "ok": false
+    },
+    "SD 1.5 + 古风 LoRA": {
+      "need_GB": 3.6,
+      "ok": true
+    },
+    "RealESRGAN x2 (tile)": {
+      "need_GB": 1.27,
+      "ok": true
+    },
+    "Qwen3-TTS 0.6B fp16": {
+      "need_GB": 2.2,
+      "ok": true
+    },
+    "Qwen3-TTS 1.7B fp16": {
+      "need_GB": 4.9,
+      "ok": true
+    },
+    "Kokoro-82M": {
+      "need_GB": 0.08,
+      "ok": true
+    },
+    "Wan2.2 I2V 1.3B": {
+      "need_GB": 5.6,
+      "ok": true
+    }
+  }
+}
