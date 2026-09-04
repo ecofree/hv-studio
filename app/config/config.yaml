@@ -107,17 +107,10 @@ profiles:
       fade_out_sec: 5
 
 # ===========================================================================
-# TTS（继承自旧 models.yaml.tts）
+# （顶层 tts 死配置已删：voice.py 实际用 cosyvoice 主 / edge 回退，由
+#  profile.voice 塑形参数 + voice.py 常量驱动；旧 qwen3-tts/kokoro 段无生产
+#  代码读取，保留误导。）
 # ===========================================================================
-tts:
-  primary_engine: qwen3-tts
-  fallback_engines:
-    - qwen3-tts-low-vram
-    - kokoro-82m
-    - silent-placeholder
-  default_for_stage:
-    m1_slice: kokoro-82m
-    m4_final: qwen3-tts
 
 # ===========================================================================
 # 强制对齐

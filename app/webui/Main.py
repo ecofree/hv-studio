@@ -1,5 +1,9 @@
 """
-Streamlit 控制台（M0 骨架）。
+Streamlit 轻量控制台（monitor/utility）。
+
+⚠️ 定位：**只读监控 + 小工具**，不是出片驱动。真实生产链走
+`python app/cli.py episode produce <ep>`（orchestrator 全链）或 API /produce。
+本页展示渠道健康 / 图像参数 / 多音字预检，无状态修改。
 
 启动：python -m app.cli webui
 """
@@ -17,19 +21,30 @@ from app.services.polyphone import preprocess
 st.set_page_config(page_title="hv 控制台", page_icon="🎬", layout="wide")
 
 st.title("hv — 历史解说短视频流水线")
-st.caption("M0 骨架 · subrouter.ai gpt-image-2 接入")
+st.caption("监控台 · 出片走 CLI produce · 生图通道 subrouter.ai gpt-image-2")
 
 s = get_settings()
 r = get_relay()
 
-# ---- 渠道健康 ----
+# ---- 渠道健康（ok_rate 真实成功率；err_rate = 1 - ok_rate） ----
 st.subheader("subrouter 渠道池")
 snap = r.snapshot()
-cols = st.columns(len(snap))
-for col, (name, h) in zip(cols, snap.items()):
-    with col:
-        st.metric(name, f"{h['score']:.0f}", delta=f"err_rate {1 - h['n_history']/max(1,h['n_history'])}")
-        st.caption(f"history: {h['n_history']}  quota: {h['last_quota_usd'] or '—'}")
+if not snap:
+    st.warning("无可生图渠道（.env 未配或未同步）")
+else:
+    cols = st.columns(len(snap))
+    for col, (name, h) in zip(cols, snap.items()):
+        ok_rate = h.get("ok_rate", 1.0)
+        err_rate = 1 - ok_rate
+        with col:
+            st.metric(
+                name,
+                f"{h['score']:.0f}",
+                delta=f"err {err_rate*100:.0f}%" if h.get("n_history", 0) else "无历史",
+                delta_color="inverse",  # err 越低越好
+            )
+            st.caption(f"ok {ok_rate*100:.0f}% · {h['n_history']} 次 · "
+                       f"quota ${h['last_quota_usd'] or '—'}")
 
 # ---- 关键参数 ----
 st.subheader("图像配置")
@@ -45,9 +60,13 @@ if text:
     out = preprocess(text)
     st.code(out, language="text")
 
-# ---- 占位 ----
-st.subheader("M0 状态")
+# ---- 使用指引 ----
+st.subheader("生产入口")
 st.info(
-    "骨架已就位。image + polyphone 实装可用，其余 9 个 service 是接口 stub，"
-    "M1 阶段填实。可在 /v1/ 测试 API，或用 `python -m app.cli image` 跑真生图。"
+    "真实出片不在此页。用：\n"
+    "- `python app.cli.py episode produce <ep>`：一键全链（assets→shots→compose→verify），"
+    "长片中断后重跑即断点续跑；\n"
+    "- `... episode produce <ep> --stage verify`：只读校验产物真值；\n"
+    "- `... episode --all audit-wav --apply`：清孤儿音频；\n"
+    "- API：`POST /v1/episode/{id}/produce`。"
 )

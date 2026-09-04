@@ -1,7 +1,7 @@
 # hv — 历史解说竖屏短视频流水线
 
 把"解说脚本"转成 9:16 竖屏成片的 Python 流水线（KPL/HiThink 生图通道、CosyVoice 配音、
-Ken Burns 运镜、实时字幕、NVENC 合成）。非 Git 目录，本地生产用。
+Ken Burns 运镜、实时字幕、NVENC 合成）。仓库已 git 基线（分支 main），本地生产用。
 
 ## 已交付成片
 
@@ -116,4 +116,6 @@ python -m venv <hv-venv>
 
 - 低 pagefile 机器合成超大集（3344×1882）可能 OOM——单帧驻留 + gc 已缓解，非代码缺陷。
 - RealESRGAN / I2V 为 M2 占位（basicsr 编译 / relay 生产链路未落地）。
-- 本仓非 Git；如需可回滚建议 `git init`（`.gitignore` 已备，episode json 保留入库）。
+- 本仓已是 git 仓库（分支 main，含代码 + 交付集状态历史）。`.gitignore` 忽略音频/build/
+  out/shots/大 mp4 等生成产物，但保留 `episodes/*.json` 模型入库。新集首次提交时需显式
+  `git add episodes/{新集}.json`（其产物目录因体积/可再生成不入库）。

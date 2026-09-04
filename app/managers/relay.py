@@ -156,6 +156,8 @@ class RelayManager:
                 "score": h.score(),
                 "healthy": h.is_healthy,
                 "n_history": len(h.history),
+                "ok_rate": (sum(1 for x in h.history if x[0]) / len(h.history))
+                           if h.history else 1.0,
                 "last_quota_usd": h.last_quota.soft_limit_usd if h.last_quota else None,
             }
             for name, h in self._channels.items()

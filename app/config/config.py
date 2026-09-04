@@ -176,12 +176,9 @@ class StyleProfile(BaseModel):
 # ---------------------------------------------------------------------------
 # 模型 / 引擎配置
 # ---------------------------------------------------------------------------
-class TTSConfig(BaseModel):
-    primary_engine: str
-    fallback_engines: list[str]
-    default_for_stage: dict[str, str]
-
-
+# 注：顶层 tts 死配置(qwen3-tts/kokoro/silent-placeholder)已删——voice.py 实际
+# 用 cosyvoice(主)/edge(回退)，由 profile.voice 塑形参数 + voice.py 常量驱动，
+# 顶层 TTSConfig 无生产代码读取(仅 config 打印)，保留只会误导。
 class AlignerConfig(BaseModel):
     primary_type: str
     primary_level: str
@@ -336,7 +333,6 @@ class Settings(BaseSettings):
     # ---- 来自 config.yaml ----
     profile_name: str = "ancient-realistic"
     profiles: dict[str, StyleProfile] = Field(default_factory=dict)
-    tts: TTSConfig
     aligner: AlignerConfig
     image: ImageConfig
     video: VideoConfig
@@ -378,7 +374,6 @@ class Settings(BaseSettings):
             video_poll_interval_s=env_video_poll,
             profile_name=profile_name,
             profiles=profiles,
-            tts=TTSConfig(**raw["tts"]),
             aligner=AlignerConfig(**raw["aligner"]),
             image=ImageConfig(**raw["image"]),
             video=VideoConfig(**raw["video"]),
@@ -443,6 +438,5 @@ if __name__ == "__main__":
     print(f"actual dims  : {s.predict_actual_image_dims()}  (subrouter 预测)")
     print(f"upscaled     : {s.predict_upscaled_dims()}")
     print(f"channels     : {[c.name for c in s.channels]}")
-    print(f"tts engines  : {s.tts.primary_engine} → {s.tts.fallback_engines}")
     print(f"video        : {s.video.primary.engine} ({s.video.primary.endpoint})")
     print(f"vram         : measured={s.runtime.vram.measured_usable_GB}GB")
