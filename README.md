@@ -54,6 +54,10 @@ python -m venv <hv-venv>
 # 统一真实编排（脚本→配音→合成→产物校验；状态由产物真值导出）
 <hv-venv>/python app/cli.py episode produce <id> [--stage script|tts|compose|verify ...]
 
+# 剧本→分镜（新片：只需 script.md + scene_plan.json，不必手写 shots 脚本）
+<hv-venv>/python app/cli.py episode shots <id> [--plan path] [--dry-run]
+#   scene_plan.json 见 episodes/hanwu-feature/scene_plan.json 样例（B 项管线）
+
 # API（需 fastapi/uvicorn）
 <hv-venv>/python app/cli.py api                    # 默认 127.0.0.1
 # POST /v1/episode/{id}/produce?stage=verify       真实编排；默认 /run 只读 verify
@@ -73,12 +77,39 @@ python -m venv <hv-venv>
 - **配置=运行事实**：upscale 实际 `pil_lanczos`（config 声明一致）；I2V/RealESRGAN 未实现
   已标注为 disabled / 占位，不虚报已启用。
 
+## 剧本→分镜（scene_plan 规格）
+
+新片流程：先写 `script.md` + 跑 script 切分出 frames（含 TTS），再写一份 `scene_plan.json`，
+用 `episode shots <id>` 一次性装配 shots。格式：
+
+```jsonc
+{
+  "episode": "my-ep",
+  "images": {
+    "S01": {"path": "episodes/my-ep/shots/S01.png"},   // 本集生成的新底图
+    "SC24": {"reuse_from": "hw-002"}                   // 跨集复用（零新增成本）
+  },
+  "scenes": [
+    {"frames": [0, 2],   "image": "S01", "grades": ["frost", "dawn", "dusk"]},
+    {"frames": [3, 6],   "image": "SC24", "grades": ["dawn", "noon"]}
+    // frames 为闭区间（ep.frames 下标），须恰好覆盖全部帧、不重叠、无空洞
+    // grades 只取 dawn/noon/dusk/night/fire/frost，按镜循环
+  ]
+}
+```
+
+引擎自动派生：同底图首镜 zoom=1.0、后续走 config zoom 阶梯；运镜 push/drift/pull/pan
+轮换（禁连续同型）；grade 按 scene.grades 循环；呼吸段（head 100ms + tail 150ms）预扣。
+**护栏**：空洞帧 / 重复覆盖 / 越界 / 缺图 / 非法 grade 一律拒绝，绝不产出错位 shots。
+样例见 `episodes/hanwu-feature/scene_plan.json`（与手写 ch1 逐帧一致，0 mismatch）。
+
 ## 验收基线（tests/）
 
 覆盖 2026-09-04 审计的最低验收线：
 - `test_tts_fingerprint`：TTS 幂等由旁白文本指纹驱动（文本变→重合成）
 - `test_upscale_invalidation`：upscale 复用检测源图变更
 - `test_compose_first_production`：**无旧成片的首产 compose 成功且无 .tmp 残留**
+- `test_shot_builder`：剧本→分镜合法 plan 装配 + 非法 plan 护栏拒绝
 - `test_state_truthfulness`：run_stage 需真实执行、schema 检 dangling、produce verify 导出真状态
 
 ## 已知边界
