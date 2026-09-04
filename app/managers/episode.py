@@ -55,14 +55,20 @@ def load(episode_id: str) -> Episode:
     return ep
 
 
-def validate_schema(ep: Episode) -> list[str]:
-    """M2 schema 固化：返回结构问题清单（空列表=合格）。"""
+def validate_schema(ep: Episode, allow_empty: bool = False) -> list[str]:
+    """M2 schema 固化：返回结构问题清单（空列表=合格）。
+
+    allow_empty=True 时允许「空集」（无 frames 无 shots）通过——用于
+    produce 从零起步（stage_script 会先切脚本填充 frames）的场景，避免
+    「官方入口启动官方第一步」的鸡生蛋。默认 False 保持严格。
+    """
     problems: list[str] = []
     if ep.schema_version != CURRENT_SCHEMA:
         problems.append(f"schema_version={ep.schema_version} 非当前 {CURRENT_SCHEMA}")
     if not ep.frames and not ep.shots:
-        problems.append("episode 无 frames 也无 shots（空集）")
-    # shot 引用一致性
+        if not allow_empty:
+            problems.append("episode 无 frames 也无 shots（空集）")
+    # shot 引用一致性（空集无 shots，此检查自动跳过）
     frame_ids = {f.id for f in ep.frames}
     for sid, sh in ep.shots.items():
         if sh.frame_id and sh.frame_id not in frame_ids:

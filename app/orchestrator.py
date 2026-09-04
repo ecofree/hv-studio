@@ -205,14 +205,17 @@ def stage_verify(ep: Episode) -> dict:
     if not final.exists():
         raise RuntimeError(f"episode {ep.id} 无成片 {final}（未合成或已删）")
 
+    # 用 count_packets（容器层数包，不解码）而非 count_frames（整片解码）：
+    # H.264 每包≈每帧，20min 长片用 count_frames 会整片解码数百MB，
+    # 在低 pagefile 机器上被 SIGTERM/超时，verify 误判损坏。count_packets 秒回。
     probe = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_frames",
-         "-show_entries", "stream=nb_read_frames", "-of", "json", str(final)],
-        capture_output=True, text=True)
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets",
+         "-show_entries", "stream=nb_read_packets", "-of", "json", str(final)],
+        capture_output=True, text=True, timeout=90)
     import json
     nf = None
     try:
-        nf = int(json.loads(probe.stdout)["streams"][0]["nb_read_frames"])
+        nf = int(json.loads(probe.stdout)["streams"][0]["nb_read_packets"])
     except Exception:
         nf = None
     if nf is None:
@@ -290,13 +293,16 @@ def produce(
     ep = load(ep_id)
 
     # schema 硬阻断（P0-4 修复）：任何生产前，schema 不干净即拒绝，绝不到付费生图。
-    problems = validate_schema(ep)
+    # allow_empty：空集若即将切脚本（有 script.md 或 notes），放行让 stage_script
+    # 成为第一步（否则「官方入口启动官方第一步」被鸡生蛋卡死）。
+    if script_md:
+        ep.notes = script_md  # 临时注入脚本；若无 script_path 用 notes 兜底
+    has_script = bool((_load_script_md(ep) or (ep.notes or "").strip()))
+    _can_start_from_empty = (not ep.frames and not ep.shots) and has_script
+    problems = validate_schema(ep, allow_empty=_can_start_from_empty)
     if problems:
         raise RuntimeError(
             f"episode {ep.id} schema 不合法，拒绝生产: {problems}")
-
-    if script_md:
-        ep.notes = script_md  # 临时注入脚本；若无 script_path 用 notes 兜底
 
     # 依赖序（script → assets[=tts∥images] → shots → compose → verify）
     # assets 取代旧的独立 tts 位置：内部并行跑配音与生图，仅跑适用侧。
@@ -305,14 +311,28 @@ def produce(
         runnable = []
         has_assets_work = bool(ep.frames) or bool(_read_image_prompts(ep.id))
         for st in order:
-            if st == "script" and not (_load_script_md(ep) or (ep.notes or "").strip()):
-                print("  [orchestrator] 无脚本，跳过 script")
-                continue
+            if st == "script":
+                if not has_script:
+                    print("  [orchestrator] 无脚本，跳过 script")
+                    continue
+                if ep.frames and not ep.notes:
+                    # 已有 frames（先前切过脚本）：默认不重切，避免 splitter 规则一变
+                    # 就重分帧 + 重 TTS(钱) + 重合成(小时)。需显式 --stage script 强制。
+                    print("  [orchestrator] 已有 frames，默认跳过 script"
+                          "（如需重切请显式 --stage script）")
+                    continue
             if st == "assets" and not has_assets_work:
                 print("  [orchestrator] 无 TTS 帧且无 prompts，跳过 assets")
                 continue
+            if st == "shots" and not ep.shots:
+                # shots 装配是人工创意（需 scene_plan）；无则走跳过桩，让 compose 因无
+                # shots 明确报错而非静默。保留它在链上以便日志清晰。
+                pass
             if st == "compose" and not ep.shots:
                 print("  [orchestrator] 无 shots，跳过 compose（shot 装配需人工创意）")
+                continue
+            if st == "verify" and not (_out_dir(ep.id) / f"{ep.id}_m1.mp4").exists():
+                # 无成片不跑 verify（会误报）。末尾产物驱动的状态块会按需补 verify。
                 continue
             runnable.append(st)
         stages = runnable
