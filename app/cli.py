@@ -51,6 +51,26 @@ def cmd_episode(args):
         import json
         res = produce(args.episode_id, stages=args.stage or None)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
+    elif args.action == "shots":
+        # 通用「剧本→分镜」：按 episodes/{id}/scene_plan.json 声明式装配 shots。
+        from app.services.shot_builder import build_episode_shots, inspect_episode
+        from app.managers import load
+        plan = Path(args.plan) if getattr(args, "plan", None) else None
+        ep = load(args.episode_id)
+        if not ep.frames:
+            print(f"[!] episode {args.episode_id} 无 frames，先跑 script 切分")
+            return
+        # 先用非落盘 dry-run 校验 scene_plan 覆盖/底图/grade，全通过才落盘
+        _, st = build_episode_shots(args.episode_id, plan_path=plan,
+                                    persist=False, preview_rows=args.preview)
+        print(f"[shots] dry-run OK：{st['shots']} shots / {st['base_images']} 底图 / "
+              f"归并 {st['reuse_ratio']}:1")
+        if not args.dry_run:
+            ep2, st2 = build_episode_shots(args.episode_id, plan_path=plan,
+                                           persist=True, preview_rows=0)
+            print(f"[shots] 已落盘：{ep2.id} → {st2['shots']} shots")
+            problems = inspect_episode(args.episode_id)
+            print(f"[shots] schema: {'OK' if not problems else problems}")
 
 
 def cmd_relay(args):
@@ -140,8 +160,8 @@ def main():
 
     # episode
     p = sub.add_parser("episode", help="管理 episode.json")
-    p.add_argument("action", choices=["init", "show", "run", "produce", "checkpoint"],
-                   help="init/show/run/produce/checkpoint；produce=真实生产链")
+    p.add_argument("action", choices=["init", "show", "run", "produce", "shots", "checkpoint"],
+                   help="init/show/run/produce/shots/checkpoint；produce=真实生产链；shots=按 scene_plan 装配")
     p.add_argument("episode_id")
     p.add_argument("--label", default="manual")
     p.add_argument("--only", default=None,
@@ -152,6 +172,12 @@ def main():
                    help="[run] 强制重做（无视幂等）")
     p.add_argument("--compose", action="store_true",
                    help="[run] 单镜改图后重合成整片 + 时序断言")
+    p.add_argument("--plan", default=None,
+                   help="[shots] scene_plan.json 路径（默认 episodes/{id}/scene_plan.json）")
+    p.add_argument("--dry-run", action="store_true",
+                   help="[shots] 只校验不落盘")
+    p.add_argument("--preview", type=int, default=12,
+                   help="[shots] 预览行数（0=不预览）")
     p.set_defaults(func=cmd_episode)
 
     # relay

@@ -1,0 +1,33 @@
+{
+  "episode": "hanwu-feature",
+  "images": {
+    "NEW-1":  {"path": "episodes/hanwu-feature/shots/NEW-1.png"},
+    "NEW-2":  {"path": "episodes/hanwu-feature/shots/NEW-2.png"},
+    "NEW-3":  {"path": "episodes/hanwu-feature/shots/NEW-3.png"},
+    "NEW-4":  {"path": "episodes/hanwu-feature/shots/NEW-4.png"},
+    "NEW-5":  {"path": "episodes/hanwu-feature/shots/NEW-5.png"},
+    "NEW-6":  {"path": "episodes/hanwu-feature/shots/NEW-6.png"},
+    "NEW-7":  {"path": "episodes/hanwu-feature/shots/NEW-7.png"},
+    "NEW-8":  {"path": "episodes/hanwu-feature/shots/NEW-8.png"},
+    "SC01":   {"reuse_from": "hw-002"},
+    "SC02":   {"reuse_from": "hw-002"},
+    "SC07":   {"reuse_from": "hw-002"},
+    "SC08":   {"reuse_from": "hw-002"}
+  },
+  "scenes": [
+    {"frames": [0, 2],    "image": "NEW-1", "grades": ["frost", "dawn", "dusk"]},
+    {"frames": [3, 6],    "image": "NEW-2", "grades": ["dawn", "dawn", "noon", "dusk"]},
+    {"frames": [7, 11],   "image": "SC01",  "grades": ["dawn", "dawn", "noon", "dawn", "dawn"]},
+    {"frames": [12, 17],  "image": "NEW-3", "grades": ["dusk", "noon", "noon", "dusk", "dawn", "dusk"]},
+    {"frames": [18, 22],  "image": "NEW-4", "grades": ["night", "night", "fire", "dawn", "dawn"]},
+    {"frames": [23, 24],  "image": "SC01",  "grades": ["dawn", "noon"]},
+    {"frames": [25, 25],  "image": "SC07",  "grades": ["fire"]},
+    {"frames": [26, 30],  "image": "NEW-5", "grades": ["dusk", "noon", "dusk", "noon", "dusk"]},
+    {"frames": [31, 35],  "image": "NEW-6", "grades": ["dawn", "noon", "noon", "dawn", "dawn"]},
+    {"frames": [36, 37],  "image": "NEW-7", "grades": ["dawn", "dusk"]},
+    {"frames": [38, 43],  "image": "NEW-8", "grades": ["dusk", "noon", "noon", "dusk", "dusk", "dusk"]},
+    {"frames": [44, 46],  "image": "SC08",  "grades": ["dawn", "noon", "dusk"]},
+    {"frames": [47, 49],  "image": "SC01",  "grades": ["noon", "dawn", "dawn"]},
+    {"frames": [50, 52],  "image": "SC02",  "grades": ["dusk", "dusk", "dawn"]}
+  ]
+}
