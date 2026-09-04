@@ -96,7 +96,17 @@ class ChannelHealth:
 
 
 class RelayManager:
+    """渠道健康度与调度。
+
+    线程安全（2026-09-04）：三路并发生图下多个 worker 会同时
+    ``record()`` / ``_save()`` / ``pick()``，锁必须加在**本类内部**——
+    若指望调用方加锁，各 worker 会各持各的锁，等于没加。
+    健康度 JSON 因此曾面临 lost update 与写竞争。
+    """
+
     def __init__(self, channels: Iterable[Channel] | None = None):
+        import threading
+        self._lock = threading.Lock()
         settings = get_settings()
         chs = list(channels) if channels is not None else settings.channels
         if not chs:
@@ -118,26 +128,27 @@ class RelayManager:
                 self._channels[name] = stored
 
     def _save(self) -> None:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        data = {name: h.to_dict() for name, h in self._channels.items()}
-        tmp = HEALTH_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(HEALTH_PATH)
+        with self._lock:
+            self._save_locked()
 
     # ---- 选渠道 ----
     def pick(self) -> Channel:
         """按 score() 排序的健康渠道中选最优；全不健康则强行取 score 最高的。"""
-        ranked = sorted(self._channels.values(), key=lambda h: h.score(), reverse=True)
-        for h in ranked:
-            if h.is_healthy:
-                return h.channel
-        return ranked[0].channel
+        with self._lock:
+            ranked = sorted(self._channels.values(), key=lambda h: h.score(), reverse=True)
+            for h in ranked:
+                if h.is_healthy:
+                    return h.channel
+            return ranked[0].channel
 
     def all(self) -> list[Channel]:
-        return [h.channel for h in self._channels.values()]
+        """全部渠道快照（三路并行用：每个 worker 领一个）。"""
+        with self._lock:
+            return [h.channel for h in self._channels.values()]
 
     def health(self, name: str) -> ChannelHealth | None:
-        return self._channels.get(name)
+        with self._lock:
+            return self._channels.get(name)
 
     def snapshot(self) -> dict[str, dict]:
         return {
@@ -181,10 +192,21 @@ class RelayManager:
 
     # ---- 记录结果（外部调用方使用）----
     def record(self, channel_name: str, ok: bool, latency_s: float) -> None:
-        h = self._channels.get(channel_name)
-        if h:
-            h.record(ok, latency_s)
-            self._save()
+        # 读 h 与 h.record 都要在锁内：ChannelHealth.record 内部改 history，
+        # 并发下会 lost update（三路并发生图必现）。
+        with self._lock:
+            h = self._channels.get(channel_name)
+            if h:
+                h.record(ok, latency_s)
+                self._save_locked()
+
+    def _save_locked(self) -> None:
+        """内部用：调用方必须已持锁。"""
+        STATE_DIR.mkdir(parents=True, exist_ok=True)
+        data = {name: h.to_dict() for name, h in self._channels.items()}
+        tmp = HEALTH_PATH.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(HEALTH_PATH)
 
 
 # ---------------------------------------------------------------------------
