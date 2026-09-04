@@ -502,6 +502,16 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         t += sh.duration_ms
     total_ms = t
 
+    # ---------- 1.4) 图可达性预检（防跨集删图 → 渲染到那一镜才炸） ----------
+    # laogongtuan/hanwu-* 存在跨集绑图（hw-002 底图被 5 集引用）。删/挪一张，
+    # 若到渲染才 Image.open 才发现，白跑前面的段。合成前统一探一次，早失败。
+    _imgs = {sh.image_path for sh, _, _ in timeline if sh.image_path}
+    _gone = [p for p in _imgs if not Path(p).exists()]
+    if _gone:
+        raise RuntimeError(
+            f"episode {ep_id} 有 {len(_gone)} 张底图缺失(可能被删/跨集挪移)，"
+            f"合成前拦截: {sorted(_gone)[:5]}…")
+
     # ---------- 1.5) 合成前护栏（P0-3 修复：在【重算之后】跑门禁，而非用持久化值） ----------
     # 此前 gate 在重算前用 episode.json 里存的 shot 时长断言（自洽但可能过时），
     # 而合成用 frame.audio_duration_ms 重算 —— 若某 frame 漏合成(audio=0)，旧 gate 通过、
