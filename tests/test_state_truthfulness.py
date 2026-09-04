@@ -111,3 +111,58 @@ def test_produce_default_skips_script_when_frames_exist():
             pass
         import shutil
         shutil.rmtree(ROOT / "episodes" / ep_id, ignore_errors=True)
+
+
+def test_stage_images_uses_flat_imageconfig(monkeypatch):
+    """stage_images 读扁平 ImageConfig(engine/size/quality 顶层) 而非不存在 primary.
+
+    回归守门：batch_generate_lgt 用 im.engine/im.size/im.quality；stage_images 曾误用
+    im.primary.* 会 AttributeError（真 bug，已修）。mock generate_many 断言入参正确。
+    """
+    import os
+    import json as _json
+    from pathlib import Path
+    from app.config.config import ROOT
+    from app.managers import load, save
+    from app.models import Episode
+
+    ep_id = f"imgcfg-{os.getpid()}"
+    ep = Episode(id=ep_id, title="imgcfg", episode_number=1, status="draft")
+    save(ep)
+    ep_dir = ROOT / "episodes" / ep_id
+    (ep_dir / "shots").mkdir(parents=True, exist_ok=True)
+    (ep_dir / "image_prompts.json").write_text(
+        _json.dumps({"LGT01": {"en": "ancient emissary"}, "LGT02": {"en": "desert"}},
+                    ensure_ascii=False), encoding="utf-8")
+
+    captured = {}
+
+    def _fake_generate_many(jobs, **kw):
+        captured["n"] = len(jobs)
+        captured["reqs"] = [(j.id, j.req) for j in jobs]
+        # 模拟全部成功（不落真文件，仅路径）
+        from pathlib import Path as _P
+        return {j.id: str(_P("shots") / f"{j.id}.png") for j in jobs}
+
+    try:
+        from app import orchestrator
+        # stage_images 在函数体内 `from app.services.image import ... generate_many`，
+        # 故须 patch 源模块而非 orchestrator 属性。
+        from app.services import image as image_mod
+        monkeypatch.setattr(image_mod, "generate_many", _fake_generate_many)
+        from app.managers import load as _load
+        orchestrator.stage_images(_load(ep_id))
+        assert captured["n"] == 2
+        # 每个 req 用扁平 config 落参，无 primary 崩溃，且能取出 size/quality/model
+        for jid, req in captured["reqs"]:
+            assert req.size  # 扁平 size（曾是 im.primary.size → AttributeError）
+            assert req.quality
+            assert req.model
+            assert "LGT" in jid
+    finally:
+        try:
+            (ROOT / "episodes" / f"{ep_id}.json").unlink()
+        except Exception:
+            pass
+        import shutil
+        shutil.rmtree(ep_dir, ignore_errors=True)

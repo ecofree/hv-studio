@@ -105,11 +105,15 @@ def stage_images(ep: Episode) -> None:
     from app.services.image import ImageJob, generate_many
 
     im = get_settings().get_profile().image
+    # ImageConfig 是扁平结构：engine/size/quality 在顶层，无 primary。
+    # （batch_generate_lgt 老脚本用 im.engine/im.size/im.quality，保持一致。）
+    model = getattr(im, "engine", None) or "gpt-image-2"
+    size = getattr(im, "size", "1080x1920") or "1080x1920"
+    quality = getattr(im, "quality", "low") or "low"
     suffix = getattr(im, "style_suffix", "") or ""
     neg = getattr(im, "negative_clause", "") or ""
     shots_d = _episode_dir(ep.id) / "shots"
     shots_d.mkdir(parents=True, exist_ok=True)
-    prim = get_settings().get_profile().image.primary
 
     keys = sorted(k for k in spec if not k.startswith("_"))
     jobs = []
@@ -123,8 +127,8 @@ def stage_images(ep: Episode) -> None:
         jobs.append(ImageJob(
             id=key,
             req=ImageGenRequest(
-                model="gpt-image-2", prompt=prompt,
-                size=prim.size, quality=prim.quality, n=1,
+                model=model, prompt=prompt,
+                size=size, quality=quality, n=1,
             ),
             out_path=out,
         ))
