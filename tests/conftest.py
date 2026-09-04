@@ -86,7 +86,8 @@ def _clean_test_episode_residue():
     ⚠️ 只清这些前缀，绝不匹配真实交付集（laogongtuan/hanwu-*/hw-* 等）。
     """
     yield
-    _namespaces = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest")
+    _namespaces = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest",
+                   "sbguard")
     for jf in EPISODES.glob("*.json"):
         stem = jf.stem
         if any(stem == f"{ns}" or stem.startswith(f"{ns}-") for ns in _namespaces):
