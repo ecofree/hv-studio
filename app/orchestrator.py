@@ -76,6 +76,114 @@ def stage_tts(ep: Episode) -> None:
           f"旁白 {total/1000:.1f}s")
 
 
+def _read_image_prompts(ep_id: str) -> dict:
+    """读 episodes/{id}/image_prompts.json；缺文件返回 {}。"""
+    p = _episode_dir(ep_id) / "image_prompts.json"
+    if not p.exists():
+        return {}
+    import json
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise RuntimeError(f"image_prompts.json 解析失败 {p}: {e}")
+
+
+def stage_images(ep: Episode) -> None:
+    """按 image_prompts.json 批量生图（三路并行 generate_many）。
+
+    数据源唯一入口 = episodes/{id}/image_prompts.json：
+      { "LGT01": {"en": "...", ...}, ... }
+    每个键落盘 episodes/{id}/shots/{KEY}.png（prompt = en + style_suffix + negative）。
+    已存在 >50KB 的图幂等跳过（不占渠道）。
+    """
+    spec = _read_image_prompts(ep.id)
+    if not spec:
+        print(f"  [orchestrator] image: 无 {ep.id}/image_prompts.json，跳过生图")
+        return
+    from app.config.config import get_settings
+    from app.models import ImageGenRequest
+    from app.services.image import ImageJob, generate_many
+
+    im = get_settings().get_profile().image
+    suffix = getattr(im, "style_suffix", "") or ""
+    neg = getattr(im, "negative_clause", "") or ""
+    shots_d = _episode_dir(ep.id) / "shots"
+    shots_d.mkdir(parents=True, exist_ok=True)
+    prim = get_settings().get_profile().image.primary
+
+    keys = sorted(k for k in spec if not k.startswith("_"))
+    jobs = []
+    for key in keys:
+        entry = spec[key]
+        en = entry.get("en") if isinstance(entry, dict) else str(entry)
+        if not en:
+            continue
+        prompt = f"{en}, {suffix}. {neg}".strip(", .") + "."
+        out = shots_d / f"{key}.png"
+        jobs.append(ImageJob(
+            id=key,
+            req=ImageGenRequest(
+                model="gpt-image-2", prompt=prompt,
+                size=prim.size, quality=prim.quality, n=1,
+            ),
+            out_path=out,
+        ))
+    if not jobs:
+        print("  [orchestrator] image: prompts 全空，跳过")
+        return
+    print(f"  [orchestrator] image: {len(jobs)} 张待生成/跳过（三路并行）")
+    res = generate_many(jobs)
+    failed = [k for k, v in res.items() if not k.endswith("__error") and v is None]
+    if failed:
+        raise RuntimeError(
+            f"episode {ep.id} 有 {len(failed)} 张生图失败: "
+            f"{[(k, res.get(k+'__error')) for k in failed[:5]]}")
+    print(f"  [orchestrator] image: {len(jobs)} 张全部就绪")
+
+
+def stage_assets(ep: Episode) -> None:
+    """生图 ∥ TTS 并行（两家独立厂商/配额，可真并行）。两侧都结束才返回。
+
+    - 线程 A：stage_tts（DashScope）
+    - 线程 B：stage_images（subrouter 三渠道）
+    一侧失败不丢另一侧已落盘产物；save(ep) 由外层在返回后统一写一次。
+    """
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    def _run_t(stage_fn, name):
+        def inner():
+            try:
+                stage_fn(ep)
+            except Exception as e:
+                return (name, e)
+            return (name, None)
+        return inner
+
+    # 若都无活可干（无 frames 又无 prompts/图全在），直接返回不空转
+    has_frames = bool(ep.frames)
+    spec = _read_image_prompts(ep.id)
+    has_prompts = bool(spec)
+
+    tasks = []
+    if has_frames:
+        tasks.append(_run_t(stage_tts, "tts"))
+    if has_prompts:
+        tasks.append(_run_t(stage_images, "images"))
+    if not tasks:
+        print("  [orchestrator] assets: 无 TTS 帧且无生图 prompts，跳过")
+        return
+
+    errors = {}
+    with ThreadPoolExecutor(max_workers=2) as ex:
+        for name, err in ex.map(lambda f: f(), tasks):
+            if err is not None:
+                errors[name] = err
+    if errors:
+        msg = "; ".join(f"{n}: {e}" for n, e in errors.items())
+        raise RuntimeError(f"assets 阶段部分失败: {msg}")
+
+
 def stage_compose(ep: Episode) -> None:
     """整集合成成片。产物校验：mp4 生成 + 可解码。"""
     from app.services.compose import compose_episode
@@ -144,9 +252,25 @@ def _load_script_md(ep: Episode) -> str:
 STAGE_FN = {
     "script": stage_script,
     "tts": stage_tts,
+    "images": stage_images,
+    "assets": stage_assets,
+    "shots": lambda ep: _stage_shots_skip(ep),
     "compose": stage_compose,
     "verify": stage_verify,
 }
+
+
+def _stage_shots_skip(ep: Episode) -> None:
+    """shots 装配是人工创意步骤（需 scene_plan.json），自动链里仅确认就绪。
+
+    若已有 shots 且 frames 引用对齐则通过；否则说明尚未人工装配，
+    跳过 compose（compose 会因无 shots 明确报错而非静默出片）。
+    """
+    n_shots = len(ep.shots)
+    if n_shots:
+        print(f"  [orchestrator] shots: 已装配 {n_shots} 镜，继续")
+    else:
+        print("  [orchestrator] shots: 无 scene_plan/装配，跳过（分镜需人工创意）")
 
 
 def produce(
@@ -174,16 +298,21 @@ def produce(
     if script_md:
         ep.notes = script_md  # 临时注入脚本；若无 script_path 用 notes 兜底
 
-    # 依赖序（script → tts → compose → verify），只跑请求或适用的
-    order = ["script", "tts", "compose", "verify"]
+    # 依赖序（script → assets[=tts∥images] → shots → compose → verify）
+    # assets 取代旧的独立 tts 位置：内部并行跑配音与生图，仅跑适用侧。
+    order = ["script", "assets", "shots", "compose", "verify"]
     if stages is None:
         runnable = []
+        has_assets_work = bool(ep.frames) or bool(_read_image_prompts(ep.id))
         for st in order:
-            if st == "compose" and not ep.shots:
-                print("  [orchestrator] 无 shots，跳过 compose（shot 装配需人工创意）")
-                continue
             if st == "script" and not (_load_script_md(ep) or (ep.notes or "").strip()):
                 print("  [orchestrator] 无脚本，跳过 script")
+                continue
+            if st == "assets" and not has_assets_work:
+                print("  [orchestrator] 无 TTS 帧且无 prompts，跳过 assets")
+                continue
+            if st == "compose" and not ep.shots:
+                print("  [orchestrator] 无 shots，跳过 compose（shot 装配需人工创意）")
                 continue
             runnable.append(st)
         stages = runnable

@@ -190,6 +190,7 @@ def synthesize(
     out_dir: Path | None = None,
     fallback_to_edge: bool = True,     # cosyvoice 失败是否降级 edge
     force: bool = False,               # 强制全部重合成（忽略幂等指纹）
+    workers: int = 4,                  # 并发合成路数（2026-09-04：此前串行 14.5min/365 帧）
 ) -> None:
     """
     逐 frame 合成。每段写入 frame.audio_path(16k wav) + frame.audio_duration_ms。
@@ -211,35 +212,42 @@ def synthesize(
     manifest = {} if force else _load_manifest(base)
     legacy_missing_manifest = not force and not (base / _MANIFEST_NAME).exists()
 
-    for f in frames:
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    _man_lock = threading.Lock()
+
+    def _synth_one(f: Frame) -> None:
+        """单个 frame：幂等判断 + 合成 + 回填。线程独立（各 frame 各 wav 互不干扰）。"""
         text = (f.narration_text or f.text or "").strip()
         if not text:
-            continue
+            return
         fp = _text_fingerprint(text)
         wav = base / f"{f.id}.wav"
 
         # ---- 幂等短路：文本未变 + 已有成品 wav → 复用（force 时跳过） ----
         if not force and wav.exists():
-            prev = manifest.get(f.id)
+            with _man_lock:
+                prev = manifest.get(f.id)
             if prev is not None and prev.get("fp") == fp:
                 f.audio_path = str(wav).replace("\\", "/")
-                # 已带时长则不再 ffprobe（复用快路径）；否则回填一次
                 if f.audio_duration_ms is None:
                     f.audio_duration_ms = _audio_duration_ms(wav)
-                continue
+                return
             if prev is None:
                 # 无 manifest（旧目录）：无法判断文本是否变。向后兼容按存在复用，
                 # 但旁白文本若真变了这里会静默漏检 —— 靠 _FP_NOTE 提示用户跑 --force。
                 global _FP_NOTE
-                if not _FP_NOTE:
-                    print("[voice] 检测到旧 audio 目录无 _tts_manifest.json，无法校验"
-                          "「文本是否已变」。如需精确幂等请跑一次 --force 建立指纹基线。")
-                    _FP_NOTE = True
+                with _man_lock:
+                    if not _FP_NOTE:
+                        print("[voice] 检测到旧 audio 目录无 _tts_manifest.json，无法校验"
+                              "「文本是否已变」。如需精确幂等请跑一次 --force 建立指纹基线。")
+                        _FP_NOTE = True
                 f.audio_path = str(wav).replace("\\", "/")
                 if f.audio_duration_ms is None:
                     f.audio_duration_ms = _audio_duration_ms(wav)
-                manifest[f.id] = {"fp": fp, "wav": wav.name}
-                continue
+                with _man_lock:
+                    manifest[f.id] = {"fp": fp, "wav": wav.name}
+                return
             # 文本变了（prev.fp != fp）：删旧 wav，落到下面重新合成
             print(f"  [voice] {f.id} 旁白文本已变(fp {prev.get('fp')}→{fp})，"
                   f"删除旧音频 {wav.name} 重新合成")
@@ -264,7 +272,18 @@ def synthesize(
             raise RuntimeError(f"[voice] {f.id} 合成失败(engine={engine})")
         f.audio_path = str(wav).replace("\\", "/")
         f.audio_duration_ms = _audio_duration_ms(wav)
-        manifest[f.id] = {"fp": fp, "wav": wav.name}
+        with _man_lock:
+            manifest[f.id] = {"fp": fp, "wav": wav.name}
+
+    # 并发合成（workers 路）。幂等段近乎瞬时；真合成段打 DashScope/edge。
+    n = max(1, min(workers, len(frames)))
+    if n <= 1 or len(frames) <= 1:
+        for f in frames:
+            _synth_one(f)
+    else:
+        with ThreadPoolExecutor(max_workers=n) as ex:
+            # 任一帧失败 → futures 传播首个异常（保持原「失败即抛」语义）
+            list(ex.map(_synth_one, frames))
 
     # 收口：落 manifest。文本已删的段不残留旧指纹（manifest 只保留本次 frames 覆盖的键）。
     if not legacy_missing_manifest or force:
