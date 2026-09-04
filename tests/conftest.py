@@ -76,6 +76,30 @@ def build_episode_dict(ep_id: str, img_abs: str, wav_abs: str, dur_ms: int) -> d
     }
 
 
+@pytest.fixture(autouse=True, scope="session")
+def _clean_test_episode_residue():
+    """会话结束清扫测试自建 episode 残留（防中断跑次永久残留）。
+
+    各测试在真实 episodes/ 下建 {ns}-{pid} 集（compose 硬绑定该目录），teardown 用
+    finally 精确删。但进程被杀/超时中断时 teardown 不跑，会在 episodes/ 留 json+目录。
+    这里按已知测试命名空间前缀通配清扫（autouse session，结束时统一兜底）。
+    ⚠️ 只清这些前缀，绝不匹配真实交付集（laogongtuan/hanwu-*/hw-* 等）。
+    """
+    yield
+    _namespaces = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest")
+    for jf in EPISODES.glob("*.json"):
+        stem = jf.stem
+        if any(stem == f"{ns}" or stem.startswith(f"{ns}-") for ns in _namespaces):
+            try:
+                jf.unlink()
+            except Exception:
+                pass
+    for d in EPISODES.iterdir():
+        if d.is_dir() and any(d.name.startswith(f"{ns}-") for ns in _namespaces):
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)
+
+
 @pytest.fixture
 def smoke_episode(tmp_path):
     """构建一个一次性微 episode（写到真实 episodes/），产出 (ep_id, img, wav)。
@@ -95,7 +119,9 @@ def smoke_episode(tmp_path):
 
     yield ep_id, src_p, big_p, dur_ms
 
-    # cleanup
+    # cleanup：先精确删本 pid 集，再清扫历史 smoke-* 残留（防中断跑次永久残留）。
+    # 注：单进程跑 pytest 时，残留只可能来自更早失败/被杀的跑次，可安全按通配清；
+    # 若启用 xdist 多进程并行则须改回仅按 pid（避免误删他进程在用集）。
     try:
         ep_json.unlink()
     except Exception:
@@ -104,3 +130,13 @@ def smoke_episode(tmp_path):
     if ep_dir.exists():
         import shutil
         shutil.rmtree(ep_dir, ignore_errors=True)
+    # 历史残留：只清 smoke-*（测试自建命名空间），绝不动真实交付集
+    for jf in EPISODES.glob("smoke-*.json"):
+        try:
+            jf.unlink()
+        except Exception:
+            pass
+    for d in EPISODES.glob("smoke-*"):
+        if d.is_dir():
+            import shutil
+            shutil.rmtree(d, ignore_errors=True)

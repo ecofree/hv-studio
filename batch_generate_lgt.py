@@ -18,9 +18,10 @@ import sys
 import time
 from pathlib import Path
 
-sys.path.insert(0, "D:/hv")
-
-ROOT = Path("D:/hv")
+# 仓库根：本文件位于 <root>/batch_generate_lgt.py → 上溯 1 级。
+# 勿硬编码绝对路径（曾用 "D:/hv"，搬仓即坏；episode.py 的换盘符重映射救不了它）。
+ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(ROOT))
 
 
 def main() -> int:

@@ -245,8 +245,10 @@ def stage_verify(ep: Episode) -> dict:
         raise RuntimeError(f"episode {ep.id} 成片解码错误: {dec.stderr[-500:]}")
 
     size = final.stat().st_size
+    # 注意：此处打印字符须 GBK 安全（Windows 默认代码页 cp936）。曾用 ✓(U+2713)
+    # 在 gbk stdout 抛 UnicodeEncodeError，produce 校验成功却以失败退出。改 [OK]。
     print(f"  [orchestrator] verify: {final.name} {size/1024/1024:.1f}MB "
-          f"{nf}帧 解码0错 时序对齐 ✓")
+          f"{nf}帧 解码0错 时序对齐 [OK]")
     return {"ok": True, "frames": nf, "bytes": size}
 
 
