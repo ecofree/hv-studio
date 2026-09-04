@@ -76,6 +76,57 @@ def validate_schema(ep: Episode, allow_empty: bool = False) -> list[str]:
     return problems
 
 
+def audit_orphan_wavs(
+    episode_id: str,
+    apply: bool = False,
+) -> dict:
+    """孤儿 wav 审计/清理（opt-in）。
+
+    判据（安全闸 = 不被流水线任一权威索引引用，防误删交付集音频）：
+      盘上 episodes/{id}/audio/*.wav 中，同时不被以下两者引用才认作孤儿：
+        1) episode.json 任一 frame.audio_path（compose 只认这个）
+        2) _tts_manifest.json 键（TTS 指纹写入的权威记录）
+      被任一引用即保留。_orig.wav / frame-NNN-NN.wav(旧切分子帧) 这类既不在
+      frames 也不在 manifest 的残留会被判为孤儿。
+
+    返回 {'orphans': [...], 'deleted': n, 'skipped': m}。
+    apply=False（默认）只列不删；apply=True 才 os.remove（逐文件，无 rm -rf）。
+    """
+    ep = load(episode_id)
+    audio_dir = EPISODES_DIR / episode_id / "audio"
+    if not audio_dir.is_dir():
+        return {"orphans": [], "deleted": 0, "skipped": 0}
+
+    wavs = sorted(p.name for p in audio_dir.glob("*.wav"))
+    ref = {Path(f.audio_path).name for f in ep.frames if f.audio_path}
+    man_keys: set[str] = set()
+    man = audio_dir / "_tts_manifest.json"
+    if man.exists():
+        try:
+            m = json.loads(man.read_text(encoding="utf-8"))
+            if isinstance(m, dict):
+                man_keys = set(m.keys())
+        except Exception:
+            pass  # manifest 解析失败 → 该层保险缺省，靠 frames 引用闸
+    orphans = [
+        w for w in wavs
+        if w not in ref and w.replace(".wav", "") not in man_keys
+    ]
+    deleted = 0
+    for w in orphans:
+        p = audio_dir / w
+        if apply:
+            try:
+                p.unlink()
+                deleted += 1
+            except Exception as e:
+                print(f"  [!] 删失败 {w}: {e}")
+        else:
+            print(f"  [orphan] {w}  ({(p.stat().st_size if p.exists() else 0)/1024:.1f}KB)")
+    return {"orphans": orphans, "deleted": deleted,
+            "skipped": len(orphans) - deleted}
+
+
 def save(ep: Episode) -> Path:
     """原子保存到 episodes/{id}.json。返回写入路径。"""
     EPISODES_DIR.mkdir(parents=True, exist_ok=True)

@@ -88,53 +88,64 @@ def _read_image_prompts(ep_id: str) -> dict:
         raise RuntimeError(f"image_prompts.json 解析失败 {p}: {e}")
 
 
-def stage_images(ep: Episode) -> None:
-    """按 image_prompts.json 批量生图（三路并行 generate_many）。
+def build_image_jobs(ep_id: str) -> list["ImageJob"]:
+    """从 image_prompts.json 构建生图任务（prompt 单源）。
 
-    数据源唯一入口 = episodes/{id}/image_prompts.json：
+    唯一数据源 = episodes/{id}/image_prompts.json：
       { "LGT01": {"en": "...", ...}, ... }
-    每个键落盘 episodes/{id}/shots/{KEY}.png（prompt = en + style_suffix + negative）。
-    已存在 >50KB 的图幂等跳过（不占渠道）。
+    每个键 → ImageJob(落盘 episodes/{id}/shots/{KEY}.png)。
+    prompt = en + style_suffix + negative（扁平 ImageConfig 顶层字段）。
+    幂等由 generate_many 内部按「已存在 >50KB」处理，本函数只建任务不生成。
+    stage_images 与 batch_generate_lgt 共用本函数 → 消除 prompt 拼接漂移。
     """
-    spec = _read_image_prompts(ep.id)
-    if not spec:
-        print(f"  [orchestrator] image: 无 {ep.id}/image_prompts.json，跳过生图")
-        return
     from app.config.config import get_settings
     from app.models import ImageGenRequest
-    from app.services.image import ImageJob, generate_many
+    from app.services.image import ImageJob
 
+    spec = _read_image_prompts(ep_id)
+    if not spec:
+        return []
     im = get_settings().get_profile().image
-    # ImageConfig 是扁平结构：engine/size/quality 在顶层，无 primary。
-    # （batch_generate_lgt 老脚本用 im.engine/im.size/im.quality，保持一致。）
+    # ImageConfig 是扁平结构：engine/size/quality/style_suffix/negative_clause
+    # 全在顶层，无 primary（batch_generate_lgt 老脚本同样用顶层字段）。
     model = getattr(im, "engine", None) or "gpt-image-2"
     size = getattr(im, "size", "1080x1920") or "1080x1920"
     quality = getattr(im, "quality", "low") or "low"
     suffix = getattr(im, "style_suffix", "") or ""
     neg = getattr(im, "negative_clause", "") or ""
-    shots_d = _episode_dir(ep.id) / "shots"
+    shots_d = _episode_dir(ep_id) / "shots"
     shots_d.mkdir(parents=True, exist_ok=True)
 
     keys = sorted(k for k in spec if not k.startswith("_"))
-    jobs = []
+    jobs: list[ImageJob] = []
     for key in keys:
         entry = spec[key]
         en = entry.get("en") if isinstance(entry, dict) else str(entry)
         if not en:
             continue
         prompt = f"{en}, {suffix}. {neg}".strip(", .") + "."
-        out = shots_d / f"{key}.png"
         jobs.append(ImageJob(
             id=key,
             req=ImageGenRequest(
                 model=model, prompt=prompt,
                 size=size, quality=quality, n=1,
             ),
-            out_path=out,
+            out_path=shots_d / f"{key}.png",
         ))
+    return jobs
+
+
+def stage_images(ep: Episode) -> None:
+    """按 image_prompts.json 批量生图（三路并行 generate_many）。
+
+    数据源唯一入口 = episodes/{id}/image_prompts.json（见 build_image_jobs）。
+    已存在 >50KB 的图幂等跳过（不占渠道）。任一失败即 raise（stage 语义）。
+    """
+    jobs = build_image_jobs(ep.id)
     if not jobs:
-        print("  [orchestrator] image: prompts 全空，跳过")
+        print(f"  [orchestrator] image: 无 {ep.id}/image_prompts.json 或全空，跳过生图")
         return
+    from app.services.image import generate_many
     print(f"  [orchestrator] image: {len(jobs)} 张待生成/跳过（三路并行）")
     res = generate_many(jobs)
     failed = [k for k, v in res.items() if not k.endswith("__error") and v is None]

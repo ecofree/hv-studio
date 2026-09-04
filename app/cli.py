@@ -21,6 +21,10 @@ def cmd_episode(args):
     from app.managers.pipeline import run_episode
     from app.models import Episode
 
+    # audit-wav 是唯一可用 --all 扫全部集而不需要单集的 action
+    if args.action != "audit-wav" and not args.episode_id:
+        raise SystemExit("error: episode_id 必填（audit-wav 加 --all 可省略）")
+
     if args.action == "init":
         ep = Episode(id=args.episode_id, title=args.episode_id, episode_number=0)
         p = save(ep)
@@ -51,6 +55,26 @@ def cmd_episode(args):
         import json
         res = produce(args.episode_id, stages=args.stage or None)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
+    elif args.action == "audit-wav":
+        # 孤儿 wav 清理（opt-in）：默认只列，--apply 才删。
+        # --all 扫全部集（此时 episode_id 参数忽略）。
+        from app.managers.episode import audit_orphan_wavs
+        apply = bool(getattr(args, "apply", False))
+        targets = ([e.stem for e in Path("episodes").glob("*.json")]
+                   if getattr(args, "all", False) else [args.episode_id])
+        tot = {"deleted": 0, "skipped": 0, "orphans": []}
+        for eid in targets:
+            r = audit_orphan_wavs(eid, apply=apply)
+            tot["deleted"] += r["deleted"]
+            tot["skipped"] += r["skipped"]
+            tot["orphans"].extend(r["orphans"])
+            if r["orphans"]:
+                verb = "已删" if apply else "待删(dry-run)"
+                print(f"  [{eid}] 孤儿 {len(r['orphans'])} 个 -> {verb} "
+                      f"(deleted={r['deleted']})")
+        mode = "apply" if apply else "dry-run"
+        print(f"[audit-wav] {mode}: 孤儿合计 {len(tot['orphans'])} "
+              f"(deleted={tot['deleted']} skipped={tot['skipped']})")
     elif args.action == "shots":
         # 通用「剧本→分镜」：按 episodes/{id}/scene_plan.json 声明式装配 shots。
         from app.services.shot_builder import build_episode_shots, inspect_episode
@@ -160,10 +184,18 @@ def main():
 
     # episode
     p = sub.add_parser("episode", help="管理 episode.json")
-    p.add_argument("action", choices=["init", "show", "run", "produce", "shots", "checkpoint"],
-                   help="init/show/run/produce/shots/checkpoint；produce=真实生产链；shots=按 scene_plan 装配")
-    p.add_argument("episode_id")
+    p.add_argument("action", choices=["init", "show", "run", "produce", "shots",
+                                      "checkpoint", "audit-wav"],
+                   help="init/show/run/produce/shots/checkpoint/audit-wav；"
+                        "produce=真实生产链；shots=按 scene_plan 装配；"
+                        "audit-wav=孤儿wav清理(默认dry-run)")
+    p.add_argument("episode_id", nargs="?", default=None,
+                   help="episode id（audit-wav 配 --all 时可省略）")
     p.add_argument("--label", default="manual")
+    p.add_argument("--apply", action="store_true",
+                   help="[audit-wav] 实际删除（默认只 dry-run 列出）")
+    p.add_argument("--all", action="store_true",
+                   help="[audit-wav] 扫全部集（省略 episode_id）")
     p.add_argument("--only", default=None,
                    help="[run] 只重建某镜头，如 shot-001")
     p.add_argument("--stage", action="append", default=None,

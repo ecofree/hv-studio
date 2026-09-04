@@ -166,3 +166,60 @@ def test_stage_images_uses_flat_imageconfig(monkeypatch):
             pass
         import shutil
         shutil.rmtree(ep_dir, ignore_errors=True)
+
+
+def test_audit_orphan_wavs_safe_criterion():
+    """孤儿 wav 判据：被 frames 或 manifest 引用的保留，孤儿才删，apply 才删。
+
+    回归守门：audit-wav 命令的判据是「frames ∪ manifest 都未引用才删」，非按文件名
+    （曾误加 frame-NN-NN 子帧 regex 导致漏检 _orig.wav / 非子帧孤儿）。
+    """
+    import os
+    import json as _json
+    from pathlib import Path
+    from app.config.config import ROOT
+    from app.managers import load, save
+    from app.models import Episode, Frame
+
+    ep_id = f"wavaud-{os.getpid()}"
+    ep = Episode(id=ep_id, title="wavaud", episode_number=1, status="draft")
+    save(ep)
+    audio = ROOT / "episodes" / ep_id / "audio"
+    audio.mkdir(parents=True, exist_ok=True)
+    (audio / "frame-000.wav").write_bytes(b"\x00" * 100)   # 将被 frames 引用
+    (audio / "frame-999-01.wav").write_bytes(b"\x00" * 100)  # 旧子帧格式孤儿
+    (audio / "old_base.wav").write_bytes(b"\x00" * 100)    # 孤儿但非子帧格式
+    (audio / "man-kept.wav").write_bytes(b"\x00" * 100)    # 被 manifest 引用
+    (audio / "_tts_manifest.json").write_text(
+        _json.dumps({"man-kept": {"fp": "x", "wav": "man-kept.wav"}}), encoding="utf-8")
+
+    from app.managers.episode import audit_orphan_wavs
+    try:
+        ep2 = load(ep_id)
+        ep2.frames = [Frame(id="frame-000", text="x",
+                            audio_path=str(audio / "frame-000.wav").replace("\\", "/"))]
+        save(ep2)
+
+        # dry-run：只列不删
+        r = audit_orphan_wavs(ep_id, apply=False)
+        names = set(r["orphans"])
+        assert "frame-000.wav" not in names, "被 frames 引用的不得判孤儿"
+        assert "man-kept.wav" not in names, "被 manifest 引用的不得判孤儿"
+        assert "frame-999-01.wav" in names
+        assert "old_base.wav" in names, "非子帧孤儿也应被认作孤儿(判据非文件名)"
+        assert all((audio / w).exists() for w in names), "dry-run 不得删"
+
+        # apply：只删孤儿，保留被引用的
+        r2 = audit_orphan_wavs(ep_id, apply=True)
+        assert r2["deleted"] == 2, r2
+        assert (audio / "frame-000.wav").exists()
+        assert (audio / "man-kept.wav").exists()
+        assert not (audio / "frame-999-01.wav").exists()
+        assert not (audio / "old_base.wav").exists()
+    finally:
+        try:
+            (ROOT / "episodes" / f"{ep_id}.json").unlink()
+        except Exception:
+            pass
+        import shutil
+        shutil.rmtree(ROOT / "episodes" / ep_id, ignore_errors=True)
