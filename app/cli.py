@@ -17,8 +17,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 def cmd_episode(args):
-    from app.managers import load, save, run_stage, checkpoint
-    from app.managers.pipeline import run_episode
+    from app.managers import load, save, checkpoint
     from app.models import Episode
 
     # audit-wav 是唯一可用 --all 扫全部集而不需要单集的 action
@@ -38,17 +37,25 @@ def cmd_episode(args):
         p = checkpoint(ep, args.label)
         print(f"checkpoint: {p}")
     elif args.action == "run":
-        # M2：pipeline 编排器。--only 单镜头重建；--stage 指定阶段；
-        # --force 强制重做；--compose 单镜改图后重合成整片+时序断言。
-        res = run_episode(
-            args.episode_id,
-            only=args.only,
-            stages=args.stage or None,
-            force=args.force,
-            compose_after=args.compose,
-        )
-        for sid, done in res.items():
-            print(f"  {sid}: 完成 {done}")
+        # C3（2026-09-05）：双轨编排器 app/managers/pipeline.py 已删。
+        # `run` 只保留一个版本的路标，不再静默执行任何东西——直接退出，
+        # 避免「以为跑了其实跑的是另一套逻辑」这种最坏情况。
+        raise SystemExit(
+            "[deprecated] `hv episode run` 已移除（旧的双轨编排器 pipeline.py 已删）。\n"
+            "  全流程重跑 → hv episode produce <id> [--stage tts] [--no-fallback]\n"
+            "  单镜重建   → hv episode reshot <id> --key LGT01 [--key LGT02]\n"
+            "  分镜装配   → hv episode shots <id> [--dry-run]")
+    elif args.action == "reshot":
+        # C3：单镜重建（删旧图 → 只重生成这几个 key → 重新装配 → 重新合成）。
+        # 这是旧 `run --only` 的唯一替代路径，实现在 orchestrator.reshot。
+        from app.orchestrator import reshot
+        import json
+        keys = args.key or []
+        if not keys:
+            raise SystemExit("error: reshot 至少一个 --key（底图 key，如 LGT01）")
+        res = reshot(args.episode_id, keys,
+                     do_verify=not getattr(args, "no_verify", False))
+        print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "produce":
         # P0-3：真实生产链（script→tts→compose→verify），状态由产物推进。
         from app.orchestrator import produce
@@ -241,10 +248,13 @@ def main():
 
     # episode
     p = sub.add_parser("episode", help="管理 episode.json")
-    p.add_argument("action", choices=["init", "show", "run", "produce", "shots",
-                                      "checkpoint", "audit-wav"],
-                   help="init/show/run/produce/shots/checkpoint/audit-wav；"
-                        "produce=真实生产链；shots=按 scene_plan 装配；"
+    # 注：run 已废弃（C3），仍留在 choices 里只为打印一段指路提示，不执行任何逻辑。
+    p.add_argument("action", choices=["init", "show", "run", "produce", "reshot",
+                                      "shots", "checkpoint", "audit-wav"],
+                   help="init/show/produce/reshot/shots/checkpoint/audit-wav；"
+                        "run=已废弃(仅打印指路提示)；produce=真实生产链；"
+                        "reshot=单镜重建(删图+重生成+重合成)；"
+                        "shots=按 scene_plan 装配；"
                         "audit-wav=孤儿wav清理(默认dry-run)")
     p.add_argument("episode_id", nargs="?", default=None,
                    help="episode id（audit-wav 配 --all 时可省略）")
@@ -253,17 +263,15 @@ def main():
                    help="[audit-wav] 实际删除（默认只 dry-run 列出）")
     p.add_argument("--all", action="store_true",
                    help="[audit-wav] 扫全部集（省略 episode_id）")
-    p.add_argument("--only", default=None,
-                   help="[run] 只重建某镜头，如 shot-001")
+    p.add_argument("--key", action="append", default=None,
+                   help="[reshot] 要重建的底图 key，可多次：--key LGT01 --key LGT02")
+    p.add_argument("--no-verify", action="store_true",
+                   help="[reshot] 合成后跳过 verify（默认会跑时序断言）")
     p.add_argument("--stage", action="append", default=None,
-                   help="[run] 指定阶段，可多次：--stage image --stage motion")
-    p.add_argument("--force", action="store_true",
-                   help="[run] 强制重做（无视幂等）")
+                   help="[produce] 指定阶段，可多次：--stage tts --stage compose")
     p.add_argument("--no-fallback", action="store_true",
                    help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
                         "音色；交付集建议加）")
-    p.add_argument("--compose", action="store_true",
-                   help="[run] 单镜改图后重合成整片 + 时序断言")
     p.add_argument("--plan", default=None,
                    help="[shots] scene_plan.json 路径（默认 episodes/{id}/scene_plan.json）")
     p.add_argument("--dry-run", action="store_true",

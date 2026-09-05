@@ -122,12 +122,5 @@ class Shot(BaseModel):
     def motion_done(self) -> bool:
         return bool(self.motion_path and Path(self.motion_path).exists())
 
-    def needs_regen(self) -> bool:
-        """判定是否需要重做图（一致性不过、I2V 失败退回 KB 等）。"""
-        if self.face_sim is not None and self.face_sim < 0.50:
-            return True
-        if self.type == ShotType.I2V and not self.i2v_path:
-            return True
-        if self.type == ShotType.KEN_BURNS and not self.motion_path:
-            return True
-        return False
+    # C3（2026-09-05）：needs_regen() 已删——全仓零调用点，且判据之一 face_sim
+    # 属于随 character_lock.py / face.py 一并删除的人脸一致性能力。

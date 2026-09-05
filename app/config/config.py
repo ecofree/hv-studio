@@ -220,20 +220,14 @@ class ImagePostprocessUpscale(BaseModel):
     output_size_dynamic: bool = True   # 由 upscale.py 算（基于返回图真实像素 × scale）
 
 
-class ImageConsistencyConfig(BaseModel):
-    strategy: str
-    ref_pack_size: int
-    override_expression: bool
-    override_pose: bool
-    face_sim_threshold: float
-    face_sim_warn: float
-    max_retry: int
+# C3（2026-09-05）：ImageConsistencyConfig 随 character_lock/face 一并删除。
+# image.consistency 从来只被声明、从未被读取（全仓 grep 零消费者），
+# 它是「定妆包 + 人脸相似度」那套已删能力的配置项，留着只会让人以为能力还在。
 
 
 class ImageConfig(BaseModel):
     primary: ImageEngineConfig
     postprocess_upscale: ImagePostprocessUpscale
-    consistency: ImageConsistencyConfig
     fallbacks: list[ImageEngineConfig]
 
 

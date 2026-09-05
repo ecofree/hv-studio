@@ -199,8 +199,11 @@ def _compose_prompt(en: str, suffix: str, neg: str) -> str:
     return f"{en}, {suffix}. {neg}".strip(", .") + "."
 
 
-def build_image_jobs(ep_id: str, prescreen: bool = True) -> list["ImageJob"]:
+def build_image_jobs(ep_id: str, prescreen: bool = True,
+                     only: set[str] | None = None) -> list["ImageJob"]:
     """从 image_prompts.json 构建生图任务（prompt 单源）。
+
+    only：只构建这些 key（用于单镜重建 reshot）。None = 全部。
 
     唯一数据源 = episodes/{id}/image_prompts.json：
       { "LGT01": {"en": "...", ...}, ... }
@@ -232,6 +235,12 @@ def build_image_jobs(ep_id: str, prescreen: bool = True) -> list["ImageJob"]:
     shots_d.mkdir(parents=True, exist_ok=True)
 
     keys = sorted(k for k in spec if not k.startswith("_"))
+    if only:
+        unknown = sorted(set(only) - set(keys))
+        if unknown:
+            raise RuntimeError(
+                f"episode {ep_id} 的 image_prompts.json 中没有这些 key: {unknown}")
+        keys = [k for k in keys if k in only]
     jobs: list[ImageJob] = []
     blocked: list = []
     warned: list = []
@@ -405,6 +414,67 @@ def stage_verify(ep: Episode) -> dict:
     print(f"  [orchestrator] verify: {final.name} {size/1024/1024:.1f}MB "
           f"{nf}帧 解码0错 时序对齐 [OK]")
     return {"ok": True, "frames": nf, "bytes": size}
+
+
+def reshot(ep_id: str, keys: list[str], do_verify: bool = True) -> dict:
+    """重建指定底图 → 重新装配 shots → 重新合成（单镜重建）。
+
+    替代旧 `hv episode run X --only shot-001`（managers/pipeline，C3 已删）。
+
+    旧实现靠人脸相似度锚定（face.py / character_lock.py）保证换图后角色一致，
+    那套能力随 C3 一并删除。现在「指定重建哪一张」用最直接的手段：**删掉旧图**。
+    生图的幂等是按「shots/{KEY}.png 已存在且 >50KB」跳过，所以删文件本身就是
+    最小可用的选择机制，不必再引入一套并行的 key 过滤语义。
+    upscale 的 @2x 缓存按源图 mtime 失效，删图重生成后会自动重做，无需手工清。
+
+    步骤：删图 → 只生这几个 key → 按 scene_plan 重新装配 → 合成 →（可选）verify。
+    """
+    from app.managers import load, save
+    from app.services.image import generate_many
+    from app.services.shot_builder import build_episode_shots
+
+    keys = [k.strip() for k in keys if k and k.strip()]
+    if not keys:
+        raise RuntimeError("reshot 需要至少一个 --key（底图 key，如 LGT01）")
+
+    ep = load(ep_id)
+    spec = _read_image_prompts(ep_id)
+    unknown = [k for k in keys if k not in spec]
+    if unknown:
+        raise RuntimeError(
+            f"episode {ep_id} image_prompts.json 中没有 {unknown}；"
+            f"可用 key 共 {len(spec)} 个")
+
+    shots_d = _episode_dir(ep_id) / "shots"
+    removed = []
+    for k in keys:
+        p = shots_d / f"{k}.png"
+        if p.exists():
+            p.unlink()
+            removed.append(k)
+    print(f"  [orchestrator] reshot: 已删除 {len(removed)}/{len(keys)} 张旧图 "
+          f"（{removed}），准备重新生成")
+
+    jobs = build_image_jobs(ep_id, only=set(keys))
+    if not jobs:
+        raise RuntimeError(f"episode {ep_id} 没有可重建的生图任务（key={keys}）")
+    res = generate_many(jobs)
+    failed = [k for k, v in res.items() if not k.endswith("__error") and v is None]
+    if failed:
+        raise RuntimeError(f"episode {ep_id} 重建生图失败: {failed}")
+
+    # 重新装配（scene_plan 驱动；帧指纹会校验 frames 未变）
+    ep2, _st = build_episode_shots(ep_id, persist=True, preview_rows=0)
+    print(f"  [orchestrator] reshot: 重新装配 {len(ep2.shots)} 镜")
+
+    stage_compose(ep2)      # 内部会按真实音频重载并回同步 ep2
+    out = {"ep_id": ep_id, "reshot_keys": keys, "removed": removed,
+           "shots": len(ep2.shots), "final_mp4": None}
+    if do_verify:
+        out["verify"] = stage_verify(ep2)
+    out["final_mp4"] = str(_out_dir(ep_id) / f"{ep_id}_m1.mp4")
+    save(ep2)
+    return out
 
 
 def _load_script_md(ep: Episode) -> str:
