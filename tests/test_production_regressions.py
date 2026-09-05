@@ -170,25 +170,98 @@ def test_x264_fallback_preset_is_valid_for_libx264():
 
 
 # ---------------------------------------------------------------------------
-# 结构性缺口：splitter 下限与门禁下限的一致性（当前存在矛盾，xfail 标记）
+# 结构性缺口：splitter 下限与门禁下限的一致性
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(
-    reason="MIN_FRAG_CHARS=6 约 38 帧 < 门禁 MIN_FRAMES=40，"
-           "管线能产出自己拒绝的碎片镜。需把下限提到 ≥40 帧等效（约 7 字）后转绿。",
-    strict=False,
-)
+# 曾经 MIN_FRAG_CHARS 是手写常量 6（≈1.54s ≈ 38 帧），而时序门禁是 40 帧
+# (1.6s) —— 切分器能产出自己的门禁会拒绝的碎片镜。2026-09-05 已改为从门禁
+# 反推，两个下限同源，不可能再各飘各的。此例锁住「同源」而非某个魔数。
 def test_splitter_min_not_below_gate_min_frames():
     """splitter 切出的最短片段不得低于门禁 MIN_FRAMES，否则自相矛盾。"""
-    from app.services.script import MIN_FRAG_CHARS
+    import math
+
+    from app.services.script import MIN_FRAG_CHARS, TTS_CHARS_PER_SEC
     from app.services.timing_assert import MIN_FRAMES
     from app.services.motion import FPS
 
-    # 汉字语速保守估计 4 字/秒；6 字 ≈ 1.5s
-    est_sec = MIN_FRAG_CHARS / 4.0
+    est_sec = MIN_FRAG_CHARS / TTS_CHARS_PER_SEC
     est_frames = int(est_sec * FPS)
     assert est_frames >= MIN_FRAMES, (
         f"splitter 下限 {MIN_FRAG_CHARS} 字 ≈ {est_frames} 帧，"
         f"低于门禁 {MIN_FRAMES} 帧 → 切出的最短镜会被自己的门禁拒绝")
+
+
+def test_min_frag_chars_is_derived_from_gate_not_hardcoded():
+    """下限必须由门禁反推。写死魔数会让两处再次漂移（曾写死 6 vs 门禁 40）。"""
+    import math
+
+    from app.services.script import MIN_FRAG_CHARS, TTS_CHARS_PER_SEC
+    from app.services.timing_assert import MIN_FRAMES
+    from app.services.motion import FPS
+
+    derived = math.ceil(MIN_FRAMES / FPS * TTS_CHARS_PER_SEC)
+    assert MIN_FRAG_CHARS == derived, (
+        f"MIN_FRAG_CHARS={MIN_FRAG_CHARS} 不等于由门禁推导的 {derived} "
+        f"(ceil({MIN_FRAMES}/{FPS}×{TTS_CHARS_PER_SEC}))")
+
+
+def test_split_long_sentence_never_emits_sub_gate_fragment():
+    """行为层验证：切长句不得产出低于门禁时长的碎片。
+
+    这是「归途上，」那类 4 字前缀被独立成镜的直接回归。
+    """
+    from app.services.script import MIN_FRAG_CHARS, split_long_sentence
+    from app.services.timing_assert import MIN_FRAMES
+    from app.services.motion import FPS
+
+    sent = "归途上，他又一次被匈奴俘获，扣留了一年有余。"
+    for piece in split_long_sentence(sent, max_chars=18):
+        est = int(len(piece) / 3.9 * FPS)
+        assert len(piece) >= MIN_FRAG_CHARS or est >= MIN_FRAMES, (
+            f"切出碎片 {piece!r}（{len(piece)} 字 ≈ {est} 帧 < 门禁 {MIN_FRAMES}）")
+
+
+# ---------------------------------------------------------------------------
+# 重切安全：id 相同 != 内容相同（切分规则一改就会踩）
+# ---------------------------------------------------------------------------
+def _ep_with_split(md: str):
+    from app.models import Episode
+    from app.services.script import split_script
+
+    ep = Episode(id="rbdrift", title="t", episode_number=1)
+    ep.frames = split_script(ep, md)
+    for f in ep.frames:
+        f.audio_path = f"/audio/{f.id}.wav"
+        f.audio_duration_ms = 2000
+    return ep
+
+
+def test_rebuild_frames_drops_stale_audio_when_text_changed():
+    """同 id 但文本变了 → 旧配音必须丢弃，否则新文本配旧音，静默音画错位。
+
+    MIN_FRAG_CHARS 6→7 后 laogongtuan 有 5 帧、lsm-15min 有 15 帧属于此类。
+    """
+    from app.services.script import rebuild_frames
+
+    md = "归途上，他又一次被匈奴俘获，扣留了一年有余，才得以回到长安。"
+    ep = _ep_with_split(md)
+    victim = ep.frames[0]
+    victim.text = victim.text + "（改过）"
+    out = {f.id: f for f in rebuild_frames(ep, md)}
+    assert out[victim.id].audio_path is None, \
+        "文本变了却继承了旧配音 → 成片音画错位且无任何报错"
+    assert out[victim.id].audio_duration_ms in (None, 0), \
+        "旧时长同样属于旧文本，不能继承"
+
+
+def test_rebuild_frames_keeps_audio_when_text_identical():
+    """未受影响的帧必须原样继承（否则每次重切都要重跑全片 TTS）。"""
+    from app.services.script import rebuild_frames
+
+    md = "归途上，他又一次被匈奴俘获，扣留了一年有余，才得以回到长安。"
+    ep = _ep_with_split(md)
+    out = {f.id: f for f in rebuild_frames(ep, md)}
+    assert all(f.audio_path == f"/audio/{f.id}.wav" for f in out.values())
+    assert all(f.audio_duration_ms == 2000 for f in out.values())
 
 
 # ---------------------------------------------------------------------------

@@ -48,14 +48,36 @@ def split_script_text(text: str) -> list[str]:
     return out
 
 
-# 长句二次切分的最短片段保护：中文 TTS 实测约 3.9 字/s。
-# 若切出的任一侧 < MIN_FRAG_CHARS，其预估时长很可能 < 1.6s(约6.3字)，
-# 会违背「镜头不短于1.6s防闪切」的时序契约（§5.4，见 2026-09-03 审计 #30）。
-# 此时宁可保留整句让 TTS 一气呵成（≤ MAX_CHARS+余量，实测仍在上限内），
-# 也不要制造 4~5 字的碎片镜。典型触发例：
+# 长句二次切分的最短片段保护。
+#
+# ★ 这里的数不是手写的，是从时序门禁反推出来的（2026-09-05 修复）。
+#   曾经写死 6：6 字 / 3.9 字每秒 ≈ 1.54s ≈ 38 帧，而门禁 MIN_FRAMES=40 帧
+#   （1.6s）—— **切分器能产出自己的门禁会拒绝的碎片镜**，属于自相矛盾。
+#   改成同源推导后，门禁改了这里自动跟着变，两个下限不可能再各飘各的。
+#
+# 中文 TTS 语速实测（2026-09-03 审计 #30）：约 3.9 字/s。
+TTS_CHARS_PER_SEC = 3.9
+
+
+def _derive_min_frag_chars() -> int:
+    """由「单镜不得短于 MIN_FRAMES 帧」反推最短片段字数。
+
+    推导：秒数 = 帧数 / FPS；字数 = 秒数 × 语速。向上取整保证不欠。
+    当前 = ceil(40 / 25 × 3.9) = ceil(6.24) = 7 字（原手写值 6 偏小）。
+    """
+    import math
+
+    from app.services.motion import FPS
+    from app.services.timing_assert import MIN_FRAMES
+
+    return max(1, math.ceil(MIN_FRAMES / FPS * TTS_CHARS_PER_SEC))
+
+
+MIN_FRAG_CHARS = _derive_min_frag_chars()
+
+# 触发例（写死 6 时的实际产物）：
 #   22字句「归途上，他又一次被匈奴俘获，扣留了一年有余。」
 #   旧算法在 2 处逗号里挑最接近中点的，把「归途上，」4字前缀切成独立镜(1.2s)。
-MIN_FRAG_CHARS = 6   # 对应约 1.5s+，留足安全边际
 
 
 def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
@@ -267,12 +289,22 @@ def rebuild_frames(ep: Episode, script_md: str,
 
     ⚠️ merge_short 必须与建档时一致：不一致会让 frame.id 的编号基准从
     「句号」变成「段号」，id 对齐全部落空 → 音频被判为孤儿、时长丢失。
+
+    ⚠️ id 相同 ≠ 内容相同：调过切分规则后（如 MIN_FRAG_CHARS 6→7），
+    同一 id 上的文本可能已经变了。此时若照旧继承 audio_path，就会把
+    **旧文本的配音挂到新文本上** —— 没有报错、没有缺文件，成片里却是
+    音画错位。故凡文本变更的帧一律丢弃旧音频，让 TTS 按文本指纹重合成。
     """
     old = {f.id: f for f in ep.frames}
     new_frames = split_script(ep, script_md, merge_short=merge_short)
+    drift: list[str] = []
     for f in new_frames:
         o = old.get(f.id)
         if not o:
+            continue
+        if o.text != f.text:
+            # 文本变了：旧配音属于旧文本，继承它就是静默音画错位
+            drift.append(f.id)
             continue
         f.audio_path = o.audio_path
         f.audio_duration_ms = o.audio_duration_ms
@@ -280,6 +312,14 @@ def rebuild_frames(ep: Episode, script_md: str,
         f.subtitle = o.subtitle
         f.shot_ids = o.shot_ids
     ep.frames = new_frames
+    if drift:
+        print(f"  [script] 重切后 {len(drift)} 帧文本变更，已丢弃其旧音频"
+              f"（需重跑 TTS）: {drift[:10]}"
+              + (f" …共 {len(drift)} 帧" if len(drift) > 10 else ""))
+    missing = [f.id for f in new_frames if not f.audio_path]
+    if missing and ep.frames != [] and any(o.audio_path for o in old.values()):
+        print(f"  [script] 其中 {len(missing)} 帧无音频"
+              f"（新切分产生或文本变更），重跑 tts stage 补齐")
     return new_frames
 
 
