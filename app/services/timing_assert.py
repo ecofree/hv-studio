@@ -21,10 +21,10 @@ from __future__ import annotations
 
 from app.models import Episode, Shot
 
-# 输出规格（与 motion.FPS 同步）
-FPS = 25
-HEAD_MS = 100
-TAIL_MS = 150
+# FPS / HEAD_MS / TAIL_MS 不再在此另写一份：统一从 spec 导入（整改 C1）。
+# 此前这里写着「与 motion.FPS 同步」的手抄副本 —— 注释承诺同步，但没有任何
+# 机制保证同步，改一处忘一处就是静默的时间轴错位。re-export 只为兼容既有写法。
+from app.services.spec import FPS, HEAD_MS, TAIL_MS  # noqa: F401  (re-export)
 # 断言阈值
 SUM_TOLERANCE_MS = 100     # #1
 MIN_FRAMES = 40            # #2  ≥ 1.6s

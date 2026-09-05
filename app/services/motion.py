@@ -46,11 +46,11 @@ from pathlib import Path
 from PIL import Image
 
 from app.models import Shot
+# 输出规格常量统一由 app.services.spec 提供（整改 C1）。此处 re-export 是为了
+# 兼容既有的 `from app.services.motion import FPS, W, H` 写法（compose 在用），
+# 值本身只有 spec 里那一份。
+from app.services.spec import FPS, H, W  # noqa: F401  (re-export)
 
-# 输出规格
-FPS = 25
-W = 1080
-H = 1920
 CRF = 18
 PRESET = "medium"
 

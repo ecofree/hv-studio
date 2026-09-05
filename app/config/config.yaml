@@ -69,13 +69,19 @@ profiles:
       max_shot_ms: 6000
       split_threshold_ms: 6000
 
+    # 2026-09-05 整改 C2 起，本段**真正生效**（此前 compose.py 里全是硬编码，
+    # 改这里完全不起作用）。改完记得它确实会影响出片。
+    # 2026-09-05 整改 C2 起，本段**真正生效**（此前 compose.py 里全是硬编码，
+    # 改这里完全不起作用）。改完记得它确实会影响出片。
     subtitle:
       font: 思源宋体
       font_size: 72
       primary_colour: "&H00FFFFFF"
       outline_colour: "&H00000000"
       back_colour: "&H80000000"
-      outline: 4
+      # outline = 字幕描边宽度。原值 4 与代码里硬编码的 5 不一致（代码从未读它）；
+      # 现以已交付成片的实际观感为准取 5。想要更细的描边改回 4，这次会真的生效。
+      outline: 5
       shadow: 1
       margin_bottom: 320
       margin_top: 200
@@ -167,14 +173,8 @@ image:
     tile: 512
     output_size_dynamic: true               # 基于返回图实际像素 × scale 算
 
-  consistency:
-    strategy: reference_pack
-    ref_pack_size: 12
-    override_expression: true
-    override_pose: true
-    face_sim_threshold: 0.65
-    face_sim_warn: 0.50
-    max_retry: 3
+  # C3（2026-09-05）：原 consistency 段（定妆包 + 人脸相似度）随
+  # character_lock.py / face.py 一并删除。它从未被代码读取过。
 
   fallbacks:
     - engine: gpt-image-2

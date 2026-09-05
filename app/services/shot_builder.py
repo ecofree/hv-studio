@@ -45,7 +45,10 @@ RAW_ZOOM_LADDER = [1.12, 1.26, 1.40, 1.18, 1.32, 1.08, 1.22]
 ZOOM_LADDER = [min(z, MAX_ZOOM) for z in RAW_ZOOM_LADDER]
 INTENSITY_CYCLE = [0.07, 0.06, 0.08, 0.10, 0.05, 0.09, 0.10, 0.06]
 
-HEAD_MS, TAIL_MS = 100, 150   # 需与 compose.HEAD_MS/TAIL_MS 一致
+# HEAD_MS/TAIL_MS 不再在此手抄一份（整改 C1）。此前这里写着
+# 「需与 compose.HEAD_MS/TAIL_MS 一致」——靠注释承诺同步，没有任何机制保证。
+# 现在统一从 spec 导入，值只有一份；re-export 只为兼容既有写法。
+from app.services.spec import HEAD_MS, TAIL_MS  # noqa: F401  (re-export)
 
 
 # ---------------------------------------------------------------------------

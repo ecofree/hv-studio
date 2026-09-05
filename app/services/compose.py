@@ -34,15 +34,14 @@ from app.services.motion import (
 )
 from app.config.config import ROOT
 from app.services.upscale import upscale
+# 输出规格常量（FPS/W/H/HEAD_MS/TAIL_MS/NARRATION_SR）统一来自 spec（整改 C1）。
+# 由 motion 转手的 FPS/W/H 保留（motion re-export，值同源）；间隔与采样率直接从
+# spec 取，不再在本模块另写一份。
+from app.services.spec import HEAD_MS, NARRATION_SR, TAIL_MS  # noqa: F401
 
 # BASE 单一真源：从 config.ROOT 推导（= 仓库根 / episodes），勿硬编码盘符
 # （2026-09-04 收敛：换盘符/换机失效）。兼容外部传入 base_dir 场景。
 BASE = ROOT / "episodes"
-HEAD_MS = 100
-TAIL_MS = 150
-# 旁白 wav 采样率。与 voice._mp3_to_wav 的落盘口径（16k mono PCM）必须一致，
-# 两边各写一份 → 由 tests 里的漂移守卫锁住（见 test_constants_single_source）。
-NARRATION_SR = 16000
 
 
 def expected_frames(timeline_slice) -> int:
@@ -74,17 +73,93 @@ def expected_frames(timeline_slice) -> int:
         total += frames_for_duration_ms(sh.duration_ms or 0, FPS)
     return total
 
-# 字幕排版（对齐 config.yaml subtitle 段，Task #28 修复）
-#  - font: config 声明「思源宋体」→ 本机即 Noto Serif SC（同字形，Adobe/Google 联合设计的开源思源宋体，
-#    NotoSerifSC-VF.ttf 即 Source Han Serif SC 的 Noto 名）。已确认存在，避免 ImageFont.truetype 抛异常。
-FONT_PATH = "C:/Windows/Fonts/NotoSerifSC-VF.ttf"   # 思源宋体(Noto Serif SC)，替代原硬编码 msyhbd 黑体粗
-FONT_SIZE = 72                                    # 对齐 config subtitle.font_size
+# ---------------------------------------------------------------------------
+# 字幕排版（整改 C2：改读 config profile.subtitle，不再硬编码）
+# ---------------------------------------------------------------------------
+# 此前这里是 FONT_PATH / FONT_SIZE / SUBTITLE_BOTTOM / STROKE 四个硬编码值，
+# 而 config.yaml 的 subtitle 段与 ProfileSubtitle 模型一直存在却**无人读取**——
+# 注释还写着「对齐 config subtitle.font_size」，纯属自我安慰：没有任何机制保证
+# 对齐，改 config 完全不生效。现在由 config 驱动，下面这些是 config 缺失/读取
+# 失败时的兜底（= 2026-09-05 之前的实际渲染值，保证行为不跳变）。
+DEFAULT_FONT_PATH = "C:/Windows/Fonts/NotoSerifSC-VF.ttf"   # 思源宋体(Noto Serif SC)
+DEFAULT_FONT_SIZE = 72
+DEFAULT_MARGIN_BOTTOM = 320
+DEFAULT_STROKE = 5
+# 无 config 对应项的两个值（排版细节，暂不进 config，避免为凑对称造字段）
 TEXT_W = W - 150          # 字幕可用宽度（每行留左右各 ~75px）
-# 字幕块底边距 = config subtitle.margin_bottom(320)，即字幕底部在 y=H-320 处，
-# 由字幕块向上生长（bottom-anchor），永远不越过底栏安全区。
-SUBTITLE_BOTTOM = H - 320
-STROKE = 5
 LINE_GAP = 16
+
+# config 里 font 是「字体名」不是路径 → 名字到本机路径的映射。
+# 思源宋体（Adobe/Google 联合设计的开源 Source Han Serif）在 Noto 名下叫
+# Noto Serif SC，可变字体文件即 NotoSerifSC-VF.ttf。
+_FONT_NAME_TO_PATH = {
+    "思源宋体": DEFAULT_FONT_PATH,
+    "source han serif": DEFAULT_FONT_PATH,
+    "noto serif sc": DEFAULT_FONT_PATH,
+    "notoserifsc": DEFAULT_FONT_PATH,
+}
+
+_SUB_CFG = None      # 惰性缓存：get_settings() 会读 .env + yaml，不宜在 import 期跑
+
+
+def _subtitle_cfg():
+    """取 profile.subtitle（惰性 + 缓存）。config 不可用 → 返回 None，走兜底。"""
+    global _SUB_CFG
+    if _SUB_CFG is None:
+        try:
+            from app.config.config import get_settings
+            _SUB_CFG = get_settings().get_profile().subtitle
+        except Exception:  # noqa: BLE001 —— 配置坏了不该让合成直接崩
+            _SUB_CFG = False      # False 而非 None：区分「没取过」与「取不到」
+    return _SUB_CFG or None
+
+
+def reset_subtitle_cfg() -> None:
+    """清缓存（测试/热更新用）。改了 config.yaml 后调它立即生效。"""
+    global _SUB_CFG
+    _SUB_CFG = None
+
+
+def _sub_font_path() -> str:
+    """config.subtitle.font → 本机字体路径。"""
+    cfg = _subtitle_cfg()
+    name = (getattr(cfg, "font", "") or "").strip() if cfg else ""
+    if not name:
+        return DEFAULT_FONT_PATH
+    if name.lower() in _FONT_NAME_TO_PATH:
+        return _FONT_NAME_TO_PATH[name.lower()]
+    # 看起来就是个路径（含分隔符或字体扩展名）→ 直接用，方便换机时写绝对路径
+    if any(sep in name for sep in ("/", "\\")) or \
+            name.lower().endswith((".ttf", ".ttc", ".otf")):
+        return name
+    return DEFAULT_FONT_PATH
+
+
+def _sub_font_size() -> int:
+    cfg = _subtitle_cfg()
+    v = getattr(cfg, "font_size", None) if cfg else None
+    return int(v) if v else DEFAULT_FONT_SIZE
+
+
+def _sub_bottom() -> int:
+    """字幕块底边 y 坐标（bottom-anchor，由下向上生长，永不越过底栏安全区）。"""
+    cfg = _subtitle_cfg()
+    v = getattr(cfg, "margin_bottom", None) if cfg else None
+    return H - (int(v) if v else DEFAULT_MARGIN_BOTTOM)
+
+
+def _sub_stroke() -> int:
+    cfg = _subtitle_cfg()
+    v = getattr(cfg, "outline", None) if cfg else None
+    return int(v) if v else DEFAULT_STROKE
+
+
+# 兼容既有 `from app.services.compose import FONT_PATH` 的写法。
+# 注意：这些是**兜底值**；真实生效值走上面的 _sub_*()，因为 config 可能不同。
+FONT_PATH = DEFAULT_FONT_PATH
+FONT_SIZE = DEFAULT_FONT_SIZE
+SUBTITLE_BOTTOM = H - DEFAULT_MARGIN_BOTTOM
+STROKE = DEFAULT_STROKE
 
 # 中文避头尾 / 折行标点法则
 #  禁行首：不可作「行首」的收尾/终句标点 —— 折行时并入上一行，杜绝孤标点（"…的人，"整行同句）。
@@ -101,9 +176,9 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont:
 
     NotoSerifSC-VF.ttf 是可变字体，ImageFont.truetype 默认落在最细的
     ExtraLight(200) —— 竖屏大字字幕太细、识别度差。这里显式设到
-    SemiBold：600 字重 + 现有 STROKE 描边，清晰又不发糊。
+    SemiBold：600 字重 + 描边，清晰又不发糊。
     """
-    f = ImageFont.truetype(FONT_PATH, size)
+    f = ImageFont.truetype(_sub_font_path(), size)
     try:
         f.set_variation_by_name("SemiBold")
     except Exception:
@@ -121,12 +196,12 @@ def check_font_available(size: int | None = None) -> None:
     返回 None 表示可用。抛出的 RuntimeError 带排查指引（字体名 + 当前路径 +
     怎么改），因为换台机器就撞上、且报错点在几十分钟渲染之后，极难定位。
     """
-    from PIL import ImageFont as _IF
+    path = _sub_font_path()
     try:
-        _load_font(size or FONT_SIZE)
+        _load_font(size or _sub_font_size())
     except Exception as e:  # noqa: BLE001 —— OSError/IOError 都指向「字体不可用」
         raise RuntimeError(
-            f"字幕字体不可用：{FONT_PATH}\n"
+            f"字幕字体不可用：{path}\n"
             f"  原因：{type(e).__name__}: {e}\n"
             f"  处理：在本机安装思源宋体（Noto Serif SC），或把 compose.FONT_PATH "
             f"改为本机存在的中文字体（如 C:/Windows/Fonts/msyh.ttc）。\n"
@@ -190,7 +265,7 @@ def _wrap(draw, text: str, font, max_w: int) -> list[str]:
 
 def _draw_subtitle(img: Image.Image, text: str) -> None:
     d = ImageDraw.Draw(img)
-    font = _get_font(FONT_SIZE)
+    font = _get_font(_sub_font_size())
     # 句末标点 rstrip：大字解说不渲染句尾「。！？」（对抖音竖屏是行业惯例，避免孤标点/视觉占位）
     t = text.rstrip("".join(_SENT_END_PUNCT))
     if not t:
@@ -198,16 +273,17 @@ def _draw_subtitle(img: Image.Image, text: str) -> None:
     lines = _wrap(d, t, font, TEXT_W)
     heights = [d.textbbox((0, 0), ln, font=font)[3] for ln in lines]
     total_h = sum(heights) + LINE_GAP * (len(lines) - 1)
-    # 字幕块底边对齐 config margin_bottom(320)，多行字幕从底边向上生长，
-    # 永远不越过底栏 320px 安全区。
-    y = SUBTITLE_BOTTOM - total_h
+    # 字幕块底边对齐 config subtitle.margin_bottom，多行字幕从底边向上生长，
+    # 永远不越过底栏安全区。
+    y = _sub_bottom() - total_h
+    stroke = _sub_stroke()
     for i, ln in enumerate(lines):
         w = d.textbbox((0, 0), ln, font=font)[2]
         x = (W - w) // 2
         d.text((x + 3, y + 4), ln, font=font, fill=(0, 0, 0),
-               stroke_width=STROKE, stroke_fill=(0, 0, 0))
+               stroke_width=stroke, stroke_fill=(0, 0, 0))
         d.text((x, y), ln, font=font, fill=(255, 255, 255),
-               stroke_width=STROKE, stroke_fill=(16, 16, 16))
+               stroke_width=stroke, stroke_fill=(16, 16, 16))
         y += heights[i] + LINE_GAP
 
 
@@ -566,7 +642,7 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
 
     run_timing_gate=True 时，合成前（时间轴重算之后、编码之前）跑 §5.4 时序断言
     （短镜 / 超长镜 / 音频对齐统一前置拦截），任一项失败即 raise TimingError，不出片。
-    这是对『pipeline 路径』与『compose 直通入口』的统一门禁——
+    这是对『orchestrator 路径』与『compose 直通入口』的统一门禁——
     修复 2026-09-03 审计 #A：此前直通 compose 从不调断言，短镜能悄悄出片。
     """
     from app.managers import load
