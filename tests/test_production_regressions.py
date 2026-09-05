@@ -204,6 +204,43 @@ def test_min_frag_chars_is_derived_from_gate_not_hardcoded():
         f"(ceil({MIN_FRAMES}/{FPS}×{TTS_CHARS_PER_SEC}))")
 
 
+def test_overlong_sentence_is_cut_even_if_side_below_min_frag():
+    """两个下限打架时「不超上限」必须赢，否则必然撞 MAX_FRAMES 门禁。
+
+    真实回归：MIN_FRAG_CHARS 6→7 后，lsm-15min 的
+    「大唐的天下，本质上是“关陇…”的一场超级并购案」唯一逗号在 6 字处，
+    右侧 6 字 < 7 → 所有合规切点失效 → 旧逻辑整句保留 32 字 ≈ 205 帧
+    > MAX_FRAMES=200，门禁硬失败。
+    """
+    from app.services.script import (
+        MAX_FRAG_CHARS, MIN_FRAG_CHARS, split_long_sentence)
+    from app.services.timing_assert import MAX_FRAMES
+    from app.services.motion import FPS
+    from app.services.script import TTS_CHARS_PER_SEC
+
+    sent = "大唐的天下，本质上是“关陇军政风投股份有限公司”的一场超级并购案"
+    assert len(sent) > MAX_FRAG_CHARS, "用例前提：该句应超过字数硬顶"
+    pieces = split_long_sentence(sent, max_chars=18)
+    assert len(pieces) > 1, "超长句被整句保留 → 单镜必然 >8s"
+    for p in pieces:
+        est_frames = len(p) / TTS_CHARS_PER_SEC * FPS
+        assert est_frames <= MAX_FRAMES, (
+            f"片段 {p!r}（{len(p)} 字 ≈ {est_frames:.0f} 帧）超过门禁上限 "
+            f"{MAX_FRAMES} 帧")
+
+
+def test_max_frag_chars_is_derived_from_gate():
+    """上限同样要同源推导，不能手写（与下限同一套常量口径）。"""
+    from app.services.script import MAX_FRAG_CHARS, TTS_CHARS_PER_SEC
+    from app.services.timing_assert import MAX_FRAMES
+    from app.services.motion import FPS
+
+    derived = int(MAX_FRAMES / FPS * TTS_CHARS_PER_SEC)
+    assert MAX_FRAG_CHARS == derived, (
+        f"MAX_FRAG_CHARS={MAX_FRAG_CHARS} != 推导值 {derived} "
+        f"(int({MAX_FRAMES}/{FPS}×{TTS_CHARS_PER_SEC}))")
+
+
 def test_split_long_sentence_never_emits_sub_gate_fragment():
     """行为层验证：切长句不得产出低于门禁时长的碎片。
 

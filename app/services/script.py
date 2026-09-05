@@ -75,6 +75,21 @@ def _derive_min_frag_chars() -> int:
 
 MIN_FRAG_CHARS = _derive_min_frag_chars()
 
+
+def _derive_max_frag_chars() -> int:
+    """由「单镜不得长于 MAX_FRAMES 帧」反推单片段字数上限。
+
+    与 MIN_FRAG_CHARS 同源推导，避免同一套常量里再出现第二个魔数。
+    当前 = int(200 / 25 × 3.9) = 31 字（≈7.9s，贴着 8s 硬顶）。
+    """
+    from app.services.motion import FPS
+    from app.services.timing_assert import MAX_FRAMES
+
+    return int(MAX_FRAMES / FPS * TTS_CHARS_PER_SEC)
+
+
+MAX_FRAG_CHARS = _derive_max_frag_chars()
+
 # 触发例（写死 6 时的实际产物）：
 #   22字句「归途上，他又一次被匈奴俘获，扣留了一年有余。」
 #   旧算法在 2 处逗号里挑最接近中点的，把「归途上，」4字前缀切成独立镜(1.2s)。
@@ -130,6 +145,17 @@ def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
         left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
         if _valid(left, right):
             return _parts(left, right)
+    # 3.5) 必须切：整句已超字数硬顶（≈ MAX_FRAMES 帧）。
+    #      ★ 两个下限打架时，「不长于上限」优先（2026-09-05）：
+    #        下限违规只是「可能」不过门禁（TTS 实际时长常因标点停顿更长，
+    #        且 merge_short 还能把碎片并回去）；上限违规是「必然」不过
+    #        —— 32 字 ÷ 3.9 ≈ 8.2s ≈ 205 帧 > MAX_FRAMES=200。
+    #        实测 MIN_FRAG_CHARS 6→7 后 lsm-15min 就有这么一句被整句保留。
+    if len(sent) > MAX_FRAG_CHARS:
+        for cut in reversed([p for p in comma_pos if p < MAX_FRAG_CHARS]):
+            left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
+            if left and right:
+                return _parts(left, right)
     # 4) 兜底：整句保留（不制造孤立标点碎片）
     return [sent]
 
