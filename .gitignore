@@ -29,6 +29,8 @@ episodes/hanwu_15min/*.mp4
 cache/
 assets/
 logs/
+# 音色试听探针产物（_voicetone 是一次性比对用，不入库）
+episodes/_voicetone/
 # cosyvoice3/probe_v35.py 是真实探针脚本（已入库，保留）；只忽略其输出目录。
 cosyvoice3/probe_out/
 

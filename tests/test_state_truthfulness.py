@@ -35,7 +35,25 @@ def test_validate_schema_detects_dangling_shot_ref():
     assert any("shot-000" in pr and "frame-999" in pr for pr in problems), problems
 
 
-def test_produce_verify_derives_true_status():
+@pytest.fixture
+def _restore_delivered_episode():
+    """produce 收尾会 save(ep) 落盘，而 hanwu-prologue 是**已交付**小集。
+
+    让测试直接改写交付数据是脏的：模型字段一变（如 D2 删 Shot 死字段），
+    跑一次测试就把交付集的 json 悄悄改掉，且 diff 看起来"像是数据自己变的"。
+    跑之前快照、跑之后还原，测试保持只读。
+    """
+    from app.config.config import ROOT
+    p = ROOT / "episodes" / "hanwu-prologue.json"
+    backup = p.read_bytes() if p.exists() else None
+    try:
+        yield
+    finally:
+        if backup is not None:
+            p.write_bytes(backup)
+
+
+def test_produce_verify_derives_true_status(_restore_delivered_episode):
     """verify 只读，应在真实产物上导出 COMPOSED（而非盲迁移）。"""
     from app.orchestrator import produce
     # hanwu-prologue 是已交付小集（有 mp4），verify-only 不重编码
