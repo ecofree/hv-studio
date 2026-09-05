@@ -19,6 +19,15 @@ async def lifespan(app: FastAPI):
         get_relay().sync_quota()
     except Exception:
         pass
+    # 安全提示：token 闸是 opt-in（未配 HV_API_TOKEN 即不校验）。直连 uvicorn
+    # 启动时没有 cli.py 那道「非回环 host 必须有 token」的硬闸，这里补一句提醒。
+    try:
+        from app.controllers.v1.auth import auth_enabled
+        if not auth_enabled():
+            print("[api] 提示：未设 HV_API_TOKEN，写/付费端点（/v1/image/test、"
+                  "/produce?stage=assets）不校验；监听非回环地址前请先配置。")
+    except Exception:
+        pass
     yield
 
 

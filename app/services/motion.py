@@ -293,7 +293,15 @@ def render(shot: Shot, fps: int = FPS) -> str:
     if grade:
         img = apply_grade(img, grade)
     iw, ih = img.size
-    dur_s = (shot.duration_ms or 3000) / 1000.0
+    # duration_ms 是 Shot 的必填 int，只有「上游没算」时才会是 0。
+    # 此前 `or 3000` 静默按 3s 渲染：出来的 mp4 长度是错的，却没有任何提示，
+    # 与 shot_builder 那个 `or 3000`（B5）是同一类「静默捏造」缺陷。
+    # 这里直接失败——错误的时长向下游传播只会更难查。
+    if not shot.duration_ms or shot.duration_ms <= 0:
+        raise ValueError(
+            f"shot {shot.id} 的 duration_ms 未设置或为 0（{shot.duration_ms}）："
+            f"无法确定运镜时长。请先完成分镜装配/时间轴重算。")
+    dur_s = shot.duration_ms / 1000.0
 
     out = Path(src_p).parent / f"{shot.id}.mp4"
     out.parent.mkdir(parents=True, exist_ok=True)

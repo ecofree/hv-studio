@@ -211,6 +211,7 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
 
     ep.shots = {}
     rows = []
+    no_audio: list[str] = []      # 缺 audio_duration_ms 的帧（B5：不再静默按 3s 兜底）
     for i, f in enumerate(frames):
         si = covered[i]
         sc = scenes[si]
@@ -223,7 +224,14 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
         motion = _build_motion(zoom, mt, INTENSITY_CYCLE[i % len(INTENSITY_CYCLE)], grade)
 
         shot_id = f"shot-{i:03d}"
-        a_dur = f.audio_duration_ms or 3000
+        # B5：此前 `f.audio_duration_ms or 3000` 静默捏造时长 —— 装配出的 shots
+        # 元数据本身是假的，而 compose 之前的任何消费方（预演、时长预估、
+        # 时序断言的早期形态）都会被它误导，且全程无一行提示。
+        # 兜底值仍保留（否则整链直接崩），但必须留下明确痕迹。
+        a_dur = f.audio_duration_ms
+        if not a_dur:
+            no_audio.append(f.id)
+            a_dur = 3000
         dur = a_dur + HEAD_MS + TAIL_MS       # 隔离组 compose 会重算为 head+a+tail
         ep.shots[shot_id] = Shot(
             id=shot_id, frame_id=f.id, index=i, type="ken_burns",
@@ -236,6 +244,13 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
         if preview_rows and (i < 4 or i % 8 == 0):
             rows.append((i, sid, f"{zoom:.2f}", grade, mt, f.text[:18]))
 
+    if no_audio:
+        print(f"[shots][告警] {len(no_audio)}/{n} 帧缺 audio_duration_ms，"
+              f"已按 3000ms 兜底装配：{no_audio[:10]}"
+              f"{' …' if len(no_audio) > 10 else ''}")
+        print("[shots][告警] 这些镜头的 duration_ms 是假的；请先跑 "
+              "`hv episode produce <ep> --stage tts` 补音频后重新装配。")
+
     if persist:
         save(ep)
 
@@ -244,6 +259,7 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
         "base_images": len(used_images),
         "reuse_ratio": round(n / len(used_images), 2),
         "fingerprint": fp,   # {} = 该分镜无指纹（老集），未做锚定校验
+        "no_audio_frames": no_audio,   # B5：缺音频的帧（消费方可据此拒绝继续）
         "images_per_base": {k: sum(1 for i in range(n)
                                    if scenes[covered[i]]["image"] == k)
                             for k in sorted(used_images)},

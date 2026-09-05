@@ -22,9 +22,13 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import re
 import subprocess
 import tempfile
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from app.models import Frame
@@ -35,6 +39,9 @@ from app.models import Frame
 ENGINE_DASHSCOPE = "cosyvoice"   # 主用：阿里云百炼 CosyVoice v3.5-flash
 ENGINE_EDGE = "edge"             # 回退：微软 edge-tts
 DEFAULT_ENGINE = ENGINE_DASHSCOPE
+# manifest 里「这帧是谁念的」不可考时用它（历史 audio 目录建档早于打标功能）。
+# 统计音色一致性时 unknown 单独计数，不冒充 cosyvoice —— 冒充就等于掩盖。
+_ENGINE_UNKNOWN = "unknown"
 
 # DashScope 用沉稳纪录片男声（声音设计 voice_prompt）
 DASHSCOPE_VOICE_PROMPT = (
@@ -120,6 +127,30 @@ def _save_manifest(base: Path, manifest: dict) -> None:
 # ---------------------------------------------------------------------------
 # DashScope CosyVoice 引擎（默认）
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# TTS 瞬时重试（整改 B2-1，审计 P0-2）
+# ---------------------------------------------------------------------------
+# 生图在 2026-09-04 就有 transient 分类 + 同渠道重试，TTS 一直没有：一次 429
+# 抖动就直接判「失败」→ 走 edge 降级 → **整片中间换个音色**。TTS 同样花钱、
+# 抖动同样常见，却被当成了致命错误。
+#
+# 判据**直接复用** image.is_transient_error（类型→状态码→requests 异常→文案指纹），
+# 不在 TTS 侧另写一份分类逻辑 —— 写两份就必然漂移，这是本项目反复踩的坑。
+_TTS_TRANSIENT_RETRY = int(os.environ.get("HV_TTS_TRANSIENT_RETRY", "2"))
+
+
+def _is_transient(e: BaseException) -> bool:
+    """TTS 侧瞬时判定。复用生图的判据链（唯一真源），只补 TTS 特有的空产物。"""
+    from app.services.image import is_transient_error
+    return is_transient_error(e)
+
+
+def _tts_backoff(attempt: int) -> float:
+    """退避 + jitter：0.5/1/2…8s 封顶。并发 workers 路同时退避时靠 jitter 错峰。"""
+    import random
+    return min(0.5 * (2 ** attempt), 8.0) * (0.7 + 0.6 * random.random())
+
+
 def _voice_shaping_defaults() -> dict:
     """
     从 config.yaml 的 profile.voice 读音色塑形默认值。
@@ -213,8 +244,8 @@ def synthesize(
     legacy_missing_manifest = not force and not (base / _MANIFEST_NAME).exists()
 
     import threading
-    from concurrent.futures import ThreadPoolExecutor
     _man_lock = threading.Lock()
+    degraded: list[str] = []      # 本次「请求 cosyvoice、实际用 edge」的帧（B2-2）
 
     def _synth_one(f: Frame) -> None:
         """单个 frame：幂等判断 + 合成 + 回填。线程独立（各 frame 各 wav 互不干扰）。"""
@@ -232,6 +263,10 @@ def synthesize(
                 f.audio_path = str(wav).replace("\\", "/")
                 if f.audio_duration_ms is None:
                     f.audio_duration_ms = _audio_duration_ms(wav)
+                # 复用：引擎沿用 manifest 记的（可能是上轮的 cosyvoice，
+                # 也可能是当时降级过的 edge）—— 这才是「本片音色是否一致」的真值。
+                with _man_lock:
+                    prev.setdefault("engine", _ENGINE_UNKNOWN)
                 return
             if prev is None:
                 # 无 manifest（旧目录）：无法判断文本是否变。向后兼容按存在复用，
@@ -246,7 +281,8 @@ def synthesize(
                 if f.audio_duration_ms is None:
                     f.audio_duration_ms = _audio_duration_ms(wav)
                 with _man_lock:
-                    manifest[f.id] = {"fp": fp, "wav": wav.name}
+                    manifest[f.id] = {"fp": fp, "wav": wav.name,
+                                      "engine": _ENGINE_UNKNOWN}
                 return
             # 文本变了（prev.fp != fp）：删旧 wav，落到下面重新合成
             print(f"  [voice] {f.id} 旁白文本已变(fp {prev.get('fp')}→{fp})，"
@@ -257,13 +293,17 @@ def synthesize(
                 pass
 
         # ---- 真正合成：cosyvoice 失败可选降级 edge ----
-        ok = False
+        # used 记录**实际**发声的引擎：降级后它是 edge，与请求的 engine 不同。
+        # 这个标记会写进 manifest，是「本片音色是否一致」的唯一证据（B2-2）。
+        ok, used = False, engine
         if engine == ENGINE_DASHSCOPE:
             ok = _try_one_cosyvoice(text, wav, voice_prompt)
             if not ok and fallback_to_edge:
-                print(f"  [voice] {f.id} cosyvoice 失败，降级 edge")
+                print(f"  [voice] {f.id} cosyvoice 失败，降级 edge "
+                      f"（音色与其余帧不同，已记入 _tts_manifest.json）")
                 _one_edge(text, wav, voice, rate, volume)
                 ok = wav.exists()
+                used = ENGINE_EDGE if ok else engine
         else:  # edge
             _one_edge(text, wav, voice, rate, volume)
             ok = wav.exists()
@@ -273,7 +313,9 @@ def synthesize(
         f.audio_path = str(wav).replace("\\", "/")
         f.audio_duration_ms = _audio_duration_ms(wav)
         with _man_lock:
-            manifest[f.id] = {"fp": fp, "wav": wav.name}
+            manifest[f.id] = {"fp": fp, "wav": wav.name, "engine": used}
+            if used != engine:
+                degraded.append(f.id)
 
     # 并发合成（workers 路）。幂等段近乎瞬时；真合成段打 DashScope/edge。
     n = max(1, min(workers, len(frames)))
@@ -287,28 +329,93 @@ def synthesize(
 
     # 收口：落 manifest。文本已删的段不残留旧指纹（manifest 只保留本次 frames 覆盖的键）。
     if not legacy_missing_manifest or force:
-        keep = {f.id: {"fp": _text_fingerprint((f.narration_text or f.text or "").strip()),
-                       "wav": f"{f.id}.wav"}
-                for f in frames if (f.narration_text or f.text or "").strip()}
+        # engine 必须跟着走：这段重建若丢掉它，「本片音色是否一致」就查无实据了。
+        keep = {}
+        for f in frames:
+            t = (f.narration_text or f.text or "").strip()
+            if not t:
+                continue
+            prev = manifest.get(f.id) or {}
+            keep[f.id] = {
+                "fp": _text_fingerprint(t),
+                "wav": f"{f.id}.wav",
+                "engine": prev.get("engine", _ENGINE_UNKNOWN),
+            }
         _save_manifest(base, keep)
     else:
         # 旧目录首次运行（无 manifest）：把「本次遇到的既有成品」指纹写回，建立基线
         _save_manifest(base, manifest)
 
+    # 音色一致性汇总（B2-2）：宁可吵，不可静默。降级进成片而无人知晓，
+    # 是那种「发出去才发现、且无法挽回」的错误。
+    if degraded:
+        print(f"  [voice][告警] 本集有 {len(degraded)} 帧因 cosyvoice 失败改用 "
+              f"edge 合成，音色与其余帧不同：{degraded[:10]}"
+              f"{' …' if len(degraded) > 10 else ''}")
+        print(f"  [voice][告警] 建议修好后对该集跑 --force 重合成；"
+              f"交付集请改用 --no-fallback 让失败直接暴露。")
+    return engine_report(base)
 
-def _try_one_cosyvoice(text: str, wav: Path, voice_prompt: str | None) -> bool:
-    """CosyVoice 整段合成并转 wav。成功 True。"""
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            tmp_mp3 = Path(tmp) / "tts.mp3"
-            _synth_cosyvoice(text, tmp_mp3, voice_prompt)
-            if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
-                return False
-            _mp3_to_wav(tmp_mp3, wav)
-        return wav.exists()
-    except Exception as e:  # noqa: BLE001
-        print(f"  [voice] cosyvoice 异常: {e}")
-        return False
+
+def engine_report(base: "Path | str") -> dict:
+    """统计音频目录里各引擎的帧数——「本片音色是否一致」的只读体检。
+
+    返回 {"total": n, "by_engine": {引擎: 帧数}, "mixed": bool,
+          "degraded": [实际非主引擎的帧 id...]}。
+    mixed=True 意味着这部片子里混了至少两种声音，成片前应处理。
+    """
+    from pathlib import Path as _P
+    b = _P(base)
+    man = _load_manifest(b)
+    by: dict[str, int] = {}
+    for _k, v in man.items():
+        if isinstance(v, dict):
+            by[v.get("engine", _ENGINE_UNKNOWN)] = \
+                by.get(v.get("engine", _ENGINE_UNKNOWN), 0) + 1
+    main = ENGINE_DASHSCOPE
+    degraded = [k for k, v in man.items()
+                if isinstance(v, dict) and v.get("engine", _ENGINE_UNKNOWN) != main]
+    return {
+        "total": len(man),
+        "by_engine": by,
+        "mixed": len([k for k in by if k != main]) > 0,
+        "degraded": sorted(degraded),
+    }
+
+
+def _try_one_cosyvoice(text: str, wav: Path, voice_prompt: str | None,
+                       retries: int | None = None) -> bool:
+    """CosyVoice 整段合成并转 wav。成功 True；瞬时故障先原地重试再判失败。
+
+    B2-1 之前：任何异常都立即 return False → 调用方走 edge 降级 → 音色突变。
+    一次网络抖动换来一部片子里换个人说话，代价与故障完全不成比例。
+    现在：瞬时（429/5xx/超时/连接重置/空产物）退避重试 ≤retries 次仍失败才判负；
+    致命错误（鉴权失败、参数非法）一次都不重试 —— 重试也必然失败，只是拖慢。
+    """
+    n = _TTS_TRANSIENT_RETRY if retries is None else max(0, int(retries))
+    last: BaseException | None = None
+    for attempt in range(n + 1):
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_mp3 = Path(tmp) / "tts.mp3"
+                _synth_cosyvoice(text, tmp_mp3, voice_prompt)
+                if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
+                    # 空产物按瞬时处理：中转偶发回 200 但 body 为空，重试通常就好
+                    raise RuntimeError("cosyvoice 返回空音频(empty body)")
+                _mp3_to_wav(tmp_mp3, wav)
+            if wav.exists():
+                return True
+            last = RuntimeError("cosyvoice 合成后未生成 wav")
+        except Exception as e:  # noqa: BLE001
+            last = e
+            if not _is_transient(e) or attempt >= n:
+                break
+            wait = _tts_backoff(attempt)
+            print(f"  [voice] cosyvoice 瞬时故障，{wait:.1f}s 后重试 "
+                  f"{attempt + 1}/{n}: {type(e).__name__}: {e}")
+            time.sleep(wait)
+    print(f"  [voice] cosyvoice 异常: {last}")
+    return False
 
 
 def _one_edge(text: str, wav: Path, voice: str, rate: str, volume: str) -> None:

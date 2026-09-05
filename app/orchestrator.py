@@ -57,8 +57,17 @@ def stage_script(ep: Episode) -> None:
     print(f"  [orchestrator] script: frames={len(ep.frames)}")
 
 
-def stage_tts(ep: Episode) -> None:
-    """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。"""
+def stage_tts(ep: Episode, fallback: bool = True) -> None:
+    """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
+
+    fallback（整改 B2-3，审计 P0-2 + 复核新发现 N2）：
+      cosyvoice 失败时是否静默降级 edge。此前本函数**根本没传**这个参数，
+      于是永远取 voice.synthesize 的默认值 True —— 而 `--no-fallback` 只存在于
+      voice 的独立 CLI 与 bin/ 脚本，**produce 这条官方生产链上无从关闭**。
+      结果：官方入口出片，cosyvoice 一抖就自动换个音色往下跑，成片无任何标记。
+      现在由 produce(tts_fallback=) 显式传入，CLI 有 --no-fallback。
+      交付集建议关掉：宁可失败重跑，也不要一部片子里有两种声音。
+    """
     from pathlib import Path
     from app.managers.episode import episode_path
     from app.services.voice import synthesize
@@ -67,7 +76,8 @@ def stage_tts(ep: Episode) -> None:
         raise RuntimeError(f"episode {ep.id} 无 frames，先跑 script stage")
     audio_dir = _episode_dir(ep.id) / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
-    synthesize(ep.frames, engine="cosyvoice", out_dir=audio_dir)
+    rep = synthesize(ep.frames, engine="cosyvoice", out_dir=audio_dir,
+                     fallback_to_edge=fallback)
     missing = [f.id for f in ep.frames
                if not (f.audio_path and Path(f.audio_path).exists())]
     if missing:
@@ -75,6 +85,14 @@ def stage_tts(ep: Episode) -> None:
     total = sum(f.audio_duration_ms or 0 for f in ep.frames)
     print(f"  [orchestrator] tts: {len(ep.frames)}/{len(ep.frames)} 落盘，"
           f"旁白 {total/1000:.1f}s")
+    # 音色一致性体检：降级帧与非 cosyvoice 帧都会在这里显形（manifest 打标的消费方）
+    if rep.get("mixed"):
+        deg = rep.get("degraded", [])
+        print(f"  [orchestrator][告警] 音频目录存在非 cosyvoice 音色的帧 "
+              f"{len(deg)}/{rep.get('total', 0)}：{deg[:10]}"
+              f"{' …' if len(deg) > 10 else ''}")
+        print(f"  [orchestrator][告警] 成片会中途换人声；建议跑 "
+              f"--stage tts --force 重合成，或用 --no-fallback 让失败暴露。")
 
 
 def _read_image_prompts(ep_id: str) -> dict:
@@ -285,7 +303,7 @@ def stage_images(ep: Episode) -> None:
     print(f"  [orchestrator] image: {len(jobs)} 张全部就绪")
 
 
-def stage_assets(ep: Episode) -> None:
+def stage_assets(ep: Episode, tts_fallback: bool = True) -> None:
     """生图 ∥ TTS 并行（两家独立厂商/配额，可真并行）。两侧都结束才返回。
 
     - 线程 A：stage_tts（DashScope）
@@ -311,7 +329,7 @@ def stage_assets(ep: Episode) -> None:
 
     tasks = []
     if has_frames:
-        tasks.append(_run_t(stage_tts, "tts"))
+        tasks.append(_run_t(lambda e: stage_tts(e, fallback=tts_fallback), "tts"))
     if has_prompts:
         tasks.append(_run_t(stage_images, "images"))
     if not tasks:
@@ -434,10 +452,12 @@ def produce(
     ep_id: str,
     stages: list[str] | None = None,
     script_md: str | None = None,
+    tts_fallback: bool = True,
 ) -> dict:
     """
     跑真实生产链（不滥用 rigid 状态枚举空推）；状态由产物真值导出。
       stages: None=全跑适用的；或 ['script','tts','compose','verify'] 子集。
+      tts_fallback: cosyvoice 失败是否静默降级 edge（B2-3）。交付集建议 False。
     返回 {ep_id, status, stages_done, verify}。
     """
     from app.managers import load, save
@@ -491,11 +511,18 @@ def produce(
             runnable.append(st)
         stages = runnable
 
+    # tts/assets 需要透传 tts_fallback；STAGE_FN 是模块级映射，不在原地改它
+    # （API 与 CLI 共用），只在本轮调用上覆盖一份。
+    stage_fn = dict(STAGE_FN)
+    if not tts_fallback:
+        stage_fn["tts"] = lambda ep: stage_tts(ep, fallback=False)
+        stage_fn["assets"] = lambda ep: stage_assets(ep, tts_fallback=False)
+
     done = []
     for st in stages:
-        if st not in STAGE_FN:
+        if st not in stage_fn:
             raise RuntimeError(f"未知 stage: {st}（可选 {list(STAGE_FN)}）")
-        STAGE_FN[st](ep)            # 真实干活；失败即抛 → 不标记完成
+        stage_fn[st](ep)            # 真实干活；失败即抛 → 不标记完成
         done.append(st)
         save(ep)                    # 每 stage 落盘，断点续跑安全
         # 关键：compose_episode 内部按真实音频【重载重算】时间轴并落盘，

@@ -4,9 +4,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from app.controllers.v1.auth import require_token
 from app.models import ImageGenRequest, predict_actual_dims
 from app.services.image import get_image, save_b64_image
 
@@ -20,7 +21,8 @@ class TestRequest(BaseModel):
 
 
 @router.post("/test")
-def test(req: TestRequest):
+def test(req: TestRequest, _tok=Depends(require_token)):
+    """真实付费生图（单次调用即扣配额）——故挂 token 闸（见 auth.require_token）。"""
     img = get_image()
     payload = ImageGenRequest(
         model="gpt-image-2", prompt=req.prompt,

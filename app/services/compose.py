@@ -40,6 +40,9 @@ from app.services.upscale import upscale
 BASE = ROOT / "episodes"
 HEAD_MS = 100
 TAIL_MS = 150
+# 旁白 wav 采样率。与 voice._mp3_to_wav 的落盘口径（16k mono PCM）必须一致，
+# 两边各写一份 → 由 tests 里的漂移守卫锁住（见 test_constants_single_source）。
+NARRATION_SR = 16000
 
 
 def expected_frames(timeline_slice) -> int:
@@ -110,6 +113,25 @@ def _load_font(size: int) -> ImageFont.FreeTypeFont:
         except Exception:
             pass  # 非可变字体 / 无该轴 → 用默认
     return f
+
+
+def check_font_available(size: int | None = None) -> None:
+    """字幕字体可用性自检：字体缺失/路径失效 → 立即抛错，不等到烧字幕时。
+
+    返回 None 表示可用。抛出的 RuntimeError 带排查指引（字体名 + 当前路径 +
+    怎么改），因为换台机器就撞上、且报错点在几十分钟渲染之后，极难定位。
+    """
+    from PIL import ImageFont as _IF
+    try:
+        _load_font(size or FONT_SIZE)
+    except Exception as e:  # noqa: BLE001 —— OSError/IOError 都指向「字体不可用」
+        raise RuntimeError(
+            f"字幕字体不可用：{FONT_PATH}\n"
+            f"  原因：{type(e).__name__}: {e}\n"
+            f"  处理：在本机安装思源宋体（Noto Serif SC），或把 compose.FONT_PATH "
+            f"改为本机存在的中文字体（如 C:/Windows/Fonts/msyh.ttc）。\n"
+            f"  提示：换机/换盘后 C:/Windows/Fonts 下的字体不一定齐，"
+            f"此自检就是为这个场景加的。") from e
 
 
 _FONT_CACHE: dict[int, ImageFont.FreeTypeFont] = {}
@@ -560,6 +582,11 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     build.mkdir(parents=True, exist_ok=True)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # 字幕字体自检（整改 B4）：字体是机器特定的绝对路径，换机/换盘/系统精简版
+    # 都可能没有。此前只在「逐帧烧字幕」时才抛 —— 那时可能已经跑了几十分钟的
+    # 渲染与编码，失败成本极高。这里在合成入口先试载一次，把晚失败变早失败。
+    check_font_available()
+
     shots = sorted(ep.shots.values(), key=lambda s: s.index)
     frames = {f.id: f for f in ep.frames}
 
@@ -608,16 +635,28 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
             assert_timing_or_raise(ep)   # 重算后：失败即抛 TimingError，不出半成品
 
     # ---------- 2) 拼旁白 ----------
-    sr, chunks = 16000, []
+    # 采样率必须逐帧校验（整改 B3）：此前 `sr` 被循环里最后一次 _read_wav 的返回
+    # 值覆盖，且**静音段长度也用这个被覆盖的 sr 去算**。若混入一个不同采样率的
+    # wav（手动补录、别的引擎导出），拼接处的静音时长会按错误速率算，音频整体
+    # 变速/变调，而代码一行不报——靠「voice 统一转 16k」的约定才一直没出事。
+    # 约定要变成断言：出错即停，而不是静默产出一部变了声的片子。
+    chunks = []
     for sh, s0, s1 in timeline:
         f = frames[sh.frame_id]
         data, sr = _read_wav(Path(f.audio_path))
-        chunks.append(np.zeros(int(sr * sh.audio_start_ms / 1000), dtype=np.int16))
+        if sr != NARRATION_SR:
+            raise RuntimeError(
+                f"{sh.frame_id} 的音频采样率 {sr}Hz ≠ 约定值 {NARRATION_SR}Hz"
+                f"（{f.audio_path}）：混采样率拼接会导致成片变速变调。"
+                f"请用 voice 的转码口径重新导出该段 wav。")
+        chunks.append(np.zeros(int(NARRATION_SR * sh.audio_start_ms / 1000),
+                               dtype=np.int16))
         chunks.append(data)
-        chunks.append(np.zeros(int(sr * tail_of[sh.id] / 1000), dtype=np.int16))
+        chunks.append(np.zeros(int(NARRATION_SR * tail_of[sh.id] / 1000),
+                               dtype=np.int16))
     nwav = build / "narration.wav"
     with wave.open(str(nwav), "wb") as w:
-        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(NARRATION_SR)
         w.writeframes(np.concatenate(chunks).tobytes())
 
     # ---------- 2.5) 混入 BGM（Task #29；assets/bgm/{profile}.mp3 存在才生效） ----------

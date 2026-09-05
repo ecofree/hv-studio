@@ -53,7 +53,11 @@ def cmd_episode(args):
         # P0-3：真实生产链（script→tts→compose→verify），状态由产物推进。
         from app.orchestrator import produce
         import json
-        res = produce(args.episode_id, stages=args.stage or None)
+        # --no-fallback（B2-3）：cosyvoice 失败不再静默降级 edge。
+        # 默认降级是为了「跑得完」，但代价是一部片子里混两种声音且无声无息；
+        # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
+        res = produce(args.episode_id, stages=args.stage or None,
+                      tts_fallback=not args.no_fallback)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "audit-wav":
         # 孤儿 wav 清理（opt-in）：默认只列，--apply 才删。
@@ -202,7 +206,24 @@ def cmd_config(_args):
 
 
 def cmd_api(args):
+    """启动 FastAPI。非回环 host 且未配 HV_API_TOKEN → 拒绝启动。
+
+    这是 B1 token 闸的另一半：`--host 0.0.0.0` 会把含付费生图的端点暴露到网卡，
+    而 token 是 opt-in（不配就不校验）。两者同时发生时等于裸奔，所以在启动侧
+    硬拦——「忘了配 token」是最可能发生的一种失误，不能靠人记得。
+    """
     import uvicorn
+    from app.controllers.v1.auth import auth_enabled, is_loopback_host
+
+    if not is_loopback_host(args.host) and not auth_enabled():
+        raise SystemExit(
+            f"error: --host {args.host} 会暴露含付费端点（/v1/image/test、"
+            f"/produce?stage=assets），但未设置环境变量 HV_API_TOKEN。\n"
+            f"  要么改回默认 --host 127.0.0.1；\n"
+            f"  要么设置 HV_API_TOKEN 后重启（客户端需带 X-HV-Token 头）。")
+    if not auth_enabled():
+        print("[api] 提示：未设 HV_API_TOKEN，写/付费端点不校验"
+              "（仅监听本机时无妨）。")
     uvicorn.run("app.main:app", host=args.host, port=args.port, reload=args.reload)
 
 
@@ -238,6 +259,9 @@ def main():
                    help="[run] 指定阶段，可多次：--stage image --stage motion")
     p.add_argument("--force", action="store_true",
                    help="[run] 强制重做（无视幂等）")
+    p.add_argument("--no-fallback", action="store_true",
+                   help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
+                        "音色；交付集建议加）")
     p.add_argument("--compose", action="store_true",
                    help="[run] 单镜改图后重合成整片 + 时序断言")
     p.add_argument("--plan", default=None,
