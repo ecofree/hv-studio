@@ -12,6 +12,7 @@ Episode 状态机持久化管理器。
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from collections.abc import Callable
 from datetime import datetime
@@ -23,6 +24,10 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 EPISODES_DIR = ROOT / "episodes"
 STATE_DIR = ROOT / "state"
 CHECKPOINT_DIR = STATE_DIR / "checkpoints"
+
+# D6：checkpoint 无上限增长（每 stage 一份、文件名带微秒时间戳，永不复写）。
+# 单集只保留最近 KEEP 份；设 HV_CHECKPOINT_KEEP=0 表示不轮转（保留全部）。
+CHECKPOINT_KEEP = int(os.environ.get("HV_CHECKPOINT_KEEP", "20"))
 
 
 # ---------------------------------------------------------------------------
@@ -183,12 +188,39 @@ def _normalize_asset_paths(ep: Episode) -> None:
             f.audio_path = remap(f.audio_path)
 
 
-def checkpoint(ep: Episode, label: str) -> Path:
-    """保存当前状态到 checkpoint 文件。"""
+def rotate_checkpoints(episode_id: str, keep: int | None = None) -> list[Path]:
+    """只保留该集最近 keep 个 checkpoint，返回被删掉的那些。
+
+    文件名以 %Y%m%d_%H%M%S_%f 开头，字典序 == 时间序，直接排序即可。
+    keep<=0 表示不轮转（保留全部）。
+    """
+    k = CHECKPOINT_KEEP if keep is None else keep
+    if k <= 0:
+        return []
+    d = CHECKPOINT_DIR / episode_id
+    if not d.exists():
+        return []
+    files = sorted(d.glob("*.json"))
+    if len(files) <= k:
+        return []
+    stale = files[: len(files) - k]
+    removed = []
+    for p in stale:
+        try:
+            p.unlink()
+            removed.append(p)
+        except OSError:
+            pass        # 删不掉就算了，轮转是卫生问题，不该让生产失败
+    return removed
+
+
+def checkpoint(ep: Episode, label: str, keep: int | None = None) -> Path:
+    """保存当前状态到 checkpoint 文件（并顺手轮转掉旧的）。"""
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
     cp = checkpoint_path(ep.id, label)
     cp.parent.mkdir(parents=True, exist_ok=True)
     cp.write_text(ep.model_dump_json(indent=2, ensure_ascii=False), encoding="utf-8")
+    rotate_checkpoints(ep.id, keep)
     return cp
 
 
