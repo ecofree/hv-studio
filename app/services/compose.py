@@ -268,6 +268,37 @@ def _wait_proc(proc, timeout_sec: float, what: str):
 
 _NVENC_CACHE: dict[str, bool] = {}
 
+# 运行期降级闸门：硬件编码器（NVENC 等）在真实大分辨率编码时资源失败过一次后
+# 置 True，后续所有段直接走软件编码，不再重复撞同一个 OOM。
+#
+# 为什么需要运行期降级，光靠 _probe_nvenc 不够：
+#   探测只用 320x568 的 0.05s 素材，NVENC 会话/显存占用极小，很容易通过；
+#   真实编码是 1080x1920 逐帧喂，显存与 NVENC surface 占用量级完全不同。
+#   2026-09-05 实测：探测通过、真跑崩 `CreateInputBuffer failed: out of memory`，
+#   而此处原本直接 raise → 整片合成失败（测试里 4 个 compose 用例全红）。
+_HWENC_DISABLED = False
+
+# 硬件编码器「资源类」失败特征（区别于参数错误：参数错降级也没用）
+_HWENC_FAIL_SIG = (
+    "createinputbuffer failed",
+    "openencodesessionex failed",
+    "out of memory",
+    "cannot allocate memory",
+    "no capable devices found",
+    "device does not support",
+    "driver does not support",
+    "generic error in an external library",
+)
+
+
+def _is_hw_vcodec(vcodec: list[str]) -> bool:
+    """vcodec 参数是否是硬件编码器（nvenc/qsv/amf/vaapi）。"""
+    try:
+        codec = vcodec[vcodec.index("-c:v") + 1]
+    except (ValueError, IndexError):
+        return False
+    return any(k in codec for k in ("nvenc", "qsv", "amf", "vaapi", "videotoolbox"))
+
 
 def _probe_nvenc(encoder: str = "h264_nvenc") -> bool:
     """探测当前环境 ffmpeg 是否可用指定硬件编码器（缓存按 encoder 名）。
@@ -295,9 +326,15 @@ def _probe_nvenc(encoder: str = "h264_nvenc") -> bool:
 
 
 def _build_vcodec(use_nvenc: bool) -> list[str]:
-    """构造视频编码参数（NVENC High/4.1 或 libx264 退路）。config 驱动。"""
+    """构造视频编码参数（NVENC High/4.1 或 libx264 退路）。config 驱动。
+
+    运行期若已因硬件编码器资源失败降级过（_HWENC_DISABLED），无论入参如何
+    都走软件编码——避免后续每段都重试一遍 NVENC 再失败（2× 耗时）。
+    """
     from app.config.config import get_settings as _gs
     cfg = _gs().compose
+    if _HWENC_DISABLED:
+        use_nvenc = False
     if use_nvenc and cfg.video_encoder == "h264_nvenc":
         return ["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1",
                 "-preset", cfg.preset, "-cq", str(cfg.cq)]
@@ -311,7 +348,7 @@ def _build_vcodec(use_nvenc: bool) -> list[str]:
             "-preset", _x264_preset, "-crf", str(_crf)]
 
 
-def _encode_video_span(
+def _encode_video_span_once(
     timeline_slice,
     upscaled: dict[str, Path],
     out_mp4: str | Path,
@@ -397,6 +434,48 @@ def _encode_video_span(
             except Exception:
                 pass
     return n_total
+
+
+def _encode_video_span(
+    timeline_slice,
+    upscaled: dict[str, Path],
+    out_mp4: str | Path,
+    vcodec: list[str],
+    timeout_sec: float = 0,
+    plan_frames=None,
+) -> int:
+    """_encode_video_span_once + 硬件编码器失败自动降级。
+
+    硬件编码器（NVENC）在真实大分辨率编码时可能因显存/NVENC 会话耗尽而崩，
+    而 _probe_nvenc 的小素材探测通不过不了这个场景。这里捕获「资源类」失败
+    并降级到 libx264 重试一次，避免整片合成失败。
+
+    只降级资源类失败；参数类错误（如非法 preset）降级也必然失败，直接抛。
+    """
+    global _HWENC_DISABLED
+    # 之前已降级过，但调用方手里还是旧的硬件 vcodec（它在循环外只算了一次）
+    if _HWENC_DISABLED and _is_hw_vcodec(vcodec):
+        vcodec = _build_vcodec(False)
+    try:
+        return _encode_video_span_once(timeline_slice, upscaled, out_mp4,
+                                       vcodec, timeout_sec, plan_frames)
+    except RuntimeError as e:
+        if not _is_hw_vcodec(vcodec) or _HWENC_DISABLED:
+            raise
+        msg = str(e)
+        if not any(sig in msg.lower() for sig in _HWENC_FAIL_SIG):
+            raise
+        _HWENC_DISABLED = True
+        sw = _build_vcodec(False)
+        # 已写好的段不会重编：本片会是「前段硬件 + 后段软件」混合。两者同为
+        # H.264 High/4.1，concat -c copy 可接受；相比整片失败这是明确更优解。
+        print(f"  [compose] 硬件编码器资源失败，本片后续段降级 {sw[1]}："
+              f"{msg.splitlines()[0][:110]}\n"
+              f"            注意：此前已写好的段保留硬件编码（不重编），成片为混合编码，"
+              f"需重跑以获得统一编码器时请先清理 build/segments/。")
+        Path(out_mp4).unlink(missing_ok=True)
+        return _encode_video_span_once(timeline_slice, upscaled, out_mp4,
+                                       sw, timeout_sec, plan_frames)
 
 
 def _probe_segment_frames(p: Path) -> int:
