@@ -865,7 +865,6 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
             _encode_video_span(timeline, upscaled, vid, vcodec, _timeout,
                                plan_frames=plan_frames)
         _mux_full_audio(vid, final)
-        n_actual = n_total_all
     else:
         # 长片：按镜头边界切段，逐段编码（可断点续跑），concat copy + 一次混音
         seg_dir = build / "segments"
@@ -898,7 +897,18 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         _concat_segments(seg_paths, final)
         # 一次 mux 全片音轨（BGM 已合进 narration，此步只加音轨，不按段 fade）
         _mux_full_audio(final, final)
-        n_actual = n_total_all
+
+    # 成片已写出：读**真实**帧数，而不是预期值。
+    #   此前 `n_actual = n_total_all` 把「打算编多少帧」当成「实际编了多少帧」
+    #   打印出来，排错时会被误导；且 assert_timing_or_raise 合成后不传
+    #   video_total_frames，第 5 项断言只在 verify 阶段跑 —— 直通 compose
+    #   的出片帧数漂移 0 拦截（F 批：让漂移在合成时就炸，而不是等 verify）。
+    n_actual = _probe_segment_frames(final)
+    if n_actual <= 0:
+        raise RuntimeError(
+            f"成片读不出帧数（{final}）——文件可能损坏或未完整写出。"
+            f"清理 build/ 与 out/ 后重跑 compose")
+    assert_timing_or_raise(ep, video_total_frames=n_actual)
 
     save(ep)
     print(f"成片: {final}  {final.stat().st_size/1024/1024:.1f}MB  "

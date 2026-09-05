@@ -288,7 +288,11 @@ def render(shot: Shot, fps: int = FPS) -> str:
     src_p = upscale(shot.image_path)
     shot.upscaled_path = str(src_p).replace("\\", "/")
 
-    img = Image.open(src_p).convert("RGB")
+    # F 批（2026-09-05）：原为 `Image.open(...).convert("RGB")` —— 从不关闭底层 fd，
+    # 一个成片有多少镜就漏多少个句柄（compose 那处已在 C5 修，这里漏了）。
+    # convert() 返回的是独立副本，with 退出后 img 仍可用。
+    with Image.open(src_p) as _src:
+        img = _src.convert("RGB")
     grade = getattr(shot.motion, "grade", None) if shot.motion else None
     if grade:
         img = apply_grade(img, grade)
@@ -317,8 +321,20 @@ def render(shot: Shot, fps: int = FPS) -> str:
         "-pix_fmt", "yuv420p", "-movflags", "+faststart",
         str(out),
     ]
+    # 资源收口（F 批）：与 compose._encode_video_span_once 同款三件事，上一轮
+    # C5 只修了 compose，这里原封不动——长片逐镜累积上百个 fd，且 wait() 无超时
+    # 时 ffmpeg 卡死会永久挂起。
+    # 延迟 import：compose 也 import 本模块，顶层 import 会成环。
+    from app.services.compose import _read_stderr, _wait_proc
+    try:
+        from app.config.config import get_settings as _gs
+        _timeout = getattr(_gs().compose, "timeout_sec", 0) or 0
+    except Exception:
+        _timeout = 0
+
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    written = 0
     try:
         for (x0, y0, x1, y1) in boxes:
             cw, ch = x1 - x0, y1 - y0
@@ -327,13 +343,25 @@ def render(shot: Shot, fps: int = FPS) -> str:
             else:
                 frame = img.crop((x0, y0, x1, y1)).resize((W, H), Image.LANCZOS)
             proc.stdin.write(frame.tobytes())
+            written += 1
         proc.stdin.close()
     except BrokenPipeError:
-        pass
-    err = proc.stderr.read().decode("utf-8", "ignore") if proc.stderr else ""
-    rc = proc.wait()
+        # ffmpeg 提前退出。此时 rc 仍可能是 0，不能只信 rc——必须核
+        # 「已写帧数 vs 预期」，否则静默产出短片（compose.py 已这么做，这里漏了）。
+        try:
+            proc.stdin.close()
+        except Exception:
+            pass
+
+    err = _read_stderr(proc)
+    rc = _wait_proc(proc, _timeout, f"motion {shot.id}")
     if rc != 0:
         raise RuntimeError(f"ffmpeg 编码失败: {err[-1200:]}")
+    if written != len(boxes):
+        raise RuntimeError(
+            f"shot {shot.id} 运镜帧未写完整：已写 {written}/{len(boxes)} 帧"
+            f"（ffmpeg 提前退出，BrokenPipe）。stderr: {err[-800:]}"
+            f"清理 build/ 后重试")
 
     if not out.exists() or out.stat().st_size < 1024:
         raise RuntimeError(f"输出异常: {out} ({out.stat().st_size if out.exists() else 0}B)\n{err[-600:]}")
