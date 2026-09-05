@@ -26,7 +26,7 @@ from typing import Optional
 
 import requests
 
-from app.config.config import ROOT
+from app.config.config import ROOT, env_get
 
 # ---------------------------------------------------------------------------
 # 常量 / 通道配置
@@ -51,19 +51,13 @@ KNOWN_VOICES = [
 # 工具
 # ---------------------------------------------------------------------------
 def _load_env_key() -> tuple[str, str]:
-    """从项目 .env 读 V-API key + base_url。返回 (base_url, api_key)。"""
-    # 项目里 .env 用 key=value 平铺；也兜底读真实环境变量
-    env_file = ROOT / ".env"
-    kv: dict[str, str] = {}
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            kv[k.strip()] = v.strip()
-    api_key = kv.get(ENV_KEY_NAME) or os.environ.get(ENV_KEY_NAME, "")
-    base_url = kv.get("cosyvoice_API_BASE") or os.environ.get("cosyvoice_API_BASE", DEFAULT_BASE_URL)
+    """读 V-API key + base_url。返回 (base_url, api_key)。
+
+    C4：改走 config.env_get（.env 优先、真实环境变量兜底），
+    不再自己抄一份 .env 解析（原实现不去引号，与 config 侧语义不等价）。
+    """
+    api_key = env_get(ENV_KEY_NAME)
+    base_url = env_get("cosyvoice_API_BASE", DEFAULT_BASE_URL)
     if not api_key:
         raise RuntimeError(
             f"[cosyvoice] 未找到 {ENV_KEY_NAME} 令牌，请在 D:\\hv\\.env 补："
@@ -499,23 +493,13 @@ class DashScopeCosyVoiceSynthesizer:
 # ---------------------------------------------------------------------------
 # DashScope 通道辅助
 # ---------------------------------------------------------------------------
-def _load_env() -> dict[str, str]:
-    """读 D:\\hv\\.env 到 dict（跳过注释与空行）。"""
-    env_file = ROOT / ".env"
-    kv: dict[str, str] = {}
-    if env_file.exists():
-        for line in env_file.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            kv[k.strip()] = v.strip()
-    return kv
-
-
 def _env_get(name: str) -> str:
-    """读 .env 或真实环境变量里的 {name}。"""
-    return _load_env().get(name) or os.environ.get(name, "")
+    """读 {name}（.env 优先，真实环境变量兜底）。
+
+    C4：委托给 config.env_get。原先这里是第四份 .env 解析，且**每次调用都重读
+    一遍文件**（DashScope 通道初始化会连调数次）；现在统一走带 mtime 缓存的那份。
+    """
+    return env_get(name)
 
 
 def _dashscope_key() -> str:

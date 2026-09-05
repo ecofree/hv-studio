@@ -22,22 +22,53 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT = Path(__file__).resolve().parent.parent.parent  # D:\hv
 APP_DIR = ROOT / "app"
 CONFIG_DIR = APP_DIR / "config"
+ENV_PATH = ROOT / ".env"
 
 
 # ---------------------------------------------------------------------------
-# 原始 .env 解析（不依赖 python-dotenv）
+# .env 解析 —— 全项目唯一入口（C4 收敛）
 # ---------------------------------------------------------------------------
-def load_env(path: Path) -> dict[str, str]:
+# 收敛前项目里有 4 份互相不等价的 .env 读取：
+#   1. 本文件的 load_env()            （去引号，只读 .env）
+#   2. SettingsConfigDict(env_file=)  （pydantic-settings 读同一份 .env）
+#   3. services/cosyvoice.py:_load_env_key()（不去引号，.env 优先 + os.environ 兜底）
+#   4. services/cosyvoice.py:_load_env()    （同上，且每次调用都重读一遍文件）
+# 差异曾是隐性坑：同一份 .env，config 侧拿到去引号的值、cosyvoice 侧拿到带引号的值。
+# 现在统一为：解析只有本函数一份；取值一律走 env_get()（.env 优先，环境变量兜底）。
+#
+# 缓存按 (mtime, size) 失效 —— 改了 .env 自动重读，不需要手工清缓存。
+_ENV_CACHE: dict[str, tuple[tuple[int, int], dict[str, str]]] = {}
+
+
+def load_env(path: Path | str | None = None) -> dict[str, str]:
+    """解析 .env → dict。默认读项目根的 .env。"""
+    p = Path(path) if path is not None else ENV_PATH
+    try:
+        st = p.stat()
+        stamp = (int(st.st_mtime_ns), st.st_size)
+    except OSError:            # 文件不存在（.env 未纳入 git，允许缺失）
+        return {}
+    hit = _ENV_CACHE.get(str(p))
+    if hit is not None and hit[0] == stamp:
+        return dict(hit[1])    # 返回副本，防调用方改脏缓存
+
     env: dict[str, str] = {}
-    if not path.exists():
-        return env
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8").splitlines():
         s = line.strip()
         if not s or s.startswith("#") or "=" not in s:
             continue
         k, v = s.split("=", 1)
         env[k.strip()] = v.strip().strip('"').strip("'")
-    return env
+    _ENV_CACHE[str(p)] = (stamp, env)
+    return dict(env)
+
+
+def env_get(name: str, default: str = "", path: Path | str | None = None) -> str:
+    """取值：.env 优先，真实环境变量兜底（保持 cosyvoice 侧原有语义）。"""
+    v = load_env(path).get(name)
+    if v:
+        return v
+    return os.environ.get(name, default)
 
 
 # ---------------------------------------------------------------------------
@@ -303,11 +334,12 @@ class Settings(BaseSettings):
     总配置。从 .env 读密钥，从 config.yaml 读结构。
     渠道池在 init 时通过 discover_channels() 动态构建。
     """
-    model_config = SettingsConfigDict(
-        env_file=str(ROOT / ".env"),
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+    # C4：不再让 pydantic 去读 .env。Settings 的 8 个 env 字段在 load() 里
+    # 全部由显式 kwargs 传入，**init kwargs 优先级高于 env_file / 环境变量**，
+    # 所以这里的 env_file 从来就是死读取——它唯一的作用是让人以为改 .env 会
+    # 同时影响两条路径，而实际上渠道池是另一份 load_env() 算出来的。
+    # 收敛后：.env 只有 load_env() 一个读者，env_get() 一个取值口。
+    model_config = SettingsConfigDict(extra="ignore")
 
     # ---- 来自 .env ----
     image_model: str = "gpt-image-2"
@@ -339,7 +371,7 @@ class Settings(BaseSettings):
 
     @classmethod
     def load(cls) -> "Settings":
-        env = load_env(ROOT / ".env")
+        env = load_env(ENV_PATH)
         raw = yaml.safe_load((CONFIG_DIR / "config.yaml").read_text(encoding="utf-8"))
 
         # .env 字段（用 alias-style 取值，兼容 Pydantic 的 env 命名转换）
