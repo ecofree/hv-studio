@@ -301,9 +301,14 @@ def _build_vcodec(use_nvenc: bool) -> list[str]:
     if use_nvenc and cfg.video_encoder == "h264_nvenc":
         return ["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1",
                 "-preset", cfg.preset, "-cq", str(cfg.cq)]
-    _crf = cfg.fallbacks[0].get("crf", 20) if cfg.fallbacks else 20
+    # 退路 preset/crf 必须读 config.fallbacks[0] 自己声明的值，绝不能用顶层
+    # cfg.preset（那是 h264_nvenc 的 p4，libx264 无此 preset → 无 NVENC 机器
+    # 走退路时 ffmpeg 直接报错失败）。config 已配 medium/veryfast，此处曾漏取。
+    _fb = cfg.fallbacks[0] if cfg.fallbacks else {}
+    _x264_preset = _fb.get("preset") or "medium"
+    _crf = _fb.get("crf", 20)
     return ["-c:v", "libx264", "-profile:v", "high", "-level", "4.1",
-            "-preset", cfg.preset, "-crf", str(_crf)]
+            "-preset", _x264_preset, "-crf", str(_crf)]
 
 
 def _encode_video_span(
@@ -588,13 +593,19 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     n_total_all = expected_frames(timeline)
 
     def _mux_full_audio(video_src: Path, out_path: Path) -> None:
-        """把无音轨视频 + 全片音轨一次 mux 成最终 mp4（+faststart 在此加）。"""
+        """把无音轨视频 + 全片音轨一次 mux 成最终 mp4（+faststart 在此加）。
+
+        音频必须按 config.compose 编码（aac/192k），绝不能 `-c copy` 直拷 wav：
+        pcm_s16le 装进 mp4 后大量播放器无声（2026-09-05 lsm-15min 实测：
+        码流有 pcm 音轨、波形正常，但播放端静音）。视频流仍 copy（零重编）。
+        """
         tmp = out_path.with_suffix(".tmp")
         mux = [
             "ffmpeg", "-y", "-v", "error",
             "-i", str(video_src), "-i", str(audio_input),
             "-map", "0:v:0", "-map", "1:a:0",
-            "-c", "copy",
+            "-c:v", "copy",
+            "-c:a", _ac, "-b:a", _ab,
             # 不用 -shortest：旁白与视频帧数由 timeline 精确对齐（见历史注释），
             # -shortest 会在低内存下缓冲波动时提前截断成片。
             "-movflags", "+faststart",

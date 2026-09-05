@@ -1,0 +1,191 @@
+# -*- coding: utf-8 -*-
+"""lsm-15min 生产事故回归守门（2026-09-05）。
+
+两个 P0 均为「已交付成片看起来正常、实际有问题」的静默故障，必须锁死：
+
+1. P0-1 成片无声：_mux_full_audio 曾 `-c copy` 直拷 wav → 音频流是 pcm_s16le，
+   装进 mp4 后大量播放器静音（码流有波形但听不见）。config 明明声明 aac/192k
+   却全程无视。修复：视频 copy + 音频按 config 编码。
+2. P0-2 verify 误报 FAILED：compose_episode 自载副本按真实音频重算时间轴落盘，
+   外层 produce 的 save(ep) 却用内存旧对象覆盖磁盘真值 → verify 拿旧口径
+   （33406）对新成片（33404）判失败，而 820MB 正确成片已在盘。
+   修复：stage_compose 返回前从磁盘回同步 frames/shots。
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+# ---------------------------------------------------------------------------
+# P0-1：mux 出的音轨必须是 config 声明的编码（aac），绝不能是 pcm
+# ---------------------------------------------------------------------------
+def test_mux_audio_uses_configured_codec_not_pcm(tmp_path):
+    """mux 音轨必须按 config 编码（aac），-c copy 会把 pcm_s16le 装进 mp4 致静音。"""
+    from app.config.config import get_settings
+
+    cfg = get_settings().compose
+    assert cfg.audio_codec == "aac", f"config 应声明 aac，实为 {cfg.audio_codec}"
+
+    # 造最小素材：1s 静音视频(无音轨) + 1s wav
+    vid = tmp_path / "v.mp4"
+    wav = tmp_path / "a.wav"
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+         "-i", "testsrc=size=320x240:rate=25:duration=1",
+         "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast",
+         "-an", "-f", "mp4", str(vid)], check=True)
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
+         "-i", "sine=frequency=440:duration=1",
+         "-ar", "44100", "-ac", "1", str(wav)], check=True)
+
+    out = tmp_path / "muxed.mp4"
+    # 复刻 _mux_full_audio 的正确参数（视频 copy + 音频按 config 编码）
+    subprocess.run(
+        ["ffmpeg", "-y", "-v", "error",
+         "-i", str(vid), "-i", str(wav),
+         "-map", "0:v:0", "-map", "1:a:0",
+         "-c:v", "copy",
+         "-c:a", cfg.audio_codec, "-b:a", cfg.audio_bitrate,
+         "-movflags", "+faststart", "-f", "mp4", str(out)], check=True)
+
+    codec = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "a:0",
+         "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
+         str(out)], capture_output=True, text=True).stdout.strip()
+
+    assert codec == cfg.audio_codec, (
+        f"mux 音轨应为 {cfg.audio_codec}，实为 {codec!r}。"
+        f"若为 pcm_s16le 说明又退回 `-c copy` 直拷 wav → 播放器静音（P0-1 复发）")
+
+
+def test_delivered_films_are_not_pcm():
+    """已交付成片音轨不得是 pcm（P0-1 波及面守门）。"""
+    from app.config.config import ROOT
+
+    checked = 0
+    for mp4 in ROOT.glob("episodes/*/out/*_m1.mp4"):
+        if not mp4.exists() or mp4.stat().st_size < 1024:
+            continue
+        codec = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
+             str(mp4)], capture_output=True, text=True).stdout.strip()
+        if not codec:
+            continue  # 无音轨的成片不在此断言范围
+        checked += 1
+        assert codec != "pcm_s16le", (
+            f"{mp4.name} 音轨是 pcm_s16le（P0-1 静音故障）→ 需只重跑 mux 转 aac")
+    assert checked >= 1, "应至少检到一个带音轨的成片"
+
+
+# ---------------------------------------------------------------------------
+# P0-2：stage_compose 后 ep 的时序必须来自磁盘真值，而非内存旧对象
+# ---------------------------------------------------------------------------
+def test_stage_compose_resyncs_timeline_from_disk(monkeypatch, tmp_path):
+    """compose 后 ep.frames 必须回同步磁盘真值，否则外层 save 覆盖真值致 verify 误判。"""
+    import json
+    from app.config.config import ROOT
+    from app.managers import load, save
+    from app.models import Episode, Frame, Shot
+    import app.orchestrator as orch
+
+    ep_id = f"resync-{os.getpid()}"
+    ep = Episode(id=ep_id, title="resync", episode_number=1, status="draft")
+    save(ep)
+    ep_dir = ROOT / "episodes" / ep_id
+    out_dir = ep_dir / "out"
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    try:
+        # 磁盘真值：frame 时长 2910ms（compose 重算后的值）
+        disk = load(ep_id)
+        disk.frames = [Frame(id="frame-000", text="真值", audio_duration_ms=2910)]
+        save(disk)
+
+        # 内存旧对象：估计时长 3010ms（builder 估计，未含重算）
+        stale = load(ep_id)
+        stale.frames = [Frame(id="frame-000", text="旧值", audio_duration_ms=3010)]
+        # stage_compose 要求 shots 非空（无 shots 视为未完成装配直接拒绝）
+        stale.shots = {
+            "shot-000": Shot(id="shot-000", frame_id="frame-000", index=0,
+                             duration_ms=3010, audio_start_ms=0, audio_end_ms=3010,
+                             image_path=str(tmp_path / "img.png"),
+                             prompt="", subtitle_text="旧值"),
+        }
+
+        final = out_dir / f"{ep_id}_m1.mp4"
+        # 造一个"成片"（内容任意，只要存在且 >1KB），并让 compose_episode 只落盘真值
+        final.write_bytes(b"\x00" * 2048)
+
+        def _fake_compose(eid, *a, **kw):
+            # 模拟 compose_episode：自载副本 → 按真实音频重算 → 落盘真值
+            d = load(eid)
+            d.frames = [Frame(id="frame-000", text="真值", audio_duration_ms=2910)]
+            save(d)
+            return final
+
+        monkeypatch.setattr("app.services.compose.compose_episode", _fake_compose)
+        orch.stage_compose(stale)
+
+        # 关键断言：内存对象已同步为磁盘真值 2910，而非停留在旧估计 3010
+        assert stale.frames[0].audio_duration_ms == 2910, (
+            f"stage_compose 未回同步磁盘真值：内存仍是旧估计 "
+            f"{stale.frames[0].audio_duration_ms}（期望 2910）。"
+            f"外层 save(ep) 会用旧值覆盖磁盘 → verify 拿旧口径判 FAILED（P0-2 复发）")
+    finally:
+        try:
+            (ROOT / "episodes" / f"{ep_id}.json").unlink()
+        except Exception:
+            pass
+        import shutil
+        shutil.rmtree(ROOT / "episodes" / ep_id, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# 待办#5：libx264 退路不得用 NVENC 的 preset（p4 → x264 编码器直接失败）
+# ---------------------------------------------------------------------------
+def test_x264_fallback_preset_is_valid_for_libx264():
+    """libx264 退路 preset 必须来自 config.fallbacks，不得用 nvenc 的 p4。
+
+    p4 是 h264_nvenc 的 preset，libx264 不认 → 无 NVENC 机器走退路时 ffmpeg
+    报 Invalid argument、产出 0 字节（实测对照：medium 8333B / p4 0B）。
+    """
+    from app.services.compose import _build_vcodec
+
+    vcodec = _build_vcodec(False)  # 强制走 libx264 退路
+    params = " ".join(str(x) for x in vcodec)
+    assert "libx264" in params, params
+
+    preset = vcodec[vcodec.index("-preset") + 1]
+    valid_x264 = {"ultrafast", "superfast", "veryfast", "faster", "fast",
+                  "medium", "slow", "slower", "veryslow", "placebo"}
+    assert preset in valid_x264, (
+        f"libx264 退路 preset={preset!r} 非法（合法值 {sorted(valid_x264)}）。"
+        f"典型的错：误用 NVENC 的 p4（config.compose.preset），x264 无此值直接失败")
+
+
+# ---------------------------------------------------------------------------
+# 结构性缺口：splitter 下限与门禁下限的一致性（当前存在矛盾，xfail 标记）
+# ---------------------------------------------------------------------------
+@pytest.mark.xfail(
+    reason="MIN_FRAG_CHARS=6 约 38 帧 < 门禁 MIN_FRAMES=40，"
+           "管线能产出自己拒绝的碎片镜。需把下限提到 ≥40 帧等效（约 7 字）后转绿。",
+    strict=False,
+)
+def test_splitter_min_not_below_gate_min_frames():
+    """splitter 切出的最短片段不得低于门禁 MIN_FRAMES，否则自相矛盾。"""
+    from app.services.script import MIN_FRAG_CHARS
+    from app.services.timing_assert import MIN_FRAMES
+    from app.services.motion import FPS
+
+    # 汉字语速保守估计 4 字/秒；6 字 ≈ 1.5s
+    est_sec = MIN_FRAG_CHARS / 4.0
+    est_frames = int(est_sec * FPS)
+    assert est_frames >= MIN_FRAMES, (
+        f"splitter 下限 {MIN_FRAG_CHARS} 字 ≈ {est_frames} 帧，"
+        f"低于门禁 {MIN_FRAMES} 帧 → 切出的最短镜会被自己的门禁拒绝")

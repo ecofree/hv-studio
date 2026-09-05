@@ -208,6 +208,14 @@ def stage_compose(ep: Episode) -> None:
     final = compose_episode(ep.id)
     if not final.exists() or final.stat().st_size < 1024:
         raise RuntimeError(f"episode {ep.id} 合成产物缺失或过小: {final}")
+    # compose_episode 自载副本按真实音频重算时间轴并落盘；必须同步回本对象，
+    # 否则外层 produce 的 save(ep) 会用旧时长覆盖磁盘真值，导致 verify 用
+    # 旧口径对新成片（2026-09-05 lsm-15min 实测：首镜缺 100ms head pad，
+    # 旧口径多算 2 帧，verify 误报 FAILED）。只同步 frames/shots，不碰状态。
+    from app.managers.episode import load as _load
+    fresh = _load(ep.id)
+    ep.frames = fresh.frames
+    ep.shots = fresh.shots
     print(f"  [orchestrator] compose: {final.name} 生成")
 
 
