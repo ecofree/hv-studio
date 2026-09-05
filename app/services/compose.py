@@ -338,10 +338,21 @@ def _kill_proc(proc) -> None:
 
 
 def _read_stderr(proc) -> str:
-    """读取并收起 ffmpeg stderr，避免管道满导致 ffmpeg 卡死。"""
+    """读取并收起 ffmpeg stderr，避免管道满导致 ffmpeg 卡死。
+
+    读完必须 close：stderr=PIPE 的读端是个 BufferedReader，不关就一直占着
+    一个 fd（C5 删掉全局 filterwarnings 后暴露：一个成片有多少段就漏多少个）。
+    已关闭时再调会 return ""，不会掩盖后面的错误信息。
+    """
     try:
         if proc.stderr:
-            return proc.stderr.read().decode("utf-8", "ignore")
+            try:
+                return proc.stderr.read().decode("utf-8", "ignore")
+            finally:
+                try:
+                    proc.stderr.close()
+                except Exception:
+                    pass
     except Exception:
         pass
     return ""
@@ -487,7 +498,12 @@ def _encode_video_span_once(
             import gc as _gc
             for sh, s0, s1 in timeline_slice:
                 grade = getattr(sh.motion, "grade", None) if sh.motion else None
-                img = Image.open(upscaled[sh.id]).convert("RGB")
+                # 用 with 包住：Image.open 返回的是懒加载文件对象，.convert()
+                # 只是强制读像素、不会关闭底层 fd。此前一个成片循环里会累积
+                # 上百个未关闭句柄（C5 删掉全局 filterwarnings 后才暴露）。
+                # convert() 返回的是独立新图，close 后继续使用安全。
+                with Image.open(upscaled[sh.id]) as _im:
+                    img = _im.convert("RGB")
                 boxes = pf(*img.size, sh.duration_ms / 1000.0, sh.motion, FPS)
                 for n, box in enumerate(boxes):
                     x0, y0, x1, y1 = box
@@ -526,6 +542,12 @@ def _encode_video_span_once(
     finally:
         if proc.poll() is None:
             _kill_proc(proc)
+        # 兜底：异常早退时 _read_stderr 可能没跑到，这里保证 stderr 读端收口
+        try:
+            if proc.stderr and not proc.stderr.closed:
+                proc.stderr.close()
+        except Exception:
+            pass
         if not encode_ok:
             try:
                 Path(out_mp4).unlink(missing_ok=True)

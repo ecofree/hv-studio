@@ -16,11 +16,14 @@ M2：RealESRGAN_x2plus（tile=512，6GB 显存上限）
 from __future__ import annotations
 
 import os
-import warnings
 
 from pathlib import Path
 
-warnings.filterwarnings("ignore")
+# C5（2026-09-05）：此处原有一句 `warnings.filterwarnings("ignore")`。
+# 它是**进程级**的：任何 import 到本模块的调用方（也就是整条出片链）都会被
+# 连坐，把项目自己的 DeprecationWarning / RuntimeWarning 一起吞掉。
+# 删掉后若有第三方库噪音，应当用 `with warnings.catch_warnings():` 局部包裹，
+# 而不是全局静音——静音范围必须等于问题范围。
 
 # 单一真源：engine 由 config.yaml image.postprocess_upscale.engine 决定。
 # 实装仅 pil_lanczos（零依赖、快、够做运镜余量）；RealESRGAN_x2plus 为 M2

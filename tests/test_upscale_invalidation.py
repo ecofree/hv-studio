@@ -35,7 +35,8 @@ def test_upscale_redone_when_source_changed(tmp_path):
     d3 = upscale(src)
     m3 = d3.stat().st_mtime_ns
     assert m3 > t1, "源图变更 → @2x 必须重做"
-    assert Image.open(d3).size == (200, 200)
+    with Image.open(d3) as im:      # with：否则留一个未关闭 fd（C5 后可见）
+        assert im.size == (200, 200)
 
 
 def test_upscale_runtime_engine_from_config(tmp_path):

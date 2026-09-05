@@ -22,9 +22,6 @@ import json
 import sys
 from pathlib import Path
 
-warnings = __import__("warnings")
-warnings.filterwarnings("ignore")
-
 ROOT = Path(__file__).resolve().parent.parent.parent
 
 from app.config.config import get_settings
