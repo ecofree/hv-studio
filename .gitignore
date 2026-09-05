@@ -23,6 +23,15 @@ episodes/hanwu_15min/*.mp4
 # 清理暂存区（本仓可回收的僵尸/备份）
 .trash_hv/
 
+# ---- 运行时产物目录（不入库；内容由本地生产/下载） ----
+# cache/ 与 assets/ 下各子目录（bgm/characters/fonts/scenes/sfx）目前为空占位，
+# 将来若放入 BGM/字体等第三方素材同样不应入库。
+cache/
+assets/
+logs/
+# cosyvoice3/probe_v35.py 是真实探针脚本（已入库，保留）；只忽略其输出目录。
+cosyvoice3/probe_out/
+
 # ---- 运行时状态 ----
 state/
 .tmp/

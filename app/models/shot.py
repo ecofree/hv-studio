@@ -122,10 +122,6 @@ class Shot(BaseModel):
     def motion_done(self) -> bool:
         return bool(self.motion_path and Path(self.motion_path).exists())
 
-    @property
-    def stage_ok(self, stage: str) -> bool:
-        return self.stage.get(stage) == "done"
-
     def needs_regen(self) -> bool:
         """判定是否需要重做图（一致性不过、I2V 失败退回 KB 等）。"""
         if self.face_sim is not None and self.face_sim < 0.50:

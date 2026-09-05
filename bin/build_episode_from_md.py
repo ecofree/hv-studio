@@ -261,13 +261,24 @@ def main() -> int:
     ap.add_argument("--visual-col", type=int, default=3)
     ap.add_argument("--narr-col", type=int, default=4)
     # 切分
-    ap.add_argument("--merge-short", dest="merge_short", action="store_true",
-                    default=True, help="合并过短片段（默认开，与 lsm-15min 一致）")
-    ap.add_argument("--no-merge-short", dest="merge_short", action="store_false",
-                    help="不合并（与 laogongtuan 一致）")
+    # 注意：--merge-short 曾用 `action="store_true", default=True`，两个 flag 都把
+    # merge_short 置 True → 正向 flag 形同虚设，只能靠 --no-merge-short 关。
+    # BooleanOptionalAction 自动生成 --merge-short/--no-merge-short 一对互斥开关。
+    ap.add_argument("--merge-short", dest="merge_short",
+                    action=argparse.BooleanOptionalAction, default=True,
+                    help="合并过短片段（默认开，与 lsm-15min 一致；"
+                         "--no-merge-short 与 laogongtuan 一致）")
     ap.add_argument("--max-chars", type=int, default=18)
-    ap.add_argument("--max-join", type=int, default=29, help="合并后单帧字数上限")
-    ap.add_argument("--min-chars", type=int, default=6, help="单帧字数下限告警")
+    # 29 是「告警阈值」而非门禁：比 MAX_FRAG_CHARS(=31) 留 2 字余量，便于在真正
+    # 撞上限前就看到苗头。它不参与切分（merge_short_pieces 用自己的上限）。
+    ap.add_argument("--max-join", type=int, default=29,
+                    help="合并后单帧字数上限告警（默认 29，门禁为 31）")
+    # 下限不写死：与切分器同源（MIN_FRAG_CHARS 由 MIN_FRAMES/FPS/TTS速率反推）。
+    # 此前手写 6，而 MIN_FRAG_CHARS 已=7 → 门禁一动，本脚本告警口径就飘。
+    from app.services.script import MIN_FRAG_CHARS
+    ap.add_argument("--min-chars", type=int, default=MIN_FRAG_CHARS,
+                    help=f"单帧字数下限告警（默认取 script.MIN_FRAG_CHARS="
+                         f"{MIN_FRAG_CHARS}）")
     ap.add_argument("--grade", default="",
                     help=f"强制单一光线，可选 {sorted(GRADE_KEYS)}")
     # 行为
