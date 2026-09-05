@@ -46,7 +46,9 @@ def test_tts_unchanged_text_reuses(tmp_path, monkeypatch):
     V.synthesize([f1], engine="cosyvoice", out_dir=tmp_path)  # 同文本重跑
     m2 = (tmp_path / "frame-000.wav").stat().st_mtime_ns
     assert m1 == m2, "文本未变却被重合成"
-    assert man["frame-000"]["fp"] == fp_old
+    # 【bug 修复】必须从盘上重读一次 manifest，否则断言的是内存里没变过的 dict
+    man2 = json.loads((tmp_path / "_tts_manifest.json").read_text(encoding="utf-8"))
+    assert man2["frame-000"]["fp"] == fp_old, "文本未变但指纹应保持不变（重读盘后）"
 
 
 def test_tts_changed_text_resynthesizes(tmp_path, monkeypatch):

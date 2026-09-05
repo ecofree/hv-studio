@@ -5,3 +5,6 @@ addopts = "-ra"
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
+markers = [
+    "NEEDS_FFMPEG: 用例需要本机 ffmpeg/ffprobe；缺件应 skip 而不是 red",
+]

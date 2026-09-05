@@ -656,6 +656,42 @@ def _segments_of(timeline, max_sec: float) -> list:
     return segs
 
 
+def _run_audio_mux(video_src: Path, audio_src: Path, out_path: Path,
+                   audio_codec: str, audio_bitrate: str,
+                   timeout_sec: int = 1200) -> None:
+    """一次 mux：视频 copy + 音频按给定编码（module-level 版本，便于测试）。
+
+    与 compose_episode 内的内嵌 _mux_full_audio 行为完全一致。
+    视频 `-c:v copy`（零重编），音频按给定编码（默认 aac/192k）——
+    **严禁 `-c copy` 直拷 wav**：pcm_s16le 装入 mp4 大量播放器静音
+    （2026-09-05 lsm-15min P0-1 实测：码流有 pcm 音轨、波形正常，但播放端静音）。
+
+    用 .tmp 原子收口：失败时 .tmp 不留，成功才 os.replace 成真名。
+    """
+    tmp = out_path.with_suffix(".tmp")
+    mux = [
+        "ffmpeg", "-y", "-v", "error",
+        "-i", str(video_src), "-i", str(audio_src),
+        "-map", "0:v:0", "-map", "1:a:0",
+        "-c:v", "copy",
+        "-c:a", audio_codec, "-b:a", audio_bitrate,
+        # 不用 -shortest：旁白与视频帧数由 timeline 精确对齐（见历史注释），
+        # -shortest 会在低内存下缓冲波动时提前截断成片。
+        "-movflags", "+faststart",
+        "-f", "mp4", str(tmp),
+    ]
+    # Python 语义：subprocess.run(timeout=0) 立即 TimeoutExpired；按 cfg 注释
+    # 「0 = 不设超时」的约定，0 翻译成 None（不设超时），其它值原样传。
+    r = subprocess.run(mux, capture_output=True, text=True, timeout=timeout_sec or None)
+    if r.returncode != 0:
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
+        raise RuntimeError(f"音画 mux 失败: {r.stderr[-800:]}")
+    os.replace(tmp, out_path)
+
+
 def compose_episode(ep_id: str, plan_frames=None, render=None,
                     run_timing_gate: bool = True) -> Path:
     """
@@ -814,27 +850,10 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         音频必须按 config.compose 编码（aac/192k），绝不能 `-c copy` 直拷 wav：
         pcm_s16le 装进 mp4 后大量播放器无声（2026-09-05 lsm-15min 实测：
         码流有 pcm 音轨、波形正常，但播放端静音）。视频流仍 copy（零重编）。
+        实行为抽出的 module-level `_run_audio_mux`——这里是它的薄壳，闭包持有
+        audio_input/_ac/_ab/timeout，让 compose_episode 主体不漏参数。
         """
-        tmp = out_path.with_suffix(".tmp")
-        mux = [
-            "ffmpeg", "-y", "-v", "error",
-            "-i", str(video_src), "-i", str(audio_input),
-            "-map", "0:v:0", "-map", "1:a:0",
-            "-c:v", "copy",
-            "-c:a", _ac, "-b:a", _ab,
-            # 不用 -shortest：旁白与视频帧数由 timeline 精确对齐（见历史注释），
-            # -shortest 会在低内存下缓冲波动时提前截断成片。
-            "-movflags", "+faststart",
-            "-f", "mp4", str(tmp),
-        ]
-        r = subprocess.run(mux, capture_output=True, text=True, timeout=1200)
-        if r.returncode != 0:
-            try:
-                tmp.unlink(missing_ok=True)
-            except Exception:
-                pass
-            raise RuntimeError(f"音画 mux 失败: {r.stderr[-800:]}")
-        os.replace(tmp, out_path)
+        _run_audio_mux(video_src, audio_input, out_path, _ac, _ab, _timeout)
 
     if n_total_all < _compose_cfg.segment_min_frames:
         # 短片：单段直出（纯视频无音轨），再统一 mux 音轨。

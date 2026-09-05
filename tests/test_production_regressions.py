@@ -47,14 +47,10 @@ def test_mux_audio_uses_configured_codec_not_pcm(tmp_path):
          "-ar", "44100", "-ac", "1", str(wav)], check=True)
 
     out = tmp_path / "muxed.mp4"
-    # 复刻 _mux_full_audio 的正确参数（视频 copy + 音频按 config 编码）
-    subprocess.run(
-        ["ffmpeg", "-y", "-v", "error",
-         "-i", str(vid), "-i", str(wav),
-         "-map", "0:v:0", "-map", "1:a:0",
-         "-c:v", "copy",
-         "-c:a", cfg.audio_codec, "-b:a", cfg.audio_bitrate,
-         "-movflags", "+faststart", "-f", "mp4", str(out)], check=True)
+    # 【bug 修复】原版手搓 ffmpeg 命令测的是「ffmpeg 配 -c:a aac 是否工作」（恒真），
+    # 没调用被测函数。要真测的是 compose 的 _run_audio_mux 是否把 wav 转成 aac。
+    from app.services.compose import _run_audio_mux
+    _run_audio_mux(vid, wav, out, cfg.audio_codec, cfg.audio_bitrate)
 
     codec = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a:0",
@@ -395,93 +391,3 @@ def test_build_vcodec_software_preset_is_x264_valid():
     assert args[args.index("-c:v") + 1] == "libx264"
     assert args[args.index("-preset") + 1] in valid
 
-
-# ---------------------------------------------------------------------------
-# 编码器级回退：NVENC 资源失败必须自动降级 libx264，不得整片失败
-# ---------------------------------------------------------------------------
-# 真实故障（2026-09-05 全量跑批实测）：
-#   [h264_nvenc] CreateInputBuffer failed: out of memory (10)
-#   → _encode_video_span 直接 raise → 整片 compose 失败。
-# 而 _probe_nvenc 只用 320x568 的 0.05s 素材探测，占用极小、必然通过，
-# 挡不住 1080x1920 真实编码时的显存/NVENC 会话耗尽。
-#
-# 这里用确定性的假失败驱动（不依赖真实 OOM，那在机器上时有时无）。
-_NV_OOM = ("段编码中途断管：已写 2/54 帧。ffmpeg stderr:\n"
-           "[h264_nvenc @ 0x1] CreateInputBuffer failed: out of memory (10): \n"
-           "[vost#0:0/h264_nvenc] Error while opening encoder")
-_NV_PARAM = ("段编码未完整收口：rc=-22 已写 0/54 帧。ffmpeg stderr:\n"
-             "[h264_nvenc @ 0x1] Invalid argument")
-
-
-def _install_fake_encoder(monkeypatch, fail_msg, ok_frames=54):
-    """把 _encode_video_span_once 换成记账假实现，返回调用记录。"""
-    from app.services import compose as C
-    rec = {"calls": 0, "vcodecs": []}
-
-    def fake(timeline_slice, upscaled, out_mp4, vcodec, timeout_sec=0,
-             plan_frames=None):
-        rec["calls"] += 1
-        rec["vcodecs"].append(list(vcodec))
-        if rec["calls"] == 1 and fail_msg:
-            raise RuntimeError(fail_msg)
-        return ok_frames
-
-    monkeypatch.setattr(C, "_encode_video_span_once", fake)
-    monkeypatch.setattr(C, "_HWENC_DISABLED", False)   # 每个用例从干净状态起
-    return rec
-
-
-def test_nvenc_oom_downgrades_to_libx264(monkeypatch, tmp_path):
-    """NVENC 显存/会话耗尽 → 自动降级 libx264 重试一次并成功。"""
-    from app.services import compose as C
-    rec = _install_fake_encoder(monkeypatch, _NV_OOM)
-    nv = ["-c:v", "h264_nvenc", "-profile:v", "high", "-level", "4.1",
-          "-preset", "p4", "-cq", "20"]
-
-    n = C._encode_video_span([], {}, tmp_path / "seg.mp4", nv, 0, None)
-
-    assert n == 54
-    assert rec["calls"] == 2, "应在降级后重试一次"
-    assert rec["vcodecs"][0][1] == "h264_nvenc"
-    assert rec["vcodecs"][1][1] == "libx264", f"第二次应走软件编码，实为 {rec['vcodecs'][1][:2]}"
-    assert C._HWENC_DISABLED is True, "降级后须置全局闸门，避免后续段重复撞 OOM"
-
-
-def test_nvenc_param_error_not_retried(monkeypatch, tmp_path):
-    """参数类错误降级也必然失败，不能白重试（还掩盖真实原因）。"""
-    from app.services import compose as C
-    rec = _install_fake_encoder(monkeypatch, _NV_PARAM)
-    nv = ["-c:v", "h264_nvenc", "-profile:v", "high", "-preset", "p4", "-cq", "20"]
-
-    with pytest.raises(RuntimeError, match="Invalid argument"):
-        C._encode_video_span([], {}, tmp_path / "seg.mp4", nv, 0, None)
-
-    assert rec["calls"] == 1, "非资源类失败不得重试"
-    assert C._HWENC_DISABLED is False
-
-
-def test_degraded_flag_forces_software_for_later_segments(monkeypatch, tmp_path):
-    """降级闸门置位后，调用方手里旧的 NVENC vcodec 也必须被换成软件编码。
-
-    调用方在分段循环外只算了一次 vcodec，若不在入口处纠正，后续每段都会
-    再撞一次 NVENC 再降级（2× 耗时）。
-    """
-    from app.services import compose as C
-    rec = _install_fake_encoder(monkeypatch, None)   # 不再失败
-    monkeypatch.setattr(C, "_HWENC_DISABLED", True)
-    nv = ["-c:v", "h264_nvenc", "-profile:v", "high", "-preset", "p4", "-cq", "20"]
-
-    C._encode_video_span([], {}, tmp_path / "seg.mp4", nv, 0, None)
-
-    assert rec["calls"] == 1
-    assert rec["vcodecs"][0][1] == "libx264", "闸门已置位却仍用了硬件编码器"
-
-
-def test_build_vcodec_software_preset_is_x264_valid():
-    """降级路径的 libx264 参数必须自洽（preset 属 x264 合法集，非 NVENC 的 p4）。"""
-    from app.services import compose as C
-    valid = {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
-             "slow", "slower", "veryslow", "placebo"}
-    args = C._build_vcodec(False)
-    assert args[args.index("-c:v") + 1] == "libx264"
-    assert args[args.index("-preset") + 1] in valid

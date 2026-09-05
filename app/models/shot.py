@@ -92,7 +92,6 @@ class Shot(BaseModel):
     # ---------- 产物路径 ----------
     image_path: str | None = None                # subrouter 返回的原始图
     image_actual_size: tuple[int, int] | None = None  # 真实像素（不是请求 size）
-    image_revised_prompt: str | None = None      # gpt-image-2 的 revised_prompt
     upscaled_path: str | None = None
     motion_path: str | None = None               # Ken Burns 输出 mp4
     i2v_task_id: str | None = None

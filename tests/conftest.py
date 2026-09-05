@@ -29,6 +29,36 @@ NEEDS_FFMPEG = pytest.mark.skipif(
     not _has_ffmpeg(), reason="需要本机 ffmpeg/ffprobe（未安装 → 跳过真实编解码用例）")
 
 
+def pytest_collection_modifyitems(session, config, items):
+    """收集完钉一条：AST 里数到的用例定义数 必须 ≤ 实际收集数。
+
+    收集数 < 定义数 = 有用例「定义了却没跑」。最常见原因是同一文件里后定义
+    覆盖了前定义——2026-09-05 实测就这么丢了 4 条 NVENC 回归用例，而
+    "114 passed" 看着完全正常。**这类问题不报错、不变红，只能靠这个口径发现。**
+
+    收集数 > 定义数 属正常（parametrize 会把一个定义展开成多条），放行。
+    """
+    # 只做部分收集时（-k 过滤 / 命令行指定了具体路径）本守卫不适用
+    if getattr(config.option, "keyword", "") or config.args:
+        return
+    try:
+        from _case_stats import count_defined_cases
+    except ImportError:  # rootdir 未把 tests/ 加进 sys.path
+        import sys
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from _case_stats import count_defined_cases
+
+    defined = count_defined_cases()
+    collected = len(items)
+    if collected < defined:
+        raise pytest.Exit(
+            f"\n[测试基建] 用例定义数 {defined} > 实际收集数 {collected}，"
+            f"少了 {defined - collected} 条。\n"
+            "最常见原因：同一测试文件里出现了同名的 test 用例，后定义静默覆盖前定义\n"
+            "（被覆盖的那份永不执行）。请检查 tests/ 下是否有重复定义。",
+            returncode=3)
+
+
 def make_small_images(workdir: Path):
     """生成 540×960 源图 + 1080×1920 @2x（upscale() 会复用 @2x，避免大图 Lanczos）。"""
     from PIL import Image, ImageDraw
