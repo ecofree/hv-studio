@@ -19,10 +19,13 @@ from pathlib import Path
 
 import pytest
 
+from conftest import NEEDS_FFMPEG
+
 
 # ---------------------------------------------------------------------------
 # P0-1：mux 出的音轨必须是 config 声明的编码（aac），绝不能是 pcm
 # ---------------------------------------------------------------------------
+@NEEDS_FFMPEG
 def test_mux_audio_uses_configured_codec_not_pcm(tmp_path):
     """mux 音轨必须按 config 编码（aac），-c copy 会把 pcm_s16le 装进 mp4 致静音。"""
     from app.config.config import get_settings
@@ -63,6 +66,7 @@ def test_mux_audio_uses_configured_codec_not_pcm(tmp_path):
         f"若为 pcm_s16le 说明又退回 `-c copy` 直拷 wav → 播放器静音（P0-1 复发）")
 
 
+@NEEDS_FFMPEG
 def test_delivered_films_are_not_pcm():
     """已交付成片音轨不得是 pcm（P0-1 波及面守门）。"""
     from app.config.config import ROOT

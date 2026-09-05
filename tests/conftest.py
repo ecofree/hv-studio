@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import wave
 
 import pytest
@@ -16,6 +17,16 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 EPISODES = ROOT / "episodes"
+
+
+# D5：真实编解码用例需要本机有 ffmpeg/ffprobe。没装时不该报失败——那不是代码
+# 有问题，是环境缺件。给这些用例打上这个 mark，缺件时 skip 而不是 red。
+def _has_ffmpeg() -> bool:
+    return shutil.which("ffmpeg") is not None and shutil.which("ffprobe") is not None
+
+
+NEEDS_FFMPEG = pytest.mark.skipif(
+    not _has_ffmpeg(), reason="需要本机 ffmpeg/ffprobe（未安装 → 跳过真实编解码用例）")
 
 
 def make_small_images(workdir: Path):

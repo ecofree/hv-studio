@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 
 from app.config.config import ROOT
+from conftest import NEEDS_FFMPEG
 
 EPISODES = ROOT / "episodes"
 N_SHOTS = 24          # 24 镜，每镜 ~3s → ~1800 帧
@@ -84,6 +85,7 @@ def segmented_episode(tmp_path, monkeypatch):
         shutil.rmtree(ep_dir, ignore_errors=True)
 
 
+@NEEDS_FFMPEG
 def test_segmented_compose_produces_valid_mp4(segmented_episode):
     ep_id, big_p, dur = segmented_episode
     from app.services.compose import compose_episode
@@ -116,6 +118,7 @@ def test_segmented_compose_produces_valid_mp4(segmented_episode):
         f"decode 错误: {dec.stderr[-400:]}"
 
 
+@NEEDS_FFMPEG
 def test_segments_are_skipped_when_already_done(segmented_episode, monkeypatch):
     """首跑产出段后，模拟中断重跑：已存在且帧数对得上的段被跳过（不重编）。"""
     ep_id, big_p, dur = segmented_episode

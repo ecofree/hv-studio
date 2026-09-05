@@ -11,9 +11,11 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
+from conftest import NEEDS_FFMPEG
 from app.config.config import ROOT
 
 
+@NEEDS_FFMPEG
 def test_first_production_compose_ok(smoke_episode):
     ep_id, src_p, big_p, dur_ms = smoke_episode
     from app.services.compose import compose_episode
