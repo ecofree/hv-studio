@@ -40,11 +40,16 @@ def _out_dir(ep_id: str) -> Path:
 # ---------------------------------------------------------------------------
 # 真实 stage 回调（各自在成功后才允许状态迁移；失败抛错由 run_stage 置 FAILED）
 # ---------------------------------------------------------------------------
-def stage_script(ep: Episode) -> None:
-    """重建 frames（script.md 或 ep.script_path）。产物校验：frames 非空。"""
+def stage_script(ep: Episode, md: str | None = None) -> None:
+    """重建 frames。产物校验：frames 非空。
+
+    md: 显式脚本正文（API POST /produce 传来）。None 时走 _load_script_md(ep)。
+    D4：以前靠 produce 把正文塞进 ep.notes 再在这里读回，而 save(ep) 会把整篇
+    剧本写进 episode.json。现在显式传参，notes 只留给人写备注。
+    """
     from app.services.script import split_script, rebuild_frames
 
-    md = _load_script_md(ep)
+    md = _load_script_md(ep) if md is None else md
     if not md.strip():
         raise RuntimeError(f"episode {ep.id} 无脚本内容（script_path 为空或不存在）")
     # 优先 rebuild_frames（保留既有音频/shots 资产），否则 split_script
@@ -478,7 +483,12 @@ def reshot(ep_id: str, keys: list[str], do_verify: bool = True) -> dict:
 
 
 def _load_script_md(ep: Episode) -> str:
-    """取脚本文本：优先 ep.script_path 指向的文件，其次 notes 兜底。"""
+    """取脚本文本：ep.script_path 指向的文件，或约定路径 episodes/{id}/script.md。
+
+    D4：不再用 ep.notes 兜底——notes 会被 checkpoint 失败逻辑占用
+    （managers/episode.py 写 "[label] FAILED: ..."），拿它当脚本源等于把一条
+    报错文本切成帧去配音。脚本要么落文件、要么由调用方显式传入。
+    """
     if ep.script_path:
         p = Path(ep.script_path)
         if p.exists():
@@ -537,11 +547,10 @@ def produce(
     ep = load(ep_id)
 
     # schema 硬阻断（P0-4 修复）：任何生产前，schema 不干净即拒绝，绝不到付费生图。
-    # allow_empty：空集若即将切脚本（有 script.md 或 notes），放行让 stage_script
-    # 成为第一步（否则「官方入口启动官方第一步」被鸡生蛋卡死）。
-    if script_md:
-        ep.notes = script_md  # 临时注入脚本；若无 script_path 用 notes 兜底
-    has_script = bool((_load_script_md(ep) or (ep.notes or "").strip()))
+    # allow_empty：空集若即将切脚本（有 script.md 或调用方传了正文），放行让
+    # stage_script 成为第一步（否则「官方入口启动官方第一步」被鸡生蛋卡死）。
+    # D4：这里原本 `ep.notes = script_md`，save(ep) 会把整篇剧本写进 episode.json。
+    has_script = bool((_load_script_md(ep) or (script_md or "")).strip())
     _can_start_from_empty = (not ep.frames and not ep.shots) and has_script
     problems = validate_schema(ep, allow_empty=_can_start_from_empty)
     if problems:
@@ -559,9 +568,11 @@ def produce(
                 if not has_script:
                     print("  [orchestrator] 无脚本，跳过 script")
                     continue
-                if ep.frames and not ep.notes:
+                if ep.frames and not script_md:
                     # 已有 frames（先前切过脚本）：默认不重切，避免 splitter 规则一变
                     # 就重分帧 + 重 TTS(钱) + 重合成(小时)。需显式 --stage script 强制。
+                    # D4：判据从 `not ep.notes` 改成显式 `not script_md`（同一语义，
+                    # 但不再依赖"调用方有没有污染过 notes"这种隐式信号）。
                     print("  [orchestrator] 已有 frames，默认跳过 script"
                           "（如需重切请显式 --stage script）")
                     continue
@@ -587,6 +598,9 @@ def produce(
     if not tts_fallback:
         stage_fn["tts"] = lambda ep: stage_tts(ep, fallback=False)
         stage_fn["assets"] = lambda ep: stage_assets(ep, tts_fallback=False)
+    if script_md:
+        # D4：把正文用闭包喂给 stage_script，而不是写进 ep.notes 再读回。
+        stage_fn["script"] = lambda ep: stage_script(ep, md=script_md)
 
     done = []
     for st in stages:
