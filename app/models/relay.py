@@ -94,41 +94,10 @@ class ImageGenResponse(BaseModel):
     usage: dict | None = None
 
 
-# ---------------------------------------------------------------------------
-# 视频
-# ---------------------------------------------------------------------------
-class VideoTaskRequest(BaseModel):
-    """
-    POST /v1/videos 请求体。
-
-    ★ image_field 待 T2 探测确定：subrouter 视频端的 image 字段命名
-      未知（可能 image / image_url / image_urls / file）。先用 image_b64
-      试一次（与生图一致），失败时回退 image_url。
-    """
-    model: str
-    prompt: str
-    seconds: int = 5
-    image_b64: str | None = None
-    image_b64_list: list[str] | None = None
-    image_url: str | None = None
-
-
-class VideoTaskResponse(BaseModel):
-    """POST /v1/videos 响应（任务制）。"""
-    id: str
-    status: str = "queued"
-    url: str | None = None
-    error: str | None = None
-
-
-class VideoTaskStatus(BaseModel):
-    """GET /v1/videos/{id} 响应。"""
-    id: str
-    status: str                          # queued | processing | completed | failed
-    progress: float | None = None
-    url: str | None = None               # 完成后的视频 URL
-    error: str | None = None
-    duration_sec: int | None = None
+# D2（2026-09-05）：VideoTask{Request,Response,Status} 已删。三个类零调用点——
+# 项目里从来没有 services/video.py，config 的 video 段只被 `hv config` 打印出来。
+# 它们是「打算做 I2V」时先写的 schema，留着会让人以为链路已经通了一半。
+# 真要做 I2V 时从 git 历史里捞回来即可（本 commit 前一直存在）。
 
 
 # ---------------------------------------------------------------------------

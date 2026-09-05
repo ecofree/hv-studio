@@ -72,9 +72,9 @@ class Shot(BaseModel):
     # ---------- 叙事语义（M2 固化，供编排/人工校对） ----------
     narration: str = ""                  # 本镜口播原文（对应字幕）
     shot_type: str = "medium"            # wide | medium | close_up | insert（构图语义）
-    cast_refs: list[str] = Field(default_factory=list)  # 出现角色 id
-    keywords: list[str] = Field(default_factory=list)   # 需强化显示的历史名词
-    scene_ref: str | None = None         # 场景资产引用
+    # D2（2026-09-05）：cast_refs / keywords / scene_ref 已删——三个字段全仓只有
+    # 这里定义 + 测试 fixture 里当字面量填过，从未被读。Shot 是 extra=ignore（
+    # pydantic v2 默认），旧 episode.json 里带这些键仍可正常载入，只是被忽略。
 
     duration_ms: int                     # 含 250ms 呼吸间隙（100 head + 150 tail）
     audio_start_ms: int                  # 在 frame audio 内的起始

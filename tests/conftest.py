@@ -57,8 +57,9 @@ def build_episode_dict(ep_id: str, img_abs: str, wav_abs: str, dur_ms: int) -> d
     }
     shot = {
         "id": "shot-000", "frame_id": "frame-000", "index": 0, "type": "ken_burns",
-        "is_hero": False, "narration": "", "shot_type": "medium", "cast_refs": [],
-        "keywords": [], "scene_ref": None, "duration_ms": dur_ms,
+        "is_hero": False, "narration": "", "shot_type": "medium",
+        # D2: cast_refs / keywords / scene_ref 已从 Shot 删除，fixture 不再填
+        "duration_ms": dur_ms,
         "audio_start_ms": 0, "audio_end_ms": dur_ms, "audio_segment_path": None,
         "prompt": "", "negative_prompt": "", "expression": "", "pose": "",
         "ref_pack_id": None, "ref_pack_paths": [], "image_path": img_abs,

@@ -63,7 +63,7 @@ ALT_VOICES = {
 # 通用：mp3 → 16k mono PCM wav + 时长
 # ---------------------------------------------------------------------------
 def _mp3_to_wav(mp3: Path, wav: Path, sample_rate: int = 16000) -> None:
-    """ffmpeg 转 16k mono PCM wav（下游 alignment 用 wave 模块读，需 PCM）。"""
+    """ffmpeg 转 16k mono PCM wav（下游按 spec.NARRATION_SR 用 wave 读，需 PCM）。"""
     wav.parent.mkdir(parents=True, exist_ok=True)
     subprocess.run([
         "ffmpeg", "-y", "-i", str(mp3),

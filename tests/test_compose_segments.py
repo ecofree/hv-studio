@@ -43,7 +43,6 @@ def _build_multi_episode(tmp_path, ep_id):
         shots[sid] = {
             "id": sid, "frame_id": fid, "index": i, "type": "ken_burns",
             "is_hero": False, "narration": "", "shot_type": "medium",
-            "cast_refs": [], "keywords": [], "scene_ref": None,
             "duration_ms": SHOT_MS, "audio_start_ms": 0,
             "audio_end_ms": SHOT_MS, "audio_segment_path": None,
             "prompt": "", "negative_prompt": "", "expression": "", "pose": "",
