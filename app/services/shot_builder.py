@@ -31,6 +31,7 @@ from app.config.config import get_settings
 from app.managers import save
 from app.managers.episode import load
 from app.models import MotionSpec, Shot
+from app.services.script import frames_fingerprint
 
 GRADE_KEYS = {"dawn", "noon", "dusk", "night", "fire", "frost"}
 MOTION_POOL = ["push", "drift", "pull", "pan"]
@@ -84,11 +85,54 @@ def _resolve_image(images_cfg: dict, sid: str) -> Path:
     raise KeyError(f"image {sid} 需有 path 或 reuse_from")
 
 
+def _check_frames_fingerprint(ep_id: str, plan: dict, texts: list[str],
+                              strict: bool = False) -> dict:
+    """把 scene_plan 锚定到当前的 ep.frames 上，不一致即拒。
+
+    为什么必须校验（lsm-15min 事故复盘，2026-09-05）：
+      scene_plan 的 frames 区间是【按下标】写的，本身不含任何文本信息。
+      只有帧数恰好对得上，装配才是正确的；一旦 script.md 被重切，
+      帧数从 324 变 392，64 个 scene 的区间会整体错位，而覆盖校验
+      （每帧恰落一个 scene）依然「全通过」——它会静默产出一部错位的片子。
+
+    strict: 无指纹（老集）是否也视为失败。默认 False（只告警），
+      因为 laogongtuan / hanwu-* 的分镜都写在有指纹机制之前。
+    """
+    declared = plan.get("frames_fingerprint")
+    if not declared:
+        msg = (f"[shot_builder] scene_plan 缺 frames_fingerprint：无法证明这份分镜"
+               f"锚定在当前 ep.frames（{len(texts)} 帧）上。\n"
+               f"  建议：用 bin/build_episode_from_md.py 重建 scene_plan 以写入指纹，"
+               f"或加 --strict-fingerprint 把缺指纹当失败。")
+        if strict:
+            raise SystemExit(msg.replace("建议", "strict 模式下视为失败；建议"))
+        print("  [!] " + msg)
+        return {}
+
+    actual = frames_fingerprint(texts)
+    if declared.get("count") != actual["count"] or \
+            declared.get("sha1") != actual["sha1"]:
+        raise SystemExit(
+            f"[shot_builder] scene_plan 与 ep.frames 不同源，拒绝装配！\n"
+            f"  分镜声明: {declared.get('count')} 帧 sha1={declared.get('sha1')} "
+            f"首「{declared.get('head', '')}」尾「{declared.get('tail', '')}」\n"
+            f"  实际frames: {actual['count']} 帧 sha1={actual['sha1']} "
+            f"首「{actual['head']}」尾「{actual['tail']}」\n"
+            f"  偏差 {actual['count'] - (declared.get('count') or 0):+d} 帧 —— "
+            f"继续装配会让所有 scene 的帧区间错位。\n"
+            f"  修复二选一：① 把 script.md 还原到写分镜时的版本后重跑 stage script；\n"
+            f"              ② 重跑 bin/build_episode_from_md.py 重建 scene_plan"
+            f"（--merge-short 开关必须与该集建档时一致）。")
+    return actual
+
+
 def build_episode_shots(ep_id: str, plan_path: Path | None = None,
-                        preview_rows: int | None = 12, persist: bool = True):
+                        preview_rows: int | None = 12, persist: bool = True,
+                        strict_fingerprint: bool = False):
     """按 scene_plan 为 ep 重建 shots。返回 (ep, stats)。
 
-    - 校验：scene 覆盖全部帧且不重叠、无空洞；底图存在；grade 合法。
+    - 校验：scene 覆盖全部帧且不重叠、无空洞；底图存在；grade 合法；
+      帧指纹与 ep.frames 同源（见 _check_frames_fingerprint）。
     - 派生：同底图首帧 zoom=1.0，后续走 ZOOM_LADDER；grade 按 scene.grades 循环；
       运镜 MOTION_POOL 轮换（禁连续同型）；时长预扣呼吸段（隔离组 +250ms）。
     """
@@ -98,6 +142,10 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
         raise SystemExit(f"[shot_builder] episode {ep_id} 无 frames（先跑 script 切分）")
     plan_path = plan_path or _default_plan_path(ep_id)
     plan = json.loads(plan_path.read_text(encoding="utf-8"))
+
+    # ---- 帧指纹锚定：必须在做覆盖校验之前，错位时给出可定位的报错 ----
+    fp = _check_frames_fingerprint(ep_id, plan, [f.text for f in frames],
+                                   strict=strict_fingerprint)
 
     images_cfg = plan.get("images", {})
     scenes = plan.get("scenes", [])
@@ -195,6 +243,7 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
         "episode": ep_id, "frames": n, "shots": len(ep.shots),
         "base_images": len(used_images),
         "reuse_ratio": round(n / len(used_images), 2),
+        "fingerprint": fp,   # {} = 该分镜无指纹（老集），未做锚定校验
         "images_per_base": {k: sum(1 for i in range(n)
                                    if scenes[covered[i]]["image"] == k)
                             for k in sorted(used_images)},
@@ -234,8 +283,15 @@ def _cli():
     cmd, ep_id = sys.argv[1], sys.argv[2]
     if cmd == "build":
         plan = Path(sys.argv[4]) if len(sys.argv) > 4 and sys.argv[3] == "--plan" else None
-        _, st = build_episode_shots(ep_id, plan_path=plan)
+        strict = "--strict-fingerprint" in sys.argv
+        _, st = build_episode_shots(ep_id, plan_path=plan,
+                                    strict_fingerprint=strict)
         print(f"\n[build] {ep_id} → {st['shots']} shots OK")
+        if st["fingerprint"]:
+            print(f"  帧指纹 {st['fingerprint']['count']}帧 "
+                  f"sha1={st['fingerprint']['sha1']} [已锚定]")
+        else:
+            print("  [!] scene_plan 无帧指纹，未做锚定校验")
     elif cmd == "inspect":
         inspect_episode(ep_id)
     else:

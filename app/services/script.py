@@ -18,7 +18,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from app.config.config import get_settings
 from app.models import Episode, Frame
 
 # 句末标点（中英）
@@ -113,7 +112,110 @@ def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
     return [sent]
 
 
-def split_script(ep: Episode, script_md: str) -> list[Frame]:
+# ---------------------------------------------------------------------------
+# 旁白清洗 / 短片合并 / 帧指纹
+#
+# 2026-09-05 自 lsm-15min 生产用的临时脚本（%TEMP%/opencode/build_lsm15.py）
+# 同源化进仓。此前这三段逻辑只活在工作站临时目录里，导致：
+#   · 新片必须重抄一遍清洗规则 → 最大可复现性缺口
+#   · 临时的 merge_pieces 与仓内 split_script 不同源，lsm-15min 实测
+#     两者相差 68 帧（392 vs 324），任何人重跑 `stage script` 都会让
+#     scene_plan 的 64 个帧区间整体错位。
+# 现在统一由 bin/build_episode_from_md.py 与 split_script 共用。
+# ---------------------------------------------------------------------------
+NARR_ANNOT = re.compile(r"【[^】]*】")                 # 【语气/导演标注】整段去
+NARR_PAUSE = re.compile(r"[［\[]停顿[\d\.]*秒[］\]]")   # [停顿1.5秒] → 。（TTS 自然停）
+NARR_BRACKET = re.compile(r"[［\[][^］\]]*[］\]]")     # [重音]/[叹息一声] 等去
+PUNCT_ONLY = re.compile(r"[”\"'』）》〉，。、；：？！…—]+")
+
+
+def clean_narration(raw: str) -> str:
+    """把双栏分镜 md 的「旁白」列清洗成可直接送 TTS + 烧字幕的纯文本。
+
+    顺序不可调换：先去【】再处理 []（否则【】内容里的 [] 会被提前吃掉），
+    最后压空白/叠句号；末端引导性标点必须剥掉，否则会原样烧进首帧字幕。
+    """
+    t = raw.replace("<br>", "\n")
+    t = NARR_ANNOT.sub("", t)
+    t = NARR_PAUSE.sub("。", t)
+    t = NARR_BRACKET.sub("", t)
+    t = re.sub(r"\s+", "", t)
+    t = re.sub(r"。{2,}", "。", t)
+    return t.strip("，。、；：？！ \t")
+
+
+MERGE_MIN_KEEP = 10   # 短于此长度视为「碎片」，尝试向后并（≈2.5s）
+MERGE_MAX_JOIN = 29   # 合并后上限（≈7.4s，仍低于 max_shot_ms=6000 的冗余带）
+
+
+def merge_short_pieces(pieces: list[str],
+                       min_keep: int = MERGE_MIN_KEEP,
+                       max_join: int = MERGE_MAX_JOIN) -> list[str]:
+    """把过短片段向后合并，孤立标点一律吸附到前一片段。
+
+    动机（lsm-15min 实测）：切分器允许的 MIN_FRAG_CHARS=6 对应 ≈1.5s，低于
+    时序门禁 min_shot_ms=1600 的安全边际，会产生「很多历史小白以为，」这类
+    半句闪切镜；合并后单镜普遍 ≥2.5s。
+
+    ⚠️ 这是**逐集可选**行为，绝不是 split_script 的默认路径：
+      laogongtuan 的 365 帧是按【未合并】切分并已配好音/分镜的，
+      打开合并会变 310 帧 → 既有音频与 scene_plan 全错位。
+    新集由 bin/build_episode_from_md.py --merge-short 显式开启，并写入指纹。
+    """
+    merged: list[str] = []
+    for p in pieces:
+        if merged and (PUNCT_ONLY.fullmatch(p)
+                       or (len(merged[-1]) < min_keep
+                           and len(merged[-1]) + len(p) <= max_join)):
+            merged[-1] = merged[-1] + p
+        else:
+            merged.append(p)
+    # 收尾：末片仍是碎片则并入倒数第二片（若放得下）
+    if len(merged) > 1 and len(merged[-1]) < min_keep \
+            and len(merged[-2]) + len(merged[-1]) <= max_join:
+        merged[-2] = merged[-2] + merged.pop()
+    return merged
+
+
+def segment_script(text: str, max_chars: int = 18,
+                   merge_short: bool = False) -> list[str]:
+    """文本 → 帧文案列表。builder 与 split_script 共用的唯一切分入口。
+
+    merge 的边界是【段落】，不是全文：一段 = 分镜表里的一个镜头，
+    跨镜头合并会把两张底图的旁白粘成一帧。
+    """
+    out: list[str] = []
+    for para in re.split(r"\n\s*\n", text.strip()):
+        if not para.strip():
+            continue
+        pieces: list[str] = []
+        for sent in split_script_text(para):
+            pieces.extend(split_long_sentence(sent, max_chars=max_chars))
+        out.extend(merge_short_pieces(pieces) if merge_short else pieces)
+    return out
+
+
+def frames_fingerprint(texts: list[str], head_tail: int = 24) -> dict:
+    """帧序列指纹：用于把 scene_plan 锚定到具体的一次切分结果。
+
+    装配 shots 时比对，不一致即拒——避免出现「分镜按 A 切分写、episode 按
+    B 切分存」导致的静默错位（lsm-15min 实测 68 帧漂移，21%）。
+
+    只取 count + sha1 + 首尾预览：全文入库会让 scene_plan 体积翻倍，
+    而 count/sha1 已足以发现任何错位，首尾预览用于人工一眼定位。
+    """
+    import hashlib
+    joined = "\n".join(texts)
+    return {
+        "count": len(texts),
+        "sha1": hashlib.sha1(joined.encode("utf-8")).hexdigest()[:12],
+        "head": (texts[0][:head_tail] if texts else ""),
+        "tail": (texts[-1][-head_tail:] if texts else ""),
+    }
+
+
+def split_script(ep: Episode, script_md: str,
+                 merge_short: bool = False) -> list[Frame]:
     """
     主入口。生成 ep.frames 列表。
 
@@ -123,35 +225,51 @@ def split_script(ep: Episode, script_md: str) -> list[Frame]:
 
       - frame.text            = 原文片段  → 字幕显示 / 人工校对
       - frame.narration_text  = 替换后片段 → 送 TTS（多音字读音修正）
-    """
-    s = get_settings()
-    profile = s.get_profile()
-    settings = profile.rhythm
 
+    merge_short=True 时按【段落】边界做短片合并（见 merge_short_pieces），
+    此时 frame.id 的 i 是「段号」而非「句号」。默认 False：既有集
+    （laogongtuan 365 帧等）都是按未合并切分建档的，改默认即错位。
+    """
     from app.services.polyphone import preprocess
-    raw_sents = split_script_text(script_md)
     frames: list[Frame] = []
-    for i, sent in enumerate(raw_sents):
-        # 长句切分（在原文上切）
-        for j, piece in enumerate(split_long_sentence(sent, max_chars=18)):
-            frame = Frame(
-                id=f"frame-{i:03d}-{j:02d}" if j > 0 else f"frame-{i:03d}",
-                text=piece,                    # 原文 → 字幕
-                narration_text=preprocess(piece),  # 替换后 → TTS
-            )
-            frames.append(frame)
+
+    def _mk(i: int, j: int, piece: str) -> Frame:
+        return Frame(
+            id=f"frame-{i:03d}-{j:02d}" if j > 0 else f"frame-{i:03d}",
+            text=piece,                        # 原文 → 字幕
+            narration_text=preprocess(piece),  # 替换后 → TTS
+        )
+
+    if not merge_short:
+        for i, sent in enumerate(split_script_text(script_md)):
+            for j, piece in enumerate(split_long_sentence(sent, max_chars=18)):
+                frames.append(_mk(i, j, piece))
+        return frames
+
+    for i, para in enumerate(re.split(r"\n\s*\n", script_md.strip())):
+        if not para.strip():
+            continue
+        pieces: list[str] = []
+        for sent in split_script_text(para):
+            pieces.extend(split_long_sentence(sent, max_chars=18))
+        for j, piece in enumerate(merge_short_pieces(pieces)):
+            frames.append(_mk(i, j, piece))
     return frames
 
 
-def rebuild_frames(ep: Episode, script_md: str) -> list[Frame]:
+def rebuild_frames(ep: Episode, script_md: str,
+                   merge_short: bool = False) -> list[Frame]:
     """
     按 script.md 重新切分，但保留已有资产（按 frame.id 对齐）：
       audio_path / audio_duration_ms / char_align / subtitle / shot_ids
 
     用途：调完切分规则或多音字词典后，只重切文本，不重跑 TTS。
+
+    ⚠️ merge_short 必须与建档时一致：不一致会让 frame.id 的编号基准从
+    「句号」变成「段号」，id 对齐全部落空 → 音频被判为孤儿、时长丢失。
     """
     old = {f.id: f for f in ep.frames}
-    new_frames = split_script(ep, script_md)
+    new_frames = split_script(ep, script_md, merge_short=merge_short)
     for f in new_frames:
         o = old.get(f.id)
         if not o:

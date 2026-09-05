@@ -84,14 +84,20 @@ def cmd_episode(args):
         if not ep.frames:
             print(f"[!] episode {args.episode_id} 无 frames，先跑 script 切分")
             return
-        # 先用非落盘 dry-run 校验 scene_plan 覆盖/底图/grade，全通过才落盘
+        # 先用非落盘 dry-run 校验 scene_plan 覆盖/底图/grade/帧指纹，全通过才落盘
+        strict_fp = getattr(args, "strict_fingerprint", False)
         _, st = build_episode_shots(args.episode_id, plan_path=plan,
-                                    persist=False, preview_rows=args.preview)
+                                    persist=False, preview_rows=args.preview,
+                                    strict_fingerprint=strict_fp)
+        fp = st.get("fingerprint")
+        fp_txt = (f" / 帧指纹(已锚定) {fp['count']}帧 sha1={fp['sha1']}" if fp
+                  else " / 帧指纹(缺失·未校验)")
         print(f"[shots] dry-run OK：{st['shots']} shots / {st['base_images']} 底图 / "
-              f"归并 {st['reuse_ratio']}:1")
+              f"归并 {st['reuse_ratio']}:1{fp_txt}")
         if not args.dry_run:
             ep2, st2 = build_episode_shots(args.episode_id, plan_path=plan,
-                                           persist=True, preview_rows=0)
+                                           persist=True, preview_rows=0,
+                                           strict_fingerprint=strict_fp)
             print(f"[shots] 已落盘：{ep2.id} → {st2['shots']} shots")
             problems = inspect_episode(args.episode_id)
             print(f"[shots] schema: {'OK' if not problems else problems}")
@@ -210,6 +216,8 @@ def main():
                    help="[shots] 只校验不落盘")
     p.add_argument("--preview", type=int, default=12,
                    help="[shots] 预览行数（0=不预览）")
+    p.add_argument("--strict-fingerprint", action="store_true",
+                   help="[shots] scene_plan 缺帧指纹也视为校验失败（老集默认只告警）")
     p.set_defaults(func=cmd_episode)
 
     # relay

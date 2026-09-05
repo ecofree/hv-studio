@@ -87,7 +87,7 @@ def _clean_test_episode_residue():
     """
     yield
     _namespaces = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest",
-                   "sbguard")
+                   "sbguard", "resync")
     for jf in EPISODES.glob("*.json"):
         stem = jf.stem
         if any(stem == f"{ns}" or stem.startswith(f"{ns}-") for ns in _namespaces):
