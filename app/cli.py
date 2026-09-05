@@ -140,6 +140,36 @@ def cmd_image(args):
         print(f"已保存: {p}  ({Path(p).stat().st_size/1024:.0f}KB)")
 
 
+def cmd_cost(args):
+    """生图台账：花了多少张、走的哪条路、什么规格。
+
+    金额只在配置 state/cost_prices.json 后才有；没配也能精确回答
+    「每张图走的哪个渠道池」——这才是三池对账真正要的。
+    """
+    from app.services.image import cost_summary, _COST_PATH
+    s = cost_summary(since=args.since)
+    print(f"台账文件: {_COST_PATH}")
+    print(f"总张数: {s['total_images']}" + (f"（ts >= {args.since}）" if args.since else ""))
+    for name, key in (("按渠道", "by_channel"), ("按规格", "by_spec"),
+                      ("按集", "by_episode")):
+        d = s[key]
+        if not d:
+            continue
+        print(f"{name}:")
+        for k, v in d.items():
+            print(f"    {str(k):32s} {v:6d}")
+    if s["cost_total"] is not None:
+        print(f"金额合计: {s['cost_total']}")
+    else:
+        print(f"金额合计: 未配置（{s['unpriced']} 条无单价，"
+              f"填 {s['prices_file']} 即可）")
+    if args.raw:
+        import json as _j
+        print(_j.dumps(_j.loads(_COST_PATH.read_text(encoding="utf-8"))
+                       if _COST_PATH.exists() else [],
+                       ensure_ascii=False, indent=1))
+
+
 def cmd_polyphone(args):
     from app.services.polyphone import preprocess, hit_stats, rules
     if args.text:
@@ -233,6 +263,13 @@ def main():
     p.add_argument("--model", default="gpt-image-2")
     p.add_argument("--out", default=None)
     p.set_defaults(func=cmd_image)
+
+    # cost：生图台账（state/cost_ledger.json）
+    p = sub.add_parser("cost", help="生图成本台账汇总")
+    p.add_argument("--since", default=None,
+                   help="只统计 ts >= 该值（如 2026-09-04）")
+    p.add_argument("--raw", action="store_true", help="打印全部原始条目")
+    p.set_defaults(func=cmd_cost)
 
     # polyphone
     p = sub.add_parser("polyphone", help="多音字预处理")

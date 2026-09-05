@@ -19,6 +19,7 @@
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from app.models import Episode
@@ -88,7 +89,99 @@ def _read_image_prompts(ep_id: str) -> dict:
         raise RuntimeError(f"image_prompts.json 解析失败 {p}: {e}")
 
 
-def build_image_jobs(ep_id: str) -> list["ImageJob"]:
+# ---------------------------------------------------------------------------
+# prompt 预筛（2026-09-04）
+# ---------------------------------------------------------------------------
+# 生图是全程唯一真花钱 + 唯一有外部配额的环节。把「必然失败或必然白花钱的
+# prompt」在发请求前拦掉，比事后对着渠道后台对账便宜得多。
+# 典型事故：分镜 md 某行漏写 en → prompt 只剩 ", 电影感." → 照样发请求、
+# 照样扣配额、回来一张与剧情无关的图，且因为文件 >50KB 被幂等跳过，
+# 整季都发现不了。
+#
+# 阈值依据（实测 episodes/*/image_prompts.json）：
+#   laogongtuan n=56 最短141 中位192 / lsm-15min n=64 最短146 中位181
+# 故 12 字门槛距真实最短值有 10 倍余量，只拦漏写与占位符，不做质量判断。
+PROMPT_MIN_CHARS = int(os.environ.get("HV_PROMPT_MIN_CHARS", "12"))
+PROMPT_MAX_CHARS = int(os.environ.get("HV_PROMPT_MAX_CHARS", "4000"))
+
+# 占位符/未完成标记：出现即视为漏写（不区分大小写）
+_PROMPT_PLACEHOLDER = (
+    "todo", "tbd", "fixme", "xxx", "placeholder", "待补", "待定", "占位",
+    "test", "测试", "示例", "sample", "n/a", "null", "none",
+)
+
+
+def screen_prompt(key: str, prompt: str) -> tuple[bool, str, str]:
+    """发请求前的 prompt 体检。返回 (ok, reason, normalized)。
+
+    ★ 检的是**分镜原始 en**，不是拼上 style_suffix/negative 之后的成品：
+      风格后缀本身就有十几二十字，若对成品做「空/过短」判定，en 漏写会被
+      后缀掩盖成一条看似正常的长 prompt —— 于是照样发请求、照样扣配额，
+      回来一张与剧情无关的图，还因为 >50KB 被幂等永久跳过，整季都发现不了。
+
+    ok=False → 必须拦下（发=白烧配额）；ok=True → 放行，reason 可能是
+    "OK" 或已处置的提示（如 "截断 4200→4000"）。
+    normalized 是压平空白后的原始文本。
+    """
+    raw = (prompt or "").strip()
+    # 分镜 md 里 prompt 常带换行/多空格 → 先压平，避免长度与去重判定失真
+    norm = " ".join(raw.split())
+    if not norm or norm.strip(" ,.。-") == "":
+        return False, "空 prompt（分镜 md 该行漏写 en？）", norm
+    low = norm.lower()
+    for ph in _PROMPT_PLACEHOLDER:
+        if low == ph or low.startswith(ph + " ") or low.startswith(ph + ","):
+            return False, f"疑似占位符/未完成（{ph}）", norm
+    if len(norm) < PROMPT_MIN_CHARS:
+        return False, f"过短（{len(norm)} 字 < {PROMPT_MIN_CHARS}）", norm
+    if len(norm) > PROMPT_MAX_CHARS:
+        return True, f"超长已截断 {len(norm)}→{PROMPT_MAX_CHARS}", norm[:PROMPT_MAX_CHARS]
+    return True, "OK", norm
+
+
+def screen_image_prompts(ep_id: str) -> dict:
+    """对整集 image_prompts 做预筛体检，返回报告（不发任何请求）。
+
+    报告结构：{"passed": [key...], "blocked": [(key, reason)...],
+               "warned": [(key, reason)...], "dup": [(a, b)...]}
+    """
+    spec = _read_image_prompts(ep_id)
+    im_cfg_parts = _image_prompt_parts()
+    seen: dict = {}
+    rep: dict = {"passed": [], "blocked": [], "warned": [], "dup": []}
+    for key in sorted(k for k in spec if not k.startswith("_")):
+        entry = spec[key]
+        en = entry.get("en") if isinstance(entry, dict) else str(entry)
+        prompt = _compose_prompt(en, *im_cfg_parts)
+        ok, reason, _ = screen_prompt(key, en)
+        if not ok:
+            rep["blocked"].append((key, reason))
+            continue
+        if reason != "OK":
+            rep["warned"].append((key, reason))
+        # 去重在【成品】上做：真正重复烧钱的是发出去的字符串相同
+        if prompt in seen:
+            rep["dup"].append((seen[prompt], key))
+        else:
+            seen[prompt] = key
+        rep["passed"].append(key)
+    return rep
+
+
+def _image_prompt_parts() -> tuple[str, str]:
+    """取 (style_suffix, negative_clause)；与 build_image_jobs 同源。"""
+    from app.config.config import get_settings
+    im = get_settings().get_profile().image
+    return (getattr(im, "style_suffix", "") or "",
+            getattr(im, "negative_clause", "") or "")
+
+
+def _compose_prompt(en: str, suffix: str, neg: str) -> str:
+    """prompt 拼接唯一口径（build_image_jobs 与预筛共用，防漂移）。"""
+    return f"{en}, {suffix}. {neg}".strip(", .") + "."
+
+
+def build_image_jobs(ep_id: str, prescreen: bool = True) -> list["ImageJob"]:
     """从 image_prompts.json 构建生图任务（prompt 单源）。
 
     唯一数据源 = episodes/{id}/image_prompts.json：
@@ -97,6 +190,10 @@ def build_image_jobs(ep_id: str) -> list["ImageJob"]:
     prompt = en + style_suffix + negative（扁平 ImageConfig 顶层字段）。
     幂等由 generate_many 内部按「已存在 >50KB」处理，本函数只建任务不生成。
     stage_images 与 batch_generate_lgt 共用本函数 → 消除 prompt 拼接漂移。
+
+    prescreen=True（默认）：先跑 screen_prompt 体检，拦下空/占位符/过短的
+    prompt —— 这些发过去只会白烧配额，且会因为「回来个 >50KB 的图」
+    被幂等机制永久跳过，事后极难发现。被拦的键会明确打印，不会静默消失。
     """
     from app.config.config import get_settings
     from app.models import ImageGenRequest
@@ -118,12 +215,27 @@ def build_image_jobs(ep_id: str) -> list["ImageJob"]:
 
     keys = sorted(k for k in spec if not k.startswith("_"))
     jobs: list[ImageJob] = []
+    blocked: list = []
+    warned: list = []
     for key in keys:
         entry = spec[key]
         en = entry.get("en") if isinstance(entry, dict) else str(entry)
         if not en:
+            blocked.append((key, "en 字段为空"))
             continue
-        prompt = f"{en}, {suffix}. {neg}".strip(", .") + "."
+        prompt = _compose_prompt(en, suffix, neg)
+        if prescreen:
+            ok, reason, norm = screen_prompt(key, en)
+            if not ok:
+                blocked.append((key, reason))
+                continue
+            if reason != "OK":
+                warned.append((key, reason))
+            prompt = _compose_prompt(norm, suffix, neg)
+            if len(prompt) > PROMPT_MAX_CHARS:   # 成品仍可能超长（后缀很长时）
+                warned.append((key, f"成品超长已截断 {len(prompt)}"
+                                    f"→{PROMPT_MAX_CHARS}"))
+                prompt = prompt[:PROMPT_MAX_CHARS]
         jobs.append(ImageJob(
             id=key,
             req=ImageGenRequest(
@@ -132,6 +244,23 @@ def build_image_jobs(ep_id: str) -> list["ImageJob"]:
             ),
             out_path=shots_d / f"{key}.png",
         ))
+
+    if prescreen and (blocked or warned):
+        print(f"  [orchestrator] prompt 预筛: 通过 {len(jobs)} / "
+              f"拦截 {len(blocked)} / 提示 {len(warned)}")
+        for k, r in blocked[:20]:
+            print(f"      [拦截] {k}: {r}")
+        for k, r in warned[:20]:
+            print(f"      [提示] {k}: {r}")
+        if len(blocked) > 20:
+            print(f"      … 另有 {len(blocked)-20} 条被拦截")
+        # 默认只拦不炸（老集可能有历史短 prompt，不该一夜之间全跑不起来）；
+        # 需要「预筛即门禁」时用 HV_PROMPT_PRESCREEN_STRICT=1。
+        if blocked and os.environ.get("HV_PROMPT_PRESCREEN_STRICT") in (
+                "1", "true", "yes"):
+            raise RuntimeError(
+                f"episode {ep_id} 有 {len(blocked)} 条 prompt 未通过预筛，"
+                f"已按 HV_PROMPT_PRESCREEN_STRICT 拒绝生图: {blocked[:10]}")
     return jobs
 
 

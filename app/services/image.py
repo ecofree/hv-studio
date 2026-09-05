@@ -19,17 +19,90 @@ from __future__ import annotations
 import base64
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 import requests
 
 from app.config.config import Channel
-from app.managers.relay import get_relay
+from app.managers.relay import STATE_DIR, get_relay
 from app.models import ImageEditRequest, ImageGenRequest, ImageGenResponse
 
 
 class ImageError(RuntimeError):
     pass
+
+
+class TransientImageError(ImageError):
+    """可重试的瞬时故障（429 限流 / 5xx / 超时 / 连接被重置）。
+
+    语义：**同一渠道**退避后重试即可恢复，不必（也不应）立刻换路烧别家配额。
+    与 ImageError 的区别决定了 generate_many 是「原地重试」还是「换渠道」。
+    """
+
+    def __init__(self, msg: str, http_status: int | None = None):
+        super().__init__(msg)
+        self.http_status = http_status
+
+
+# 瞬时故障指纹（小写匹配；中转的错误文案不统一，只能指纹法）
+_TRANSIENT_SIG = (
+    "429", "rate limit", "rate_limit", "too many requests", "quota exceeded",
+    "500", "502", "503", "504", "bad gateway", "service unavailable",
+    "gateway time", "internal server error", "server error",
+    "timeout", "timed out", "temporarily unavailable", "try again",
+    "connection reset", "connection aborted", "connection refused",
+    "remote end closed", "remotedisconnected", "broken pipe",
+    "read operation timed out", "max retries exceeded",
+)
+
+
+def is_transient_error(e: BaseException) -> bool:
+    """判定是否瞬时故障：是 → 同渠道退避重试；否 → 直接换路/放弃。
+
+    判据优先级：
+      1. TransientImageError 显式类型
+      2. HTTP 状态码（挂在 .http_status / .response.status_code 上）
+      3. requests 异常类型（Timeout/ConnectionError）
+      4. 文案指纹兜底
+    """
+    if isinstance(e, TransientImageError):
+        return True
+    if isinstance(e, ImageError):
+        # 非 Transient 子类：仅文案兜底（如自建 ImageError("... timeout ...")）
+        return _sig_hit(str(e))
+    # requests 层：超时/连接类一律可重试；其余（SSL、InvalidURL 等）不可
+    import requests as _rq
+    if isinstance(e, _rq.exceptions.SSLError):
+        # 证书/握手问题重试一万次也一样，且它继承 ConnectionError，必须前置排除
+        return False
+    if isinstance(e, (_rq.Timeout, _rq.ConnectionError)):
+        return True
+    for attr in ("http_status", "status_code"):
+        st = getattr(e, attr, None)
+        if isinstance(st, int) and (st == 429 or 500 <= st < 600):
+            return True
+    resp = getattr(e, "response", None)
+    st = getattr(resp, "status_code", None)
+    if isinstance(st, int) and (st == 429 or 500 <= st < 600):
+        return True
+    return _sig_hit(str(e))
+
+
+def _sig_hit(text: str) -> bool:
+    low = (text or "").lower()
+    return any(s in low for s in _TRANSIENT_SIG)
+
+
+def _mk_error(ch_name: str, status: int | None, detail: str) -> ImageError:
+    """按状态码分流异常类型：429/5xx → Transient（可原地重试），其余 → 致命。"""
+    msg = f"[{ch_name}]" + (f" HTTP {status}" if status else "") + f": {detail}"
+    if status is not None and (status == 429 or 500 <= status < 600):
+        return TransientImageError(msg, http_status=status)
+    # 无状态码（网络层异常）时按文案兜底
+    if status is None and _sig_hit(detail):
+        return TransientImageError(msg, http_status=None)
+    return ImageError(msg)
 
 
 class ImageGenerator:
@@ -110,31 +183,40 @@ class ImageGenerator:
 
     def _post(self, ch: Channel, path: str, body: dict) -> ImageGenResponse:
         url = f"{ch.base_url}{path}"
-        r = requests.post(
-            url,
-            headers={**ch.auth_header, "Content-Type": "application/json"},
-            json=body,
-            timeout=300,
-        )
+        try:
+            r = requests.post(
+                url,
+                headers={**ch.auth_header, "Content-Type": "application/json"},
+                json=body,
+                timeout=300,
+            )
+        except Exception as e:
+            # 网络层异常：requests 的 Timeout/ConnectionError 基本都可重试。
+            # 原先是裸抛 requests 异常，上层只能当致命错误换路 → 白白烧别家配额。
+            raise _mk_error(
+                ch.name, getattr(e, "response", None) and
+                getattr(e.response, "status_code", None),
+                f"{type(e).__name__}: {str(e)[:200]}",
+            ) from e
         if r.status_code != 200:
             # 解析 subrouter 的两类错误 schema
             try:
                 err = r.json()
                 # 图像端 schema
                 if "error" in err and isinstance(err["error"], dict):
-                    raise ImageError(
-                        f"[{ch.name}] HTTP {r.status_code}: "
-                        f"{err['error'].get('message', r.text[:200])}"
+                    raise _mk_error(
+                        ch.name, r.status_code,
+                        str(err['error'].get('message', r.text[:200])),
                     )
                 # 视频端 schema
                 if "code" in err and "message" in err:
-                    raise ImageError(
-                        f"[{ch.name}] HTTP {r.status_code}: "
-                        f"{err.get('code')}: {err.get('message')}"
+                    raise _mk_error(
+                        ch.name, r.status_code,
+                        f"{err.get('code')}: {err.get('message')}",
                     )
             except ValueError:
                 pass
-            raise ImageError(f"[{ch.name}] HTTP {r.status_code}: {r.text[:200]}")
+            raise _mk_error(ch.name, r.status_code, r.text[:200])
         return ImageGenResponse.model_validate(r.json())
 
 
@@ -177,6 +259,12 @@ def _backoff(attempt: int) -> float:
     return base * (0.7 + 0.6 * random.random())
 
 
+# 同一渠道上的瞬时故障重试次数（换路前的原地重试；总尝试 = 渠道数 × (1+本值)）
+_MAX_TRANSIENT_RETRY = int(os.environ.get("HV_IMAGE_TRANSIENT_RETRY", "2"))
+# 打印每次瞬时重试细节（默认关，避免刷屏）
+_VERBOSE = os.environ.get("HV_IMAGE_VERBOSE", "0") not in ("0", "", "false")
+
+
 @dataclass
 class ImageJob:
     """一次生图任务。out_path 为期望落盘 PNG/JPG 路径。
@@ -191,6 +279,7 @@ class ImageJob:
     # worker 内部用
     _channel_idx: int | None = field(default=None, repr=False)
     _attempts: int = field(default=0, repr=False)
+    _transient: int = field(default=0, repr=False)
     _last_err: str | None = field(default=None, repr=False)
 
     @property
@@ -211,21 +300,29 @@ def _generate_many_worker(
     result: dict,
     channels: list[Channel],
     force: bool,
+    prog: "_Progress | None" = None,
 ) -> None:
     """单 worker：领一个固定渠道，串行消化队列任务。
 
     每渠道一个 worker 是三路并行的关键：若所有 worker 都走 failover，
     会全部命中 score 最高的同一渠道，退化成单路并把它打 429。
+
+    重试分两层（2026-09-04 新增）：
+      1. 同渠道原地重试：瞬时故障（429/5xx/超时/空 data）退避后**不换路**，
+         否则一次抖动就把三家渠道的配额都烧一遍。
+      2. 换路：非瞬时（参数非法/NSFW/余额不足）或原地重试耗尽后才换。
     """
     while True:
         try:
             job: ImageJob = jobq.get_nowait()
         except Empty:
             return
+        ok = False
         try:
             # 幂等：已存在合格文件直接跳过（不占渠道）
             if not force and job.is_done():
                 result[job.id] = str(job.out)
+                ok = True
                 continue
             # 领渠道：按 job._channel_idx 轮转首攻，失败再按序换路
             order = list(range(len(channels)))
@@ -234,58 +331,138 @@ def _generate_many_worker(
                 order = order[job._channel_idx:] + order[:job._channel_idx]
             ok = False
             for idx in order:
-                job._attempts += 1
-                try:
-                    _throttle()
-                    resp = gen.generate(job.req, channel=channels[idx])
-                    # 取首个 base64 / url
-                    item = resp.data[0] if resp.data else None
-                    if item is None:
-                        raise ImageError(f"[{channels[idx].name}] 空响应 data")
-                    raw = None
-                    if getattr(item, "b64_json", None):
-                        raw = base64.b64decode(item.b64_json)
-                    elif getattr(item, "url", None):
-                        raw = _download(item.url, channels[idx].name)
-                    if not raw:
-                        raise ImageError(f"[{channels[idx].name}] 无图像数据")
-                    job.out.parent.mkdir(parents=True, exist_ok=True)
-                    job.out.write_bytes(raw)
-                    result[job.id] = str(job.out)
-                    ok = True
+                ch = channels[idx]
+                attempt = 0
+                while True:
+                    attempt += 1
+                    job._attempts += 1
+                    try:
+                        _throttle()
+                        resp = gen.generate(job.req, channel=ch)
+                        # 取首个 base64 / url
+                        item = resp.data[0] if resp.data else None
+                        if item is None:
+                            # 空 data 绝大多数是中转上游瞬时抽风（非 prompt 问题），
+                            # 按瞬时处理：原地退避重试，不急着烧别家渠道。
+                            raise TransientImageError(f"[{ch.name}] 空响应 data")
+                        raw = None
+                        if getattr(item, "b64_json", None):
+                            raw = base64.b64decode(item.b64_json)
+                        elif getattr(item, "url", None):
+                            raw = _download(item.url, ch.name)
+                        if not raw:
+                            raise ImageError(f"[{ch.name}] 无图像数据")
+                        job.out.parent.mkdir(parents=True, exist_ok=True)
+                        job.out.write_bytes(raw)
+                        result[job.id] = str(job.out)
+                        record_cost(job=job, channel=ch.name, n_bytes=len(raw))
+                        ok = True
+                        break
+                    except Exception as e:
+                        job._last_err = (
+                            f"{ch.name}: {type(e).__name__} {str(e)[:120]}")
+                        # 瞬时故障先原地重试（不换路）；非瞬时或重试耗尽才换路
+                        if (is_transient_error(e)
+                                and attempt <= _MAX_TRANSIENT_RETRY):
+                            job._transient += 1
+                            if _VERBOSE:
+                                print(f"    [{job.id}] {ch.name} 瞬时故障"
+                                      f"（第{attempt}次），退避后原地重试…")
+                            time.sleep(_backoff(attempt))
+                            continue
+                        break  # 换下一路
+                if ok:
                     break
-                except Exception as e:
-                    job._last_err = f"{channels[idx].name}: {type(e).__name__} {str(e)[:120]}"
-                    # 换路前退避（同一渠道连续 429 时不狂转）
-                    import time as _t
-                    _t.sleep(_backoff(job._attempts))
             if not ok:
                 result[job.id] = None
                 result[f"{job.id}__error"] = job._last_err or "未知错误"
         finally:
+            if prog is not None:
+                prog.tick(ok=bool(result.get(job.id)))
             jobq.task_done()
 
 
 def _download(url: str, ch_name: str) -> bytes:
     """从 url 下载图像字节（部分中转返回图片 url 而非 b64）。"""
     import requests as _rq
-    r = _rq.get(url, timeout=120)
+    try:
+        r = _rq.get(url, timeout=120)
+    except Exception as e:
+        raise TransientImageError(
+            f"[{ch_name}] 下载图异常 {type(e).__name__}: {str(e)[:160]}") from e
     if r.status_code != 200:
-        raise ImageError(f"[{ch_name}] 下载图失败 HTTP {r.status_code}")
+        raise _mk_error(ch_name, r.status_code, f"下载图失败 {r.text[:160]}")
     return r.content
+
+
+# ---------------------------------------------------------------------------
+# 进度 / ETA（长任务不可静默：300 张图跑 1h 无输出会被当卡死）
+# ---------------------------------------------------------------------------
+_PROGRESS_EVERY = float(os.environ.get("HV_IMAGE_PROGRESS_EVERY", "15"))
+
+
+@dataclass
+class _Progress:
+    """并发安全的计数器 + ETA。monitor 线程按固定间隔打印心跳。"""
+
+    total: int
+    t0: float = field(default_factory=time.time)
+    done: int = 0
+    ok: int = 0
+    failed: int = 0
+    lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def tick(self, ok: bool) -> None:
+        with self.lock:
+            self.done += 1
+            if ok:
+                self.ok += 1
+            else:
+                self.failed += 1
+
+    def snap(self) -> tuple[int, int, int, float, float | None]:
+        with self.lock:
+            d, o, f = self.done, self.ok, self.failed
+        el = time.time() - self.t0
+        if d <= 0:
+            return d, o, f, el, None
+        eta = el / d * (self.total - d)
+        return d, o, f, el, eta
+
+
+def _fmt_dur(s: float) -> str:
+    s = int(max(0, s))
+    return f"{s // 3600:d}:{(s % 3600) // 60:02d}:{s % 60:02d}" if s >= 3600 \
+        else f"{s // 60:02d}:{s % 60:02d}"
+
+
+def _progress_monitor(prog: _Progress, stop: threading.Event) -> None:
+    """每 _PROGRESS_EVERY 秒打一次心跳 + ETA（配合 python -u 才不缓冲）。"""
+    while not stop.wait(_PROGRESS_EVERY):
+        d, o, f, el, eta = prog.snap()
+        if d >= prog.total:
+            return
+        pct = d / prog.total * 100 if prog.total else 0
+        eta_txt = _fmt_dur(eta) if eta is not None else "--:--"
+        print(f"  [image] 进度 {d}/{prog.total} ({pct:5.1f}%) "
+              f"成功{o} 失败{f} 用时{_fmt_dur(el)} ETA {eta_txt}", flush=True)
+    return
 
 
 def generate_many(
     jobs: list[ImageJob],
     force: bool = False,
     workers: int | None = None,
+    progress: bool = True,
 ) -> dict:
     """多任务并行生图（三路 worker）。返回 {job.id: 落盘路径 或 None}。
 
     - workers 默认 = min(渠道数, 任务数)；每渠道各钉一路
     - 已存在且 >50KB 的任务幂等跳过（不占渠道）
-    - 单任务换路 ≤ 渠道数；全渠道失败回填 None，已成功文件保留
+    - 单任务：同渠道瞬时故障原地重试 ≤ HV_IMAGE_TRANSIENT_RETRY 次，
+      仍失败才换路；全渠道失败回填 None，已成功文件保留
     - 任一侧 429/失败只影响该任务，不堵死其他两路
+    - progress=True 时起 monitor 线程，每 15s 打一次「进度/ETA」心跳
 
     不 raise（部分失败也要把已成功的产物带回来）；调用方据 None 汇总。
     """
@@ -301,22 +478,176 @@ def generate_many(
         j._channel_idx = i % n_worker  # 轮转分配首攻渠道
         jobq.put(j)
     result: dict = {}
+    prog = _Progress(total=len(jobs))
+    stop = threading.Event()
+    mon = None
+    if progress and len(jobs) > 1:
+        mon = threading.Thread(target=_progress_monitor, args=(prog, stop),
+                               daemon=True)
+        mon.start()
     threads = [
         threading.Thread(
             target=_generate_many_worker,
-            args=(gen, jobq, result, channels, force),
+            args=(gen, jobq, result, channels, force, prog),
             daemon=True,
         )
         for _ in range(n_worker)
     ]
-    for t in threads:
-        t.start()
-    for t in threads:
-        t.join()
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+    finally:
+        stop.set()
+        if mon is not None:
+            mon.join(timeout=1.0)
+    _, o, f, el, _ = prog.snap()
+    print(f"  [image] 完成 {o}/{len(jobs)} 成功，{f} 失败，用时 {_fmt_dur(el)}",
+          flush=True)
     return result
 
 
+# ---------------------------------------------------------------------------
+# 成本台账（state/cost_ledger.json）
+# ---------------------------------------------------------------------------
+# 为什么要台账：三个渠道池各有独立 quota，生图是全程唯一真花钱的环节，
+# 而在此之前「花了多少张、走的哪条路、什么规格」全靠记忆和渠道后台对账。
+# 这里按 job 落一条不可变记录，供事后核算与异常排查（哪条路在烧钱）。
+#
+# 价格：不内置任何单价（中转报价会变，写死就是错账）。
+#   需要金额时自建 state/cost_prices.json：
+#     {"gpt-image-2:low": 0.02, "gpt-image-2:medium": 0.07}
+#   键 = "model:quality"。缺失的键 → cost=null（仍计数，事后可补算）。
+_COST_PATH = STATE_DIR / "cost_ledger.json"
+_PRICES_PATH = STATE_DIR / "cost_prices.json"
+_COST_LOCK = threading.Lock()
+_COST_MAX = int(os.environ.get("HV_COST_MAX_ENTRIES", "20000"))
 
+
+def _load_prices() -> dict:
+    """读价格表（可选）。文件不存在 → {}，所有条目 cost=null。"""
+    try:
+        if _PRICES_PATH.exists():
+            import json as _json
+            return _json.loads(_PRICES_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        pass
+    return {}
+
+
+def _price_of(model: str, quality: str) -> float | None:
+    p = _load_prices()
+    if not p:
+        return None
+    for key in (f"{model}:{quality}", f"{model}", f"*:{quality}"):
+        if key in p:
+            try:
+                return float(p[key])
+            except (TypeError, ValueError):
+                return None
+    return None
+
+
+def record_cost(*, job: ImageJob, channel: str, n_bytes: int) -> dict:
+    """记一条生图开销。失败静默（台账永远不该打断生产）。
+
+    ★ 口径：只记【成功落盘】的图。中途失败的不记——中转对 429/超时不计费，
+    但 5xx 是否计费取决于上游是否已生成，无法从本地判定，需以渠道后台为准。
+    换言之本台账是「张数下界」，不是账单。
+
+    字段：ts / job / channel / model / size / quality / bytes /
+          attempts / transient_retries / out / cost(可空)
+    """
+    entry = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "job": job.id,
+        "channel": channel,
+        "model": getattr(job.req, "model", None),
+        "size": getattr(job.req, "size", None),
+        "quality": getattr(job.req, "quality", None),
+        "bytes": int(n_bytes),
+        "attempts": job._attempts,
+        "transient_retries": job._transient,
+        "out": str(job.out),
+    }
+    unit = _price_of(entry["model"] or "", entry["quality"] or "")
+    entry["cost"] = round(unit, 6) if unit is not None else None
+    try:
+        with _COST_LOCK:
+            STATE_DIR.mkdir(parents=True, exist_ok=True)
+            rows: list = []
+            if _COST_PATH.exists():
+                try:
+                    import json as _json
+                    rows = _json.loads(_COST_PATH.read_text(encoding="utf-8"))
+                    if not isinstance(rows, list):
+                        rows = []
+                except Exception:
+                    rows = []
+            rows.append(entry)
+            if len(rows) > _COST_MAX:  # 环形裁剪，防长片项目撑爆文件
+                rows = rows[-_COST_MAX:]
+            import json as _json
+            _COST_PATH.write_text(
+                _json.dumps(rows, ensure_ascii=False, indent=1),
+                encoding="utf-8")
+    except Exception as e:  # 台账失败不影响生图
+        print(f"  [image][warn] cost 台账写入失败（不中断生图）: {e}")
+    return entry
+
+
+def cost_summary(since: str | None = None) -> dict:
+    """汇总台账：总张数 / 按渠道 / 按规格 / 金额（有价表才统计）。
+
+    since: 只统计 ts >= since 的条目（ISO 串，如 "2026-09-04"）。
+    """
+    import json as _json
+    rows: list = []
+    if _COST_PATH.exists():
+        try:
+            rows = _json.loads(_COST_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            rows = []
+    if since:
+        rows = [r for r in rows if str(r.get("ts", "")) >= since]
+    by_channel: dict = {}
+    by_spec: dict = {}
+    by_job_prefix: dict = {}
+    total_cost = 0.0
+    unpriced = 0
+    for r in rows:
+        by_channel[r.get("channel")] = by_channel.get(r.get("channel"), 0) + 1
+        spec = f"{r.get('model')}:{r.get('quality')}@{r.get('size')}"
+        by_spec[spec] = by_spec.get(spec, 0) + 1
+        # job id 形如 LGT012 / LSM-15-001 → 取前 3 位字母前缀归集到「集」
+        jid = str(r.get("job") or "")
+        prefix = "".join(c for c in jid[:4] if c.isalpha()) or "?"
+        by_job_prefix[prefix] = by_job_prefix.get(prefix, 0) + 1
+        c = r.get("cost")
+        if isinstance(c, (int, float)):
+            total_cost += float(c)
+        else:
+            unpriced += 1
+    return {
+        "total_images": len(rows),
+        "by_channel": dict(sorted(by_channel.items(), key=lambda kv: -kv[1])),
+        "by_spec": dict(sorted(by_spec.items(), key=lambda kv: -kv[1])),
+        "by_episode": dict(sorted(by_job_prefix.items(), key=lambda kv: -kv[1])),
+        "cost_total": round(total_cost, 4) if total_cost else None,
+        "unpriced": unpriced,
+        "prices_file": str(_PRICES_PATH),
+    }
+
+
+# ---------------------------------------------------------------------------
+# 工具
+# ---------------------------------------------------------------------------
+def save_b64_image(b64: str, path: "str | Path") -> Path:
+    """把中转返回的 base64 图解码落盘，返回落盘路径。
+
+    注意参数顺序是 (b64, path)：cli.py 与 controllers/v1/image.py 均按此调用。
+    """
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_bytes(base64.b64decode(b64))

@@ -76,6 +76,19 @@ def build_episode_dict(ep_id: str, img_abs: str, wav_abs: str, dur_ms: int) -> d
     }
 
 
+@pytest.fixture(autouse=True)
+def _isolate_cost_ledger(tmp_path, monkeypatch):
+    """把生图台账从 state/ 重定向到临时目录。
+
+    否则跑一次测试就往生产台账里塞几十条 j0/j1/… 假记录 —— 那是拿来给三池
+    对账的真数据文件（state/cost_ledger.json），被测试污染就失去意义了。
+    （2026-09-04 实测：一次全量跑写入 84 条假记录。）
+    """
+    from app.services import image as _img
+    monkeypatch.setattr(_img, "_COST_PATH", tmp_path / "cost_ledger_test.json")
+    monkeypatch.setattr(_img, "_PRICES_PATH", tmp_path / "cost_prices_test.json")
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _clean_test_episode_residue():
     """会话结束清扫测试自建 episode 残留（防中断跑次永久残留）。
@@ -87,7 +100,7 @@ def _clean_test_episode_residue():
     """
     yield
     _namespaces = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest",
-                   "sbguard", "resync")
+                   "sbguard", "resync", "imgscreen", "imgdup")
     for jf in EPISODES.glob("*.json"):
         stem = jf.stem
         if any(stem == f"{ns}" or stem.startswith(f"{ns}-") for ns in _namespaces):

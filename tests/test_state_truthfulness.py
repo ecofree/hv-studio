@@ -131,9 +131,16 @@ def test_stage_images_uses_flat_imageconfig(monkeypatch):
     save(ep)
     ep_dir = ROOT / "episodes" / ep_id
     (ep_dir / "shots").mkdir(parents=True, exist_ok=True)
+    # 用真实长度的 prompt（实测 laogongtuan/lsm-15min 最短 141、中位 ~190）。
+    # 用 "desert" 这种 6 字玩具串会被 prompt 预筛以「过短」拦下——那正是
+    # 预筛的本意（漏写/占位符不该发请求烧配额），不是本测试要覆盖的行为。
     (ep_dir / "image_prompts.json").write_text(
-        _json.dumps({"LGT01": {"en": "ancient emissary"}, "LGT02": {"en": "desert"}},
-                    ensure_ascii=False), encoding="utf-8")
+        _json.dumps({
+            "LGT01": {"en": "Wide shot, Han dynasty emissary on the Silk Road "
+                            "at dusk, cinematic lighting, realistic"},
+            "LGT02": {"en": "Medium shot, endless desert dunes under a bleak "
+                            "sky, cold色调, film grain, realistic"},
+        }, ensure_ascii=False), encoding="utf-8")
 
     captured = {}
 
