@@ -349,14 +349,11 @@ def _read_stderr(proc) -> str:
     已关闭时再调会 return ""，不会掩盖后面的错误信息。
     """
     try:
-        if proc.stderr:
-            try:
-                return proc.stderr.read().decode("utf-8", "ignore")
-            finally:
+            if proc.stderr:
                 try:
-                    proc.stderr.close()
-                except Exception:
-                    pass
+                    return proc.stderr.read().decode("utf-8", "ignore")
+                finally:
+                    _safe_close(proc.stderr)
     except Exception:
         pass
     return ""
@@ -547,16 +544,9 @@ def _encode_video_span_once(
         if proc.poll() is None:
             _kill_proc(proc)
         # 兜底：异常早退时 _read_stderr 可能没跑到，这里保证 stderr 读端收口
-        try:
-            if proc.stderr and not proc.stderr.closed:
-                proc.stderr.close()
-        except Exception:
-            pass
+        _safe_close(proc.stderr)
         if not encode_ok:
-            try:
-                Path(out_mp4).unlink(missing_ok=True)
-            except Exception:
-                pass
+            _safe_unlink(Path(out_mp4))
     return n_total
 
 
@@ -617,6 +607,32 @@ def _probe_segment_frames(p: Path) -> int:
         return -1
 
 
+def _safe_unlink(p: Path) -> None:
+    """删临时文件——失败绝不能让渲染失败。
+
+    2026-09-06 成片回归实测：`_concat_segments` 收尾的 `list_file.unlink()`
+    抛了一个**非 Exception 的 BaseException**（沙箱删除闸走 SystemExit 类），
+    `except Exception` 抓不住，于是 16 段渲染 1 小时的成果被打断在
+    「已 concat、还没 mux 音轨」的半成品状态——成片 816MB、无音轨。
+
+    清理是纯副作用，它失败没有任何理由让主流程失败，所以这里连 SystemExit
+    一起吞。**只用于「删临时文件」这一个动作**，不要拿它包业务逻辑。
+    """
+    try:
+        p.unlink(missing_ok=True)
+    except (Exception, SystemExit):  # noqa: B014  SystemExit 也吞，见上
+        pass
+
+
+def _safe_close(f) -> None:
+    """同上：关 stderr/管道这类清理动作，失败不得冒泡。"""
+    try:
+        if f is not None and not getattr(f, "closed", False):
+            f.close()
+    except (Exception, SystemExit):  # noqa: B014
+        pass
+
+
 def _concat_segments(seg_paths: list[Path], out_mp4: Path) -> None:
     """ffmpeg concat demuxer -c copy 拼接无音轨段视频。要求各段编码参数一致。"""
     list_file = out_mp4.with_suffix(".concat.txt")
@@ -635,11 +651,9 @@ def _concat_segments(seg_paths: list[Path], out_mp4: Path) -> None:
                 f"concat 拼接失败: {r.stderr[-800:]}")
         os.replace(tmp, out_mp4)
     finally:
-        try:
-            list_file.unlink(missing_ok=True)
-            tmp.unlink(missing_ok=True)
-        except Exception:
-            pass
+        # 清理失败不得打断主流程（见 _safe_unlink 的实测事故）
+        _safe_unlink(list_file)
+        _safe_unlink(tmp)
 
 
 def _segments_of(timeline, max_sec: float) -> list:

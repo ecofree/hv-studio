@@ -1064,6 +1064,12 @@ python -m app.cli episode init ep-001                 初始化 episode
 python -m app.cli episode show ep-001                 查看 episode.json
 python -m app.cli episode produce ep-001              真实生产链（--stage 可指定子集）
 python -m app.cli episode reshot ep-001 --key LGT01   单镜重建
+python -m app.cli episode audit-wav ep-001 [--apply]  孤儿 wav（默认 dry-run）
+python -m app.cli clean --all [--segments] [--apply]  build/ 中间产物（默认 dry-run）
+#   clean 三条硬约束：① 白名单（只清点名的中间产物，绝不 glob 后 rm -rf）
+#                    ② 图片资产 .png/.jpg/... 有硬闸永不删除，被拦下的 [skip] 记账
+#                    ③ 默认 dry-run；段（build/segments/seg-*.mp4）需显式 --segments
+#   实测可清：build 档 ~120MB，含段 ~899MB（lsm-15min 独占 820M）
 # episode run —— 已废弃（2026-09-05），仅打印指路提示后 exit 1
 python -m app.cli api --port 8000                     启动 FastAPI
 python -m app.cli webui --port 8501                   启动 Streamlit

@@ -53,6 +53,10 @@ BUILD_DIRS = ("check", "check2", "audio", "frames", "motion", "subs")
 SEGMENT_GLOBS = ("seg-*.mp4",)
 SEGMENT_STATE_FILES = ("params.json",)   # G 批的参数指纹，随段一起作废
 
+# out/ 下的临时残留（2026-09-06 成片回归实测：concat 的 list_file 若清理失败
+# 会留在 out/ 里）。**只认这几个名字，绝不碰 *.mp4**——成片在 out/ 里。
+OUT_TMP_GLOBS = ("*.concat.txt", "*.concat_tmp", "*.mp4.tmp", "*.tmp")
+
 # 硬闸：任何情况下都不删的扩展名——**图片资产**。
 # 底图是花钱生成、且跨集复用的（hw-002 的底图被 5 集引用，后期其它生产内容
 # 还要接着用）。所以这里只拦图片，不拦 .json/.md 之类的数据文件：
@@ -106,6 +110,13 @@ def scan_episode_build(ep_dir: Path, include_segments: bool = False,
         sub = build / d
         if sub.is_dir():
             for p in sub.rglob("*"):
+                add(p, "build")
+
+    # out/ 下的临时残留（不含成片：只有上面 4 个 glob 能命中，*.mp4 不在其中）
+    out_dir = ep_dir / "out"
+    if out_dir.is_dir():
+        for g in OUT_TMP_GLOBS:
+            for p in out_dir.glob(g):
                 add(p, "build")
 
     if include_segments:
