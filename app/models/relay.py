@@ -12,15 +12,20 @@ subrouter.ai（中转）的请求/响应模型。
 """
 from __future__ import annotations
 
-import math
+import json
 from datetime import datetime
 
 from pydantic import BaseModel, Field
 
 
-# 来自实测：subrouter 图像端实际产出固定 1,572,864 像素
-# (= 1024 × 1536)，按请求 size 的长宽比分配
-SUBROUTER_PIXEL_CAP = 1024 * 1536  # 1,572,864
+# H 批（2026-09-05）：SUBROUTER_PIXEL_CAP 搬到 app/services/spec.py 了
+# （此前与 config.py 的 MP_FIXED 互为副本）。这里**不** re-export：全仓无消费者。
+#
+# 顺带记一个曾经踩到的坑：早先在这里 `from app.services.spec import ...` 会
+# 直接循环导入——因为 app/services/__init__.py 顶层 import 了 compose，而
+# compose 又 import app.managers，本模块正处在 managers 的初始化链上。
+# 现在 services/__init__ 已改成惰性导入（PEP 562），从 models 侧引 spec 是安
+# 全的；但既然没消费者，就不必多这一条 import。
 
 
 # ---------------------------------------------------------------------------
@@ -125,10 +130,10 @@ def predict_actual_dims(requested_size: str) -> tuple[int, int]:
     """
     预测 subrouter 返回图的真实像素。
     实测验证：1024x1024→1254x1254, 1024x1536→1024x1536, 1024x1792→948x1659
+
+    H 批（2026-09-05）：公式与常量搬到 app/services/spec.py（此前这里与
+    config.predict_actual_image_dims 各有一份 1024*1536 和一份照抄的公式）。
+    本函数保留名字作为 "WxH" 字符串入口。
     """
-    w, h = requested_size.split("x")
-    w, h = int(w), int(h)
-    ratio = w / h
-    h_actual = int(math.sqrt(SUBROUTER_PIXEL_CAP / ratio))
-    w_actual = int(ratio * h_actual)
-    return w_actual, h_actual
+    from app.services.spec import predict_actual_dims_of
+    return predict_actual_dims_of(requested_size)

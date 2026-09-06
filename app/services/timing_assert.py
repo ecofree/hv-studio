@@ -24,11 +24,13 @@ from app.models import Episode, Shot
 # FPS / HEAD_MS / TAIL_MS 不再在此另写一份：统一从 spec 导入（整改 C1）。
 # 此前这里写着「与 motion.FPS 同步」的手抄副本 —— 注释承诺同步，但没有任何
 # 机制保证同步，改一处忘一处就是静默的时间轴错位。re-export 只为兼容既有写法。
-from app.services.spec import FPS, HEAD_MS, TAIL_MS  # noqa: F401  (re-export)
+from app.services.spec import (  # noqa: F401  (re-export)
+    FPS, HEAD_MS, TAIL_MS, MAX_FRAMES, MIN_FRAMES,
+)
+# H 批：MIN_FRAMES / MAX_FRAMES 也搬到 spec 了（它们是输出规格，且 script.py
+# 的切分下限由它们反推）。此处只留 re-export，不再有第二份定义。
 # 断言阈值
 SUM_TOLERANCE_MS = 100     # #1
-MIN_FRAMES = 40            # #2  ≥ 1.6s
-MAX_FRAMES = 200           # #3  ≤ 8s
 
 
 class TimingError(RuntimeError):

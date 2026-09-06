@@ -61,16 +61,6 @@ profiles:
       volume: null
       instruction: null
 
-    rhythm:
-      fps: 25
-      pad_head_ms: 100
-      pad_tail_ms: 150
-      min_shot_ms: 1600
-      max_shot_ms: 6000
-      split_threshold_ms: 6000
-
-    # 2026-09-05 整改 C2 起，本段**真正生效**（此前 compose.py 里全是硬编码，
-    # 改这里完全不起作用）。改完记得它确实会影响出片。
     # 2026-09-05 整改 C2 起，本段**真正生效**（此前 compose.py 里全是硬编码，
     # 改这里完全不起作用）。改完记得它确实会影响出片。
     subtitle:
@@ -119,20 +109,6 @@ profiles:
 # ===========================================================================
 
 # ===========================================================================
-# 强制对齐
-# ===========================================================================
-# ⚠️ torchaudio 自带的 MMS_FA 是英文（29 token = 26 字母），不能对齐中文
-# M1: linear_estimate（按字符均分）
-# M2: faster-whisper word-level
-# M4: PaddleSpeech / FunASR 真字符级
-aligner:
-  primary_type: linear_estimate
-  primary_level: char
-  fallback_chain:
-    - faster_whisper_word_level
-    - faster_whisper_segment_level
-    - pinyin_chunked_estimate
-
 # ===========================================================================
 # 生图（继承自旧 models.yaml.image，重大修订）
 # ===========================================================================
@@ -226,18 +202,7 @@ video:
     - static_freeze
 
 # ===========================================================================
-# 运镜
-# ===========================================================================
-motion:
-  supersample: 2
-  pan_impl: crop
-  zoom_impl: zoompan
-  fallbacks:
-    - supersample: 1
-    - engine: static_freeze
-
-# ===========================================================================
-# 合成
+# 合成（运镜实现全在 app/services/motion.py，此处无配置项）
 # ===========================================================================
 compose:
   video_encoder: h264_nvenc

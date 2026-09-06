@@ -22,6 +22,8 @@ compose 模块级 import 了 managers / motion / upscale / config / numpy / PIL�
 """
 from __future__ import annotations
 
+import math
+
 # ---- 输出规格 ----
 FPS = 25
 W = 1080
@@ -36,3 +38,43 @@ TAIL_MS = 150
 # 与 voice._mp3_to_wav 的落盘口径（16k mono PCM）必须一致；
 # 由 tests 的漂移守卫锁住，防止两边各改各的。
 NARRATION_SR = 16000
+
+# ---- 单镜时长门禁 ----
+# H 批（2026-09-05）：从 timing_assert.py 收口到此。它们是「输出规格」而非
+# 断言逻辑，且 script.py 的切分下限要由它们反推（跟 MIN_FRAG_CHARS 同一个
+# 思路：能推就推，不手写魔数）。
+MIN_FRAMES = 40            # ≥ 1.6s —— 短于此会来不及看清画面
+MAX_FRAMES = 200           # ≤ 8s  —— 长于此单镜会闷，且撞上硬门禁必然挂
+
+MIN_SHOT_MS = MIN_FRAMES * 1000 // FPS     # 1600ms
+MAX_SHOT_MS = MAX_FRAMES * 1000 // FPS     # 8000ms
+
+# 切分软上限：比硬门禁 MAX_SHOT_MS 留 25% 冗余，超了就该拆，别等撞门禁。
+# 真源原是 config profile.rhythm.max_shot_ms=6000 —— 那一段全仓零消费者
+# （H 批已删），这里让它变成有依据的常量。
+SPLIT_THRESHOLD_MS = 6000
+
+# ---- subrouter 出图尺寸模型 ----
+# H 批（2026-09-05）：此前 1024*1536 这个数在两处各写一份
+# （app/config/config.py 的 MP_FIXED、app/models/relay.py 的
+# SUBROUTER_PIXEL_CAP），尺寸预测公式也照抄了两遍。改一处忘一处就会出现
+# 「hv config 打印的尺寸」和「relay 实际按这个尺寸算配额」对不上。
+#
+# 实测：无论请求什么 size，中转站返回的图像素总量固定在这个数（≈1.5MP），
+# 只是长宽比按请求来。样本：1024x1024→1254x1254、1024x1536→1024x1536、
+# 1024x1792→948x1659。
+SUBROUTER_PIXEL_CAP = 1024 * 1536
+
+
+def predict_actual_dims(w: int, h: int) -> tuple[int, int]:
+    """按请求的宽高比，预测中转站实际返回的像素 (w_actual, h_actual)。"""
+    ratio = w / h
+    h_actual = int(math.sqrt(SUBROUTER_PIXEL_CAP / ratio))
+    w_actual = int(ratio * h_actual)
+    return w_actual, h_actual
+
+
+def predict_actual_dims_of(size: str) -> tuple[int, int]:
+    """predict_actual_dims 的 "WxH" 字符串入口（如 "1080x1920"）。"""
+    w, h = size.split("x")
+    return predict_actual_dims(int(w), int(h))

@@ -438,3 +438,97 @@ def test_screen_image_prompts_reports_duplicates(tmp_path):
     finally:
         import shutil
         shutil.rmtree(d, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# H 批（2026-09-05）：config.image.primary 必须真被读取
+# ---------------------------------------------------------------------------
+def test_validate_image_params_flags_illegal_values():
+    """subrouter 对非法 size/quality 是**静默忽略**——照收钱照生成，只按它
+    自己的默认值出图。这是唯一能在花钱之前拦住的口径。"""
+    assert m.validate_image_params("1080x1920", "low", "gpt-image-2") == []
+    assert m.validate_image_params("1024x1536", "high") == []
+
+    bad = m.validate_image_params("9999x9999", "ultra", "")
+    assert any("size" in b for b in bad), f"非法 size 未报: {bad}"
+    assert any("quality" in b for b in bad), f"非法 quality 未报: {bad}"
+    assert any("model" in b for b in bad), f"空 model 未报: {bad}"
+
+
+def _fake_settings(size: str, quality: str, strict: bool):
+    """最小 settings 替身：只含 build_image_jobs 会读的字段。"""
+    return types.SimpleNamespace(
+        image=types.SimpleNamespace(
+            primary=types.SimpleNamespace(
+                model="gpt-image-2", engine="gpt-image-2",
+                size=size, quality=quality,
+                strict_param_validation=strict)),
+        get_profile=lambda: types.SimpleNamespace(
+            image=types.SimpleNamespace(
+                engine="gpt-image-2", size="1080x1920", quality="low",
+                style_suffix="", negative_clause="")),
+    )
+
+
+def test_strict_param_validation_decides_before_spending(tmp_path, monkeypatch):
+    """strict_param_validation=true 时非法参数必须在生图前拒绝。
+
+    该开关此前全仓零消费者 —— 设成 true 也不会有任何事发生，非法 size 会
+    真去生成、真计费，回来一堆比例不对的图（H 批让它真正生效）。
+    """
+    import app.config.config as C
+    from app.orchestrator import build_image_jobs
+
+    ep_id = f"smoke-imgstrict-{tmp_path.name}"
+    d = ROOT_EPISODES / ep_id
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "image_prompts.json").write_text(
+        json.dumps({"LGT01": {"en": "ancient chinese palace hall " * 12}}),
+        encoding="utf-8")
+    try:
+        # 合法参数 + strict=true：必须放行，不能误伤正常生产
+        monkeypatch.setattr(
+            C, "get_settings", lambda: _fake_settings("1080x1920", "low", True))
+        jobs = build_image_jobs(ep_id, prescreen=False)
+        assert jobs and jobs[0].req.size == "1080x1920"
+
+        # 非法参数 + strict=true：必须在花钱之前拒绝
+        monkeypatch.setattr(
+            C, "get_settings", lambda: _fake_settings("9999x9999", "ultra", True))
+        with pytest.raises(RuntimeError, match="strict_param_validation"):
+            build_image_jobs(ep_id, prescreen=False)
+
+        # 非法参数 + strict=false（生产默认）：放行，不阻碍出片
+        monkeypatch.setattr(
+            C, "get_settings", lambda: _fake_settings("9999x9999", "ultra", False))
+        jobs = build_image_jobs(ep_id, prescreen=False)
+        assert jobs and jobs[0].req.size == "9999x9999"
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_image_primary_is_the_source_of_engine_params(monkeypatch, tmp_path):
+    """engine 参数（model/size/quality）必须来自 config.image.primary。
+
+    此前全部取自 profile.image，顶层 image 整段（含 strict_param_validation）
+    零消费者——改了完全不生效。
+    """
+    import app.config.config as C
+    from app.orchestrator import build_image_jobs
+
+    ep_id = f"smoke-imgsrc-{tmp_path.name}"
+    d = ROOT_EPISODES / ep_id
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "image_prompts.json").write_text(
+        json.dumps({"LGT01": {"en": "ancient chinese palace hall " * 12}}),
+        encoding="utf-8")
+    try:
+        monkeypatch.setattr(
+            C, "get_settings", lambda: _fake_settings("1024x1536", "high", False))
+        req = build_image_jobs(ep_id, prescreen=False)[0].req
+        assert req.size == "1024x1536", f"size 没读 image.primary: {req.size}"
+        assert req.quality == "high", f"quality 没读 image.primary: {req.quality}"
+    finally:
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)

@@ -193,7 +193,10 @@ def clean_narration(raw: str) -> str:
 
 
 MERGE_MIN_KEEP = 10   # 短于此长度视为「碎片」，尝试向后并（≈2.5s）
-MERGE_MAX_JOIN = 29   # 合并后上限（≈7.4s，仍低于 max_shot_ms=6000 的冗余带）
+MERGE_MAX_JOIN = 29   # 合并后上限（≈7.4s，仍低于 spec.SPLIT_THRESHOLD_MS=6000
+                      # 的冗余带。原注释写的 max_shot_ms 来自 config 的
+                      # profile.rhythm —— 那一段全仓零消费者，H 批已删，
+                      # 真源改在 app/services/spec.py）
 
 
 def merge_short_pieces(pieces: list[str],

@@ -229,13 +229,28 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
     if not spec:
         return []
     im = get_settings().get_profile().image
-    # ImageConfig 是扁平结构：engine/size/quality/style_suffix/negative_clause
-    # 全在顶层，无 primary（batch_generate_lgt 老脚本同样用顶层字段）。
-    model = getattr(im, "engine", None) or "gpt-image-2"
-    size = getattr(im, "size", "1080x1920") or "1080x1920"
-    quality = getattr(im, "quality", "low") or "low"
+    # 引擎参数（model/size/quality）单一真源 = config.image.primary。
+    #   此前全部取自 profile.image，导致顶层 image 整段（**含
+    #   strict_param_validation**）零消费者 —— 改了完全不生效（H 批）。
+    #   profile.image 只留「风格」相关：style_suffix / negative_clause。
+    #   两边 engine/size/quality 当前值一致，此切换行为中性。
+    prim = getattr(get_settings().image, "primary", None)
+    model = (getattr(prim, "model", None) or getattr(prim, "engine", None)
+             or getattr(im, "engine", None) or "gpt-image-2")
+    size = (getattr(prim, "size", None) or getattr(im, "size", None) or "1080x1920")
+    quality = (getattr(prim, "quality", None) or getattr(im, "quality", None) or "low")
     suffix = getattr(im, "style_suffix", "") or ""
     neg = getattr(im, "negative_clause", "") or ""
+
+    # strict_param_validation：非法参数在**花钱之前**拒绝整批，而不是等中转站
+    # 静默忽略、照常计费、回来一堆比例不对的图（该开关此前无任何消费者）。
+    if getattr(prim, "strict_param_validation", False):
+        from app.services.image import validate_image_params
+        bad = validate_image_params(size, quality, model)
+        if bad:
+            raise RuntimeError(
+                "strict_param_validation=true 且生图参数非法，拒绝生成"
+                "（避免白烧配额）：\n  " + "\n  ".join(bad))
     shots_d = _episode_dir(ep_id) / "shots"
     shots_d.mkdir(parents=True, exist_ok=True)
 

@@ -145,13 +145,11 @@ class ProfileVoice(BaseModel):
     instruction: str | None = None
 
 
-class ProfileRhythm(BaseModel):
-    fps: int = 25
-    pad_head_ms: int = 100
-    pad_tail_ms: int = 150
-    min_shot_ms: int = 1600
-    max_shot_ms: int = 6000
-    split_threshold_ms: int = 6000
+# H 批（2026-09-05）：ProfileRhythm 整段删除。
+# 六个键（fps/pad_head_ms/pad_tail_ms/min_shot_ms/max_shot_ms/split_threshold_ms）
+# 全仓零消费者——唯一两处「匹配」是 script.py 注释里提了一句数值。
+# fps/pad_head/pad_tail 的真源在 app/services/spec.py，min/max_shot_ms 由
+# 门禁常量反推（见 spec.MIN_SHOT_MS / MAX_SHOT_MS）。留着只会让人以为改这里有效。
 
 
 class ProfileSubtitle(BaseModel):
@@ -198,7 +196,6 @@ class StyleProfile(BaseModel):
     name: str
     image: ProfileImage
     voice: ProfileVoice
-    rhythm: ProfileRhythm
     subtitle: ProfileSubtitle
     motion: ProfileMotion
     bgm: ProfileBGM
@@ -209,11 +206,10 @@ class StyleProfile(BaseModel):
 # ---------------------------------------------------------------------------
 # 注：顶层 tts 死配置(qwen3-tts/kokoro/silent-placeholder)已删——voice.py 实际
 # 用 cosyvoice(主)/edge(回退)，由 profile.voice 塑形参数 + voice.py 常量驱动，
-# 顶层 TTSConfig 无生产代码读取(仅 config 打印)，保留只会误导。
-class AlignerConfig(BaseModel):
-    primary_type: str
-    primary_level: str
-    fallback_chain: list[str]
+# H 批（2026-09-05）：AlignerConfig 随 alignment.py 一并删除。
+# 它零消费者（全仓 grep 除此处外无引用），却是个**必填**字段——想从
+# config.yaml 里删掉 aligner 段会直接 ValidationError。死配置还强制存在，
+# 只会让人以为「强制对齐」这道能力还在。
 
 
 class ImageEngineConfig(BaseModel):
@@ -287,11 +283,9 @@ class VideoConfig(BaseModel):
     fallbacks: list[str]
 
 
-class MotionConfig(BaseModel):
-    supersample: int
-    pan_impl: str
-    zoom_impl: str
-    fallbacks: list[dict[str, Any]]
+# H 批（2026-09-05）：顶层 MotionConfig 删除。运镜实现全在
+# app/services/motion.py，config 的 supersample/pan_impl/zoom_impl/fallbacks
+# 四个键全仓零消费者（此处匹配到的 `.motion` 是 Shot 的运镜字段，不是这个）。
 
 
 class ComposeConfig(BaseModel):
@@ -359,10 +353,8 @@ class Settings(BaseSettings):
     # ---- 来自 config.yaml ----
     profile_name: str = "ancient-realistic"
     profiles: dict[str, StyleProfile] = Field(default_factory=dict)
-    aligner: AlignerConfig
     image: ImageConfig
     video: VideoConfig
-    motion: MotionConfig
     compose: ComposeConfig
     runtime: RuntimeConfig
 
@@ -400,10 +392,8 @@ class Settings(BaseSettings):
             video_poll_interval_s=env_video_poll,
             profile_name=profile_name,
             profiles=profiles,
-            aligner=AlignerConfig(**raw["aligner"]),
             image=ImageConfig(**raw["image"]),
             video=VideoConfig(**raw["video"]),
-            motion=MotionConfig(**raw["motion"]),
             compose=ComposeConfig(**raw["compose"]),
             runtime=RuntimeConfig(**raw["runtime"]),
             channels=channels,
@@ -418,21 +408,17 @@ class Settings(BaseSettings):
         return int(w), int(h)
 
     def predict_actual_image_dims(self) -> tuple[int, int]:
+        """预测 subrouter 返回图的真实像素。
+
+        公式与真源（SUBROUTER_PIXEL_CAP / predict_actual_dims）都在
+        app/services/spec.py —— H 批收口：此前这里有一份 MP_FIXED = 1024*1536
+        和一份照抄的公式，与 app/models/relay.py 的 SUBROUTER_PIXEL_CAP
+        互为副本，改一处忘一处就会让「hv config 打印的尺寸」和「relay
+        按尺寸算配额」对不上。
         """
-        预测 subrouter 返回图的真实像素。
-        公式（已实测验证，4 组数据全部吻合）：
-            MP_fixed = 1,572,864 (= 1024 * 1536)
-            ratio = w / h
-            h_actual = sqrt(MP_fixed / ratio)
-            w_actual = int(ratio * h_actual)
-        """
-        import math
-        MP_FIXED = 1024 * 1536
+        from app.services.spec import predict_actual_dims
         w, h = self.get_image_size_requested()
-        ratio = w / h
-        h_actual = int(math.sqrt(MP_FIXED / ratio))
-        w_actual = int(ratio * h_actual)
-        return w_actual, h_actual
+        return predict_actual_dims(w, h)
 
     def predict_upscaled_dims(self) -> tuple[int, int]:
         """超分后尺寸 = 实测像素 × scale。"""

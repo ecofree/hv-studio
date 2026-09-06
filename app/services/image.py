@@ -105,6 +105,39 @@ def _mk_error(ch_name: str, status: int | None, detail: str) -> ImageError:
     return ImageError(msg)
 
 
+# ---------------------------------------------------------------------------
+# 参数合法性校验（H 批 2026-09-05）
+# ---------------------------------------------------------------------------
+# subrouter 对非法 size/quality 的行为是**静默忽略**：不报错、不拒绝，照收钱
+# 照生成，只是按它自己的默认值出图（例如请求 1080x1920 回来 1024x1024）。
+# 事后只表现为「某几张图比例不对」，排查成本极高，而且钱已经花了。
+#
+# config.image.primary.strict_param_validation 就是为这个准备的开关，但此前
+# 全仓零消费者 —— 设成 true 也不会有任何事发生（H 批让它真正生效）。
+_ALLOWED_SIZES = {"1024x1024", "1024x1536", "1536x1024", "1080x1920", "auto"}
+_ALLOWED_QUALITY = {"low", "medium", "high", "auto"}
+
+
+def validate_image_params(size: str, quality: str | None = None,
+                          model: str | None = None) -> list[str]:
+    """返回参数问题列表（空 = 合法）。**不做任何网络调用**。
+
+    调用方（build_image_jobs）在 strict_param_validation=true 时拿这个结果
+    决定是否在花钱之前拒绝整批任务。
+    """
+    problems: list[str] = []
+    if size not in _ALLOWED_SIZES:
+        problems.append(
+            f"size={size!r} 不在已知合法集 {sorted(_ALLOWED_SIZES)}；"
+            f"中转站会静默忽略并按其默认值出图（照常计费）")
+    if quality is not None and quality not in _ALLOWED_QUALITY:
+        problems.append(
+            f"quality={quality!r} 不在已知合法集 {sorted(_ALLOWED_QUALITY)}")
+    if model is not None and not str(model).strip():
+        problems.append("model 为空")
+    return problems
+
+
 class ImageGenerator:
     def __init__(self, max_attempts: int = 3):
         self.relay = get_relay()
