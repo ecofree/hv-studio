@@ -18,6 +18,8 @@
 """
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
@@ -656,6 +658,72 @@ def _segments_of(timeline, max_sec: float) -> list:
     return segs
 
 
+def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
+    """成片内容指纹（G 批）：一切「改了就该重编」的参数。
+
+    断点续跑的跳过判据此前只有「段文件存在 + 帧数 == 预期」——只要改的东西
+    不改变帧数（字幕样式、grade 调色、cq/preset、编码器），所有段就全部命中
+    跳过，成片纹丝不动。最阴的一种：NVENC 中途降级 libx264 之后重跑，前 N 段
+    仍命中跳过 → 硬件段 + 软件段混合编码被永久固化。
+    """
+    shots = []
+    for sh, _s0, _s1 in timeline:
+        m = getattr(sh, "motion", None)
+        shots.append({
+            "id": getattr(sh, "id", ""),
+            "dur": getattr(sh, "duration_ms", 0),
+            "img": getattr(sh, "image_path", "") or "",
+            "up": getattr(sh, "upscaled_path", "") or "",
+            "sub": getattr(sh, "subtitle_text", "") or "",
+            "grade": getattr(m, "grade", None) if m else None,
+            "motion": str(m) if m else "",   # pan/zoom/ease 等整份运镜 spec
+        })
+    payload = {
+        "mode": mode,                          # single / segmented
+        "layout": [len(sl) for sl in segs],    # 短片与长片都写 seg-000，必须区分
+        "vcodec": list(vcodec),
+        "spec": [W, H, FPS, HEAD_MS, TAIL_MS],
+        "subtitle": [_sub_font_path(), _sub_font_size(), _sub_bottom(), _sub_stroke()],
+        "shots": shots,
+    }
+    return hashlib.md5(
+        json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
+        .encode("utf-8")).hexdigest()[:16]
+
+
+def _sync_segment_params(seg_dir: Path, timeline, vcodec, mode: str, segs) -> None:
+    """参数指纹落盘；与上次不一致就作废所有旧段，强迫重编。
+
+    指纹里必须含 vcodec：内容没变、只有编码器变了（NVENC 降级）时，若前 N 段
+    沿用旧段，成片就是硬件+软件混合编码。
+    """
+    fp = _seg_params_fingerprint(timeline, vcodec, mode, segs)
+    pf = seg_dir / "params.json"
+    old = None
+    if pf.exists():
+        try:
+            old = json.loads(pf.read_text(encoding="utf-8")).get("fp")
+        except Exception:  # noqa: BLE001 —— 清单坏了当「无记录」，走全量重编
+            old = None
+    if old == fp:
+        return
+    stale = sorted(seg_dir.glob("seg-*.mp4"))
+    if stale:
+        print(f"  [compose] 渲染参数已变（{old or '无记录'} → {fp}），"
+              f"作废 {len(stale)} 个旧段")
+        for p in stale:
+            try:
+                p.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+    try:
+        pf.write_text(
+            json.dumps({"fp": fp, "mode": mode, "vcodec": list(vcodec)},
+                       ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001 —— 清单写不进不该中断合成（只是失去指纹保护）
+        pass
+
+
 def _run_audio_mux(video_src: Path, audio_src: Path, out_path: Path,
                    audio_codec: str, audio_bitrate: str,
                    timeout_sec: int = 1200) -> None:
@@ -855,27 +923,36 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         """
         _run_audio_mux(video_src, audio_input, out_path, _ac, _ab, _timeout)
 
+    # ---------- 段划分 + 参数指纹 ----------
+    # 分段方案先定：短片整片一段、长片按镜头边界切。指纹里必须带上分段布局——
+    # 短片与长片都写 seg-000.mp4，只按内容 hash 的话，短片切长片会把「整片」
+    # 当成「长片的第 0 段」直接跳过（P2-10）。
     if n_total_all < _compose_cfg.segment_min_frames:
+        segs, mode = [timeline], "single"
+    else:
+        segs, mode = _segments_of(timeline, _compose_cfg.segment_max_sec), "segmented"
+
+    seg_dir = build / "segments"
+    seg_dir.mkdir(parents=True, exist_ok=True)
+    _sync_segment_params(seg_dir, timeline, vcodec, mode, segs)
+
+    if mode == "single":
         # 短片：单段直出（纯视频无音轨），再统一 mux 音轨。
         # 保持历史可读性且不回归：产物等价（video+h264 + audio+aac +faststart）。
-        seg_dir = build / "segments"
-        seg_dir.mkdir(parents=True, exist_ok=True)
         vid = seg_dir / "seg-000.mp4"
         if not (vid.exists() and _probe_segment_frames(vid) == n_total_all):
             _encode_video_span(timeline, upscaled, vid, vcodec, _timeout,
                                plan_frames=plan_frames)
         _mux_full_audio(vid, final)
     else:
-        # 长片：按镜头边界切段，逐段编码（可断点续跑），concat copy + 一次混音
-        seg_dir = build / "segments"
-        seg_dir.mkdir(parents=True, exist_ok=True)
-        segs = _segments_of(timeline, _compose_cfg.segment_max_sec)
+        # 长片：按镜头边界逐段编码（可断点续跑），concat copy + 一次混音
         seg_paths: list[Path] = []
         rendered_any = False
         for i, sl in enumerate(segs):
             exp = expected_frames(sl)
             p = seg_dir / f"seg-{i:03d}.mp4"
             # 断点续跑：段已存在且帧数 = 预期 → 跳过（用逐镜求和口径，11/15 段能真命中）
+            # 「参数变了但帧数没变」的作废已在 _sync_segment_params 统一处理。
             skip = False
             if p.exists():
                 nf = _probe_segment_frames(p)

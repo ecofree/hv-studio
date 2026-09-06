@@ -158,3 +158,63 @@ def test_segments_are_skipped_when_already_done(segmented_episode, monkeypatch):
     monkeypatch.setattr("app.services.compose._encode_video_span", spy)
     compose_episode(ep_id)   # 第二次跑，所有段已就绪
     assert calls == [], f"断点续跑应跳过所有段, 却重编了 {len(calls)} 次"
+
+
+# ---------------------------------------------------------------------------
+# G 批（2026-09-05）：段跳过判据必须带「参数指纹」，只按帧数判断会漏
+# ---------------------------------------------------------------------------
+def test_stale_segments_are_invalidated_when_params_change(tmp_path):
+    """改了不影响帧数的参数（编码器/字幕/分段模式）也必须作废旧段。
+
+    只按「段存在 + 帧数对」判断的话，改字幕样式、grade、cq/preset、编码器
+    之后重跑会全部命中跳过、成片纹丝不动。最阴的一种：NVENC 中途降级
+    libx264 后重跑，前 N 段仍跳过 → 硬件段+软件段混合编码被永久固化。
+    """
+    from app.services.compose import (
+        _seg_params_fingerprint, _sync_segment_params,
+    )
+
+    seg_dir = tmp_path / "segments"
+    seg_dir.mkdir()
+    tl, segs = [], [[], []]
+    vc_nv = ["-c:v", "h264_nvenc", "-cq", "20"]
+    vc_sw = ["-c:v", "libx264", "-crf", "23"]
+
+    def _reset():
+        for p in seg_dir.glob("seg-*.mp4"):
+            p.unlink()
+        (seg_dir / "seg-000.mp4").write_text("x")
+        (seg_dir / "seg-001.mp4").write_text("x")
+
+    def _left():
+        return sorted(p.name for p in seg_dir.glob("seg-*.mp4"))
+
+    # 指纹本身：编码器不同 → 必须不同（否则降级检测不到）
+    assert _seg_params_fingerprint(tl, vc_nv, "segmented", segs) != \
+        _seg_params_fingerprint(tl, vc_sw, "segmented", segs), \
+        "编码器变了指纹却一样 → NVENC 降级后旧段不会被作废"
+    # 分段模式不同 → 必须不同（短片与长片都写 seg-000.mp4）
+    assert _seg_params_fingerprint(tl, vc_nv, "single", [tl]) != \
+        _seg_params_fingerprint(tl, vc_nv, "segmented", segs), \
+        "短片/长片指纹却一样 → 整片会被当成长片的第 0 段跳过"
+
+    # 1) 首次跑（无 params.json）：旧段没有指纹记录，一律作废（保守但正确）
+    _reset()
+    _sync_segment_params(seg_dir, tl, vc_nv, "segmented", segs)
+    assert _left() == [], "无指纹记录的旧段必须作废（无法确认参数一致）"
+
+    # 2) 参数不变再跑：段必须保留 —— 否则断点续跑就废了
+    _reset()
+    _sync_segment_params(seg_dir, tl, vc_nv, "segmented", segs)
+    assert _left() == ["seg-000.mp4", "seg-001.mp4"], \
+        "参数没变却作废旧段 → 断点续跑失效，每次都全量重编"
+
+    # 3) 换编码器（NVENC 降级场景）：必须作废，防混合编码固化
+    _reset()
+    _sync_segment_params(seg_dir, tl, vc_sw, "segmented", segs)
+    assert _left() == [], "编码器变了却复用旧段 → 成片硬件+软件混合编码固化"
+
+    # 4) 换分段模式：必须作废，防「整片」被当成「长片的第 0 段」跳过
+    _reset()
+    _sync_segment_params(seg_dir, tl, vc_sw, "single", [tl])
+    assert _left() == [], "分段模式变了却复用旧段 → 短片切长片会漏掉后半段"
