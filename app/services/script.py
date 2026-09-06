@@ -24,8 +24,19 @@ from app.models import Episode, Frame
 # 陷阱：中文引号/括号常紧跟句末标点，如  ……汉肯听我乎？"
 #   若只按标点切，切点落在 ？ 之后，" 之前 → 引号粘到下一句开头，
 #   还会吃掉换行，形成 '"\n张骞被扣留了。' 这种脏 frame（字幕会烧进乱码）。
+# ⚠️ 闭合引号必须**全角半角都列**：此前只列了半角 " 和 '，中文成稿用的
+# 是全角 ”（U+201D），于是「…不侵暴百姓。”他不仅」会被切在 。 之后、
+# ” 之前，把右引号甩到下一帧开头，形成只有 1 个字的垃圾帧（2026-09-06
+# 《李世民四部曲》实测 4 处，lsm-15min 的 script.md 有 11 处同类）。
 # Python re 的 lookbehind 必须定长，所以用两个定长分支（2 字符 / 1 字符）。
-SENT_END = re.compile(r'(?:(?<=[。！？.!?]["\'」』）)》])|(?<=[。！？.!?]))\s*')
+#   - 分支1：句号 + 闭合符 → 切在**闭合符之后**（把 ” 留在本句尾）
+#   - 分支2：句号后**不是**闭合符 → 切在句号之后
+#   ⚠️ 分支2 必须带 (?!…) 负向预查，否则 `。”他` 会在「。后」和「”后」各切一刀，
+#   切出 ['…百姓。', '”', '他不仅'] —— 反而制造出 1 字垃圾帧（2026-09-06 实测：
+#   只加了 ” 却没加预查，新剧本的 ” 帧从 1 个涨到 4 个）。两分支必须互斥。
+SENT_END = re.compile(
+    r"(?:(?<=[。！？.!?][\"'」』）)》”’])"
+    r"|(?<=[。！？.!?])(?![\"'」』）)》”’]))\s*")
 # 中文/英文逗号
 COMMA = re.compile(r"(?<=[,，、;；])\s*")
 
@@ -192,6 +203,70 @@ def clean_narration(raw: str) -> str:
     return t.strip("，。、；：？！ \t")
 
 
+# ---------------------------------------------------------------------------
+# markdown 前置剥离（2026-09-06《李世民四部曲》实测新增）
+# ---------------------------------------------------------------------------
+# 用户拿来的剧本常是「带完整格式标注的成稿」：# 标题、> 引用块（作品类型 /
+# 预估时长 / 核心切口 / 格式规范）、**（时长预估：…）**、--- 分隔线，以及行内的
+# 【语气/画面标注】与 [停顿0.5秒]。这些是给人看的，不是给 TTS 念、更不是烧字幕的。
+#
+# 此前 split_script **从不清洗**——clean_narration 只在
+# bin/build_episode_from_md.py 的双栏分镜路径上被调用，而 stage_script 这条
+# 官方生产链直接把 script.md 原文喂进来切。实测喂一份带标注的 3250 字剧本：
+# 294 帧里 33 帧被污染，前 6 帧整段是 markdown 垃圾，会原样烧进字幕并送去配音。
+MD_HEADING = re.compile(r"^#{1,6}\s*")                 # # / ### 标题行
+MD_QUOTE = re.compile(r"^>")                           # > 引用块
+MD_HR = re.compile(r"^([-*_])(?:\s*\1){2,}\s*$")       # --- / *** / ___ 水平线
+MD_BOLD_LINE = re.compile(r"^\*\*.*\*\*$")             # 整行只有加粗（时长预估/情绪基调）
+MD_EMPHASIS = re.compile(r"\*\*(.+?)\*\*")             # 行内 **强调** → 去掉星号留文本
+MD_PARA_SPLIT = re.compile(r"\n\s*\n")
+
+
+def strip_script_markdown(text: str) -> str:
+    """剥掉剧本成稿里的 markdown 结构与导演标注，只留可朗读正文。
+
+    按**段落**处理（`\\n\\s*\\n`），段内逐行清洗后**直接拼接**——markdown 里
+    同一段落的软换行就是续行，合并才是对的。若保留 `\\n`，它会跟着帧文本
+    一起烧进字幕（实测 73 帧含换行符）。
+
+    ⚠️ 标点的 strip 必须在**段级**做，不能在行级：软换行处的行尾常有
+    「地下钱炉，」这种逗号，行级 strip 会把它吃掉，拼接后句子粘连。
+    同理，跨行的引号对（“若能从我……” / ”）也只有在合并后才是完整的一句，
+    否则 `”` 会被单独切成一帧 1 字帧。
+
+    行内标注交给与双栏分镜路径同一套口径（【】→ 删、[停顿N秒]→。、[] → 删），
+    避免两处规则各飘各的。
+    """
+    kept: list[str] = []
+    for para in MD_PARA_SPLIT.split(text):
+        lines: list[str] = []
+        for line in para.splitlines():
+            s = line.strip()
+            if not s:
+                continue
+            if MD_HEADING.match(s) or MD_QUOTE.match(s) or MD_HR.match(s) \
+                    or MD_BOLD_LINE.match(s):
+                continue                              # 整行是结构/元数据 → 删
+            s = MD_EMPHASIS.sub(r"\1", s)             # **强调** → 强调
+            s = NARR_ANNOT.sub("", s)                 # 【语气/画面标注】
+            s = NARR_PAUSE.sub("。", s)               # [停顿N秒] → 。
+            s = NARR_BRACKET.sub("", s)               # [重音] 等
+            lines.append(s)
+        if not lines:
+            continue
+        # ⚠️ 这里**绝不能 strip 句末标点**：clean_narration 末尾那句
+        # .strip("，。、；：？！") 是给双栏分镜的【旁白单元格】用的（每格一句，
+        # 末尾句号交给 TTS 自然停）。而 split_script 切的是整篇，句末句号
+        # 既是字幕的一部分，也是下一句切分的依据——剥掉它会让所有既有集的
+        # 帧文本整体少一个句号（2026-09-06 实测回归：laogongtuan 45 帧、
+        # hanwu-ch3 72 帧被剥掉句尾句号）。只压空白与叠句号。
+        joined = re.sub(r"\s+", "", "".join(lines))   # 段内软换行合并
+        joined = re.sub(r"。{2,}", "。", joined)
+        if joined:
+            kept.append(joined)
+    return "\n\n".join(kept)
+
+
 MERGE_MIN_KEEP = 10   # 短于此长度视为「碎片」，尝试向后并（≈2.5s）
 MERGE_MAX_JOIN = 29   # 合并后上限（≈7.4s，仍低于 spec.SPLIT_THRESHOLD_MS=6000
                       # 的冗余带。原注释写的 max_shot_ms 来自 config 的
@@ -222,9 +297,13 @@ def merge_short_pieces(pieces: list[str],
         else:
             merged.append(p)
     # 收尾：末片仍是碎片则并入倒数第二片（若放得下）
+    # ⚠️ 必须先 pop 再赋值：`merged[-2] = merged[-2] + merged.pop()` 是先算
+    # 右侧（pop 使长度减 1）再对左侧下标赋值，len==2 时 pop 后 merged[-2]
+    # 越界 → IndexError。2026-09-06 新剧本 merge_short 建档时实测崩溃。
     if len(merged) > 1 and len(merged[-1]) < min_keep \
             and len(merged[-2]) + len(merged[-1]) <= max_join:
-        merged[-2] = merged[-2] + merged.pop()
+        last = merged.pop()
+        merged[-1] = merged[-1] + last
     return merged
 
 
@@ -282,6 +361,11 @@ def split_script(ep: Episode, script_md: str,
     （laogongtuan 365 帧等）都是按未合并切分建档的，改默认即错位。
     """
     from app.services.polyphone import preprocess
+
+    # 前置剥离 markdown 与导演标注（见 strip_script_markdown 的实测事故）。
+    # 放在切分**之前**：剥掉标注会改变句子边界（如 [停顿0.5秒]→。），
+    # 先清洗再切分才能得到正确的帧数。
+    md = strip_script_markdown(script_md)
     frames: list[Frame] = []
 
     def _mk(i: int, j: int, piece: str) -> Frame:
@@ -292,12 +376,12 @@ def split_script(ep: Episode, script_md: str,
         )
 
     if not merge_short:
-        for i, sent in enumerate(split_script_text(script_md)):
+        for i, sent in enumerate(split_script_text(md)):
             for j, piece in enumerate(split_long_sentence(sent, max_chars=18)):
                 frames.append(_mk(i, j, piece))
         return frames
 
-    for i, para in enumerate(re.split(r"\n\s*\n", script_md.strip())):
+    for i, para in enumerate(re.split(r"\n\s*\n", md.strip())):
         if not para.strip():
             continue
         pieces: list[str] = []

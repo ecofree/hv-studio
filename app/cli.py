@@ -69,7 +69,8 @@ def cmd_episode(args):
         # 默认降级是为了「跑得完」，但代价是一部片子里混两种声音且无声无息；
         # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
         res = produce(args.episode_id, stages=args.stage or None,
-                      tts_fallback=not args.no_fallback)
+                      tts_fallback=not args.no_fallback,
+                      merge_short=args.merge_short)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "audit-wav":
         # 孤儿 wav 清理（opt-in）：默认只列，--apply 才删。
@@ -331,6 +332,9 @@ def main():
                    help="[reshot] 合成后跳过 verify（默认会跑时序断言）")
     p.add_argument("--stage", action="append", default=None,
                    help="[produce] 指定阶段，可多次：--stage tts --stage compose")
+    p.add_argument("--merge-short", action="store_true",
+                   help="[produce] 新集建档时合并过短片段（<10 字，≈2.5s 以下）。"
+                        "⚠️ 既有多集不要开：帧数会变，已配好的音频与 scene_plan 全错位")
     p.add_argument("--no-fallback", action="store_true",
                    help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
                         "音色；交付集建议加）")

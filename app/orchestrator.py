@@ -41,8 +41,21 @@ def _out_dir(ep_id: str) -> Path:
 # ---------------------------------------------------------------------------
 # 真实 stage 回调（各自在成功后才允许状态迁移；失败抛错由 run_stage 置 FAILED）
 # ---------------------------------------------------------------------------
-def stage_script(ep: Episode, md: str | None = None) -> None:
-    """重建 frames。产物校验：frames 非空。
+def stage_script(ep: Episode, md: str | None = None,
+                 merge_short: bool = False) -> None:
+    """
+    merge_short: 是否合并过短片段（≈<2.5s）。**逐集可选，默认 False**——
+      laogongtuan 等既有多集是按未合并切分并已配好音/分镜的，打开会让帧数
+      变化、scene_plan 与音频全错位。新集建档时开，并写入 fingerprint。
+
+      ⚠️ 2026-09-06：此前这个开关**只能**通过 bin/build_episode_from_md.py
+      --merge-short 在双栏分镜路径上打开；纯 script.md 建档走 produce 时
+      split_script 被硬编码成 merge_short=False，CLI 无从开启 —— 于是新剧本
+      ⚠️ 2026-09-06：此前这个开关**只能**通过 bin/build_episode_from_md.py
+      --merge-short 在双栏分镜路径上打开；纯 script.md 建档走 produce 时
+      split_script 被硬编码成 merge_short=False，CLI 无从开启 —— 于是新剧本
+      切出的 6 个短帧（最短 '境。' 2 字）无法合并。现由 produce(merge_short=)
+      一路传下来，CLI 有 --merge-short。
 
     md: 显式脚本正文（API POST /produce 传来）。None 时走 _load_script_md(ep)。
     D4：以前靠 produce 把正文塞进 ep.notes 再在这里读回，而 save(ep) 会把整篇
@@ -55,9 +68,9 @@ def stage_script(ep: Episode, md: str | None = None) -> None:
         raise RuntimeError(f"episode {ep.id} 无脚本内容（script_path 为空或不存在）")
     # 优先 rebuild_frames（保留既有音频/shots 资产），否则 split_script
     if ep.frames and ep.shots:
-        rebuild_frames(ep, md)
+        rebuild_frames(ep, md, merge_short=merge_short)
     else:
-        ep.frames = split_script(ep, md)
+        ep.frames = split_script(ep, md, merge_short=merge_short)
     if not ep.frames:
         raise RuntimeError(f"episode {ep.id} 脚本切分后 frames 为空")
     print(f"  [orchestrator] script: frames={len(ep.frames)}")
@@ -551,11 +564,14 @@ def produce(
     stages: list[str] | None = None,
     script_md: str | None = None,
     tts_fallback: bool = True,
+    merge_short: bool = False,
 ) -> dict:
     """
     跑真实生产链（不滥用 rigid 状态枚举空推）；状态由产物真值导出。
       stages: None=全跑适用的；或 ['script','tts','compose','verify'] 子集。
       tts_fallback: cosyvoice 失败是否静默降级 edge（B2-3）。交付集建议 False。
+      merge_short: 合并过短片段（见 stage_script）。**新集建档才开**，
+        既有多集开它会让帧数变化 → 音频与 scene_plan 错位。默认 False。
     返回 {ep_id, status, stages_done, verify}。
     """
     from app.managers import load, save
@@ -616,9 +632,13 @@ def produce(
     if not tts_fallback:
         stage_fn["tts"] = lambda ep: stage_tts(ep, fallback=False)
         stage_fn["assets"] = lambda ep: stage_assets(ep, tts_fallback=False)
-    if script_md:
+    if script_md or merge_short:
         # D4：把正文用闭包喂给 stage_script，而不是写进 ep.notes 再读回。
-        stage_fn["script"] = lambda ep: stage_script(ep, md=script_md)
+        # merge_short 也必须走这个闭包——STAGE_FN 里存的是默认参数版本，
+        # 不覆盖的话 CLI 的 --merge-short 会被静默丢掉（2026-09-06 实测：
+        # 加了参数仍是 248 帧，因为根本没传进去）。
+        stage_fn["script"] = lambda ep: stage_script(
+            ep, md=script_md, merge_short=merge_short)
 
     done = []
     for st in stages:
