@@ -25,17 +25,17 @@ from pathlib import Path
 from app.config.config import env_get
 from app.models import Episode
 
-_EPISODES = Path(__file__).resolve().parent.parent / "episodes"
+from app.paths import episode_dir as _paths_episode_dir  # P1-6：调用期求值，可重定向
 
 
 def _episode_dir(ep_id: str) -> Path:
     """episodes/{ep_id} —— 单集资产根目录。"""
-    return _EPISODES / ep_id
+    return _paths_episode_dir(ep_id)
 
 
 def _out_dir(ep_id: str) -> Path:
-    """episodes/{ep_id}/out —— 与 compose.BASE/ep_id/out 同口径（勿用 json 父目录）。"""
-    return _EPISODES / ep_id / "out"
+    """episodes/{ep_id}/out —— 与 compose 的 out 同口径（勿用 json 父目录）。"""
+    return _paths_episode_dir(ep_id) / "out"
 
 
 # ---------------------------------------------------------------------------

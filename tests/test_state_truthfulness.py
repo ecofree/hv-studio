@@ -63,16 +63,15 @@ def test_produce_verify_derives_true_status(_restore_delivered_episode):
     assert res.get("final_mp4"), "verify 应返回 final_mp4 路径"
 
 
-def test_empty_episode_with_script_can_start_produce():
+def test_empty_episode_with_script_can_start_produce(tmp_episodes):
     """空集 + 有 script.md → schema 放行，stage_script 能成为第一步。"""
     import json
     import os
-    from pathlib import Path
-    from app.config.config import ROOT
     from app.managers import load, save
     from app.models import Episode
+    from app.paths import episodes_dir
 
-    ep_dir = ROOT / "episodes"
+    ep_dir = episodes_dir()          # P1-6：跟随 tmp_episodes 重定向
     ep_id = f"emptytest-{os.getpid()}"
     ep = Episode(id=ep_id, title="empty", episode_number=1, status="draft")
     save(ep)
@@ -81,29 +80,22 @@ def test_empty_episode_with_script_can_start_produce():
     (ep_dir / ep_id / "script.md").write_text(
         "这是一个测试。用来验证空集能启动。", encoding="utf-8")
 
-    try:
-        from app.orchestrator import produce
-        res = produce(ep_id, stages=["script"])
-        assert res["status"] in ("SCRIPTED", "DRAFT"), res
-        assert "script" in res["stages_done"]
-        assert load(ep_id).frames, "script 应已切出 frames"
-    finally:
-        try:
-            (ep_dir / f"{ep_id}.json").unlink()
-        except Exception:
-            pass
-        import shutil
-        shutil.rmtree(ep_dir / ep_id, ignore_errors=True)
+    from app.orchestrator import produce
+    res = produce(ep_id, stages=["script"])
+    assert res["status"] in ("SCRIPTED", "DRAFT"), res
+    assert "script" in res["stages_done"]
+    assert load(ep_id).frames, "script 应已切出 frames"
+    # 无清理：一切落在 tmp 下
 
 
-def test_produce_default_skips_script_when_frames_exist():
+def test_produce_default_skips_script_when_frames_exist(tmp_episodes):
     """已有 frames 的集，默认全链不重切脚本（防 splitter 规则一变重分帧）。"""
     import json
     import os
     from pathlib import Path
-    from app.config.config import ROOT
     from app.managers import load, save
     from app.models import Episode, Frame
+    from app.paths import episode_dir
 
     ep_id = f"nors-{os.getpid()}"
     ep = Episode(id=ep_id, title="nors", episode_number=1, status="draft")
@@ -111,27 +103,20 @@ def test_produce_default_skips_script_when_frames_exist():
     ep.frames = [Frame(id="frame-000", text="已有帧", audio_duration_ms=1000)]
     save(ep)
     # 有 script.md 但不该被重切
-    (ROOT / "episodes" / ep_id).mkdir(parents=True, exist_ok=True)
-    (ROOT / "episodes" / ep_id / "script.md").write_text(
+    _ep_dir = episode_dir(ep_id)     # P1-6：跟随 tmp_episodes 重定向
+    _ep_dir.mkdir(parents=True, exist_ok=True)
+    (_ep_dir / "script.md").write_text(
         "全新内容。不应被默认跑进 script 阶段。", encoding="utf-8")
-    try:
-        from app.orchestrator import produce
-        # 默认链（None）会先评估 script 适用性；无 assets/shots/compose 活 → 应仅跳过
-        res = produce(ep_id)   # stages=None
-        assert "script" not in res["stages_done"], \
-            f"已有 frames 不应默认重切 script: {res['stages_done']}"
-        # frames 仍保持原样（未被 rebuild_frames 改写）
-        assert load(ep_id).frames[0].text == "已有帧"
-    finally:
-        try:
-            (ROOT / "episodes" / f"{ep_id}.json").unlink()
-        except Exception:
-            pass
-        import shutil
-        shutil.rmtree(ROOT / "episodes" / ep_id, ignore_errors=True)
+    from app.orchestrator import produce
+    # 默认链（None）会先评估 script 适用性；无 assets/shots/compose 活 → 应仅跳过
+    res = produce(ep_id)   # stages=None
+    assert "script" not in res["stages_done"], \
+        f"已有 frames 不应默认重切 script: {res['stages_done']}"
+    # frames 仍保持原样（未被 rebuild_frames 改写）
+    assert load(ep_id).frames[0].text == "已有帧"
 
 
-def test_stage_images_uses_flat_imageconfig(monkeypatch):
+def test_stage_images_uses_flat_imageconfig(monkeypatch, tmp_episodes):
     """stage_images 读扁平 ImageConfig(engine/size/quality 顶层) 而非不存在 primary.
 
     回归守门：batch_generate_lgt 用 im.engine/im.size/im.quality；stage_images 曾误用
@@ -140,14 +125,14 @@ def test_stage_images_uses_flat_imageconfig(monkeypatch):
     import os
     import json as _json
     from pathlib import Path
-    from app.config.config import ROOT
     from app.managers import load, save
     from app.models import Episode
+    from app.paths import episode_dir
 
     ep_id = f"imgcfg-{os.getpid()}"
     ep = Episode(id=ep_id, title="imgcfg", episode_number=1, status="draft")
     save(ep)
-    ep_dir = ROOT / "episodes" / ep_id
+    ep_dir = episode_dir(ep_id)      # P1-6：跟随 tmp_episodes 重定向
     (ep_dir / "shots").mkdir(parents=True, exist_ok=True)
     # 用真实长度的 prompt（实测 laogongtuan/lsm-15min 最短 141、中位 ~190）。
     # 用 "desert" 这种 6 字玩具串会被 prompt 预筛以「过短」拦下——那正是
@@ -169,31 +154,24 @@ def test_stage_images_uses_flat_imageconfig(monkeypatch):
         from pathlib import Path as _P
         return {j.id: str(_P("shots") / f"{j.id}.png") for j in jobs}
 
-    try:
-        from app import orchestrator
+    from app import orchestrator
         # stage_images 在函数体内 `from app.services.image import ... generate_many`，
         # 故须 patch 源模块而非 orchestrator 属性。
-        from app.services import image as image_mod
-        monkeypatch.setattr(image_mod, "generate_many", _fake_generate_many)
-        from app.managers import load as _load
-        orchestrator.stage_images(_load(ep_id))
-        assert captured["n"] == 2
-        # 每个 req 用扁平 config 落参，无 primary 崩溃，且能取出 size/quality/model
-        for jid, req in captured["reqs"]:
-            assert req.size  # 扁平 size（曾是 im.primary.size → AttributeError）
-            assert req.quality
-            assert req.model
-            assert "LGT" in jid
-    finally:
-        try:
-            (ROOT / "episodes" / f"{ep_id}.json").unlink()
-        except Exception:
-            pass
-        import shutil
-        shutil.rmtree(ep_dir, ignore_errors=True)
+    from app.services import image as image_mod
+    monkeypatch.setattr(image_mod, "generate_many", _fake_generate_many)
+    from app.managers import load as _load
+    orchestrator.stage_images(_load(ep_id))
+    assert captured["n"] == 2
+    # 每个 req 用扁平 config 落参，无 primary 崩溃，且能取出 size/quality/model
+    for jid, req in captured["reqs"]:
+        assert req.size  # 扁平 size（曾是 im.primary.size → AttributeError）
+        assert req.quality
+        assert req.model
+        assert "LGT" in jid
+    # 无清理：一切落在 tmp 下
 
 
-def test_audit_orphan_wavs_safe_criterion():
+def test_audit_orphan_wavs_safe_criterion(tmp_episodes):
     """孤儿 wav 判据：被 frames 或 manifest 引用的保留，孤儿才删，apply 才删。
 
     回归守门：audit-wav 命令的判据是「frames ∪ manifest 都未引用才删」，非按文件名
@@ -202,14 +180,14 @@ def test_audit_orphan_wavs_safe_criterion():
     import os
     import json as _json
     from pathlib import Path
-    from app.config.config import ROOT
     from app.managers import load, save
     from app.models import Episode, Frame
+    from app.paths import episode_dir
 
     ep_id = f"wavaud-{os.getpid()}"
     ep = Episode(id=ep_id, title="wavaud", episode_number=1, status="draft")
     save(ep)
-    audio = ROOT / "episodes" / ep_id / "audio"
+    audio = episode_dir(ep_id) / "audio"   # P1-6：跟随 tmp_episodes 重定向
     audio.mkdir(parents=True, exist_ok=True)
     (audio / "frame-000.wav").write_bytes(b"\x00" * 100)   # 将被 frames 引用
     (audio / "frame-999-01.wav").write_bytes(b"\x00" * 100)  # 旧子帧格式孤儿
@@ -219,32 +197,25 @@ def test_audit_orphan_wavs_safe_criterion():
         _json.dumps({"man-kept": {"fp": "x", "wav": "man-kept.wav"}}), encoding="utf-8")
 
     from app.managers.episode import audit_orphan_wavs
-    try:
-        ep2 = load(ep_id)
-        ep2.frames = [Frame(id="frame-000", text="x",
-                            audio_path=str(audio / "frame-000.wav").replace("\\", "/"))]
-        save(ep2)
+    ep2 = load(ep_id)
+    ep2.frames = [Frame(id="frame-000", text="x",
+                        audio_path=str(audio / "frame-000.wav").replace("\\", "/"))]
+    save(ep2)
 
-        # dry-run：只列不删
-        r = audit_orphan_wavs(ep_id, apply=False)
-        names = set(r["orphans"])
-        assert "frame-000.wav" not in names, "被 frames 引用的不得判孤儿"
-        assert "man-kept.wav" not in names, "被 manifest 引用的不得判孤儿"
-        assert "frame-999-01.wav" in names
-        assert "old_base.wav" in names, "非子帧孤儿也应被认作孤儿(判据非文件名)"
-        assert all((audio / w).exists() for w in names), "dry-run 不得删"
+    # dry-run：只列不删
+    r = audit_orphan_wavs(ep_id, apply=False)
+    names = set(r["orphans"])
+    assert "frame-000.wav" not in names, "被 frames 引用的不得判孤儿"
+    assert "man-kept.wav" not in names, "被 manifest 引用的不得判孤儿"
+    assert "frame-999-01.wav" in names
+    assert "old_base.wav" in names, "非子帧孤儿也应被认作孤儿(判据非文件名)"
+    assert all((audio / w).exists() for w in names), "dry-run 不得删"
 
-        # apply：只删孤儿，保留被引用的
-        r2 = audit_orphan_wavs(ep_id, apply=True)
-        assert r2["deleted"] == 2, r2
-        assert (audio / "frame-000.wav").exists()
-        assert (audio / "man-kept.wav").exists()
-        assert not (audio / "frame-999-01.wav").exists()
-        assert not (audio / "old_base.wav").exists()
-    finally:
-        try:
-            (ROOT / "episodes" / f"{ep_id}.json").unlink()
-        except Exception:
-            pass
-        import shutil
-        shutil.rmtree(ROOT / "episodes" / ep_id, ignore_errors=True)
+    # apply：只删孤儿，保留被引用的
+    r2 = audit_orphan_wavs(ep_id, apply=True)
+    assert r2["deleted"] == 2, r2
+    assert (audio / "frame-000.wav").exists()
+    assert (audio / "man-kept.wav").exists()
+    assert not (audio / "frame-999-01.wav").exists()
+    assert not (audio / "old_base.wav").exists()
+    # 无清理：一切落在 tmp 下

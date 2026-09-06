@@ -69,6 +69,16 @@ python -m venv <hv-venv>
 # 其他子命令：init / show / checkpoint --label X
 #   episode run 已废弃（仅打印指路提示后 exit 1，不执行任何逻辑）
 
+# build/ 中间产物清理（默认 dry-run 只列清单与体积，--apply 才真删）
+<hv-venv>/python app/cli.py clean --all                        # 只看能清出多少
+<hv-venv>/python app/cli.py clean --all --apply                # 清中间产物（~120MB）
+<hv-venv>/python app/cli.py clean --all --segments --apply     # 连段一起清（~900MB）
+<hv-venv>/python app/cli.py clean --episode lsm-15min --apply  # 只清某一集
+#   ⚠️ 图片资产（底图/调试帧 .png）永不删除 —— 白名单之外的东西一律不动，
+#      被硬闸拦下的图片会在输出里 [skip] 记账，不会静默忽略。
+#   ⚠️ 段（build/segments/seg-*.mp4）是断点续跑缓存，删了下次 compose 全量重编，
+#      所以默认不清段，必须显式 --segments。
+
 # 花销对账（金额需自建 state/cost_prices.json，口径=成功落盘张数下界）
 <hv-venv>/python app/cli.py cost [--since 2026-09-04] [--raw]
 

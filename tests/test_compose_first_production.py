@@ -12,7 +12,7 @@ import subprocess
 from pathlib import Path
 
 from conftest import NEEDS_FFMPEG
-from app.config.config import ROOT
+from app.paths import episode_dir
 
 
 @NEEDS_FFMPEG
@@ -20,7 +20,10 @@ def test_first_production_compose_ok(smoke_episode):
     ep_id, src_p, big_p, dur_ms = smoke_episode
     from app.services.compose import compose_episode
 
-    out = ROOT / "episodes" / ep_id / "out"
+    # P1-6：走 app.paths（调用期求值）。smoke_episode 把根重定向到了 tmp，
+    # 这里若写死 ROOT/"episodes" 就会去 probe 一个根本不存在的真实路径，
+    # ffprobe 静默返回空串 → 断言 "h264" 落空（2026-09-05 实测踩到）。
+    out = episode_dir(ep_id) / "out"
     final = out / f"{ep_id}_m1.mp4"
     assert not final.exists(), "测试前提：首产前不应有旧成片"
 

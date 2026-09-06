@@ -20,10 +20,12 @@ from pathlib import Path
 
 from app.config.config import env_get
 from app.models import Episode, EpisodeStatus
+from app.paths import ROOT, episode_dir, episode_json, episodes_dir, state_dir
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-EPISODES_DIR = ROOT / "episodes"
-STATE_DIR = ROOT / "state"
+# P1-6（2026-09-05）：EPISODES_DIR 已删。此处改为从 app.paths 调用期求值——
+# 否则「测试想重定向 episodes 根」做不到，只能真写 D:/hv/episodes/ 再通配删。
+STATE_DIR = state_dir()
 CHECKPOINT_DIR = STATE_DIR / "checkpoints"
 
 # D6：checkpoint 无上限增长（每 stage 一份、文件名带微秒时间戳，永不复写）。
@@ -37,7 +39,7 @@ CHECKPOINT_KEEP = int(env_get("HV_CHECKPOINT_KEEP", "20"))
 # 持久化
 # ---------------------------------------------------------------------------
 def episode_path(episode_id: str) -> Path:
-    return EPISODES_DIR / f"{episode_id}.json"
+    return episode_json(episode_id)
 
 
 def checkpoint_path(episode_id: str, label: str, ts: datetime | None = None) -> Path:
@@ -101,7 +103,7 @@ def audit_orphan_wavs(
     apply=False（默认）只列不删；apply=True 才 os.remove（逐文件，无 rm -rf）。
     """
     ep = load(episode_id)
-    audio_dir = EPISODES_DIR / episode_id / "audio"
+    audio_dir = episode_dir(episode_id) / "audio"
     if not audio_dir.is_dir():
         return {"orphans": [], "deleted": 0, "skipped": 0}
 
@@ -137,7 +139,7 @@ def audit_orphan_wavs(
 
 def save(ep: Episode) -> Path:
     """原子保存到 episodes/{id}.json。返回写入路径。"""
-    EPISODES_DIR.mkdir(parents=True, exist_ok=True)
+    episodes_dir().mkdir(parents=True, exist_ok=True)
     path = episode_path(ep.id)
     tmp = path.with_suffix(".json.tmp")
     tmp.write_text(

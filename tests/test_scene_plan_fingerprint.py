@@ -124,7 +124,10 @@ def test_frames_fingerprint_detects_count_and_text_drift():
 # 5. 装配侧校验
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def tiny_ep(tmp_path):
+def tiny_ep(tmp_path, tmp_episodes):
+    """2-frame 一次性 episode，写在 tmp 的 episodes 根下（P1-6）。"""
+    from conftest import make_reuse_source
+    make_reuse_source(tmp_episodes, "hw-002", "SC01")
     ep_id = f"sbguard-fp{tmp_path.name}"
     d = {
         "id": ep_id, "title": ep_id, "episode_number": 1, "schema_version": "1.0",
@@ -139,10 +142,7 @@ def tiny_ep(tmp_path):
     }
     episode_path(ep_id).write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
     yield ep_id
-    try:
-        episode_path(ep_id).unlink()
-    except Exception:
-        pass
+    # 无清理：tmp_episodes 重定向后 json 也落在 tmp 下
 
 
 def _plan_with_fingerprint(ep_id, fp=None, image="SC01"):

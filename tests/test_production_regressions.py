@@ -86,64 +86,58 @@ def test_delivered_films_are_not_pcm():
 # ---------------------------------------------------------------------------
 # P0-2：stage_compose 后 ep 的时序必须来自磁盘真值，而非内存旧对象
 # ---------------------------------------------------------------------------
-def test_stage_compose_resyncs_timeline_from_disk(monkeypatch, tmp_path):
+def test_stage_compose_resyncs_timeline_from_disk(monkeypatch, tmp_path,
+                                                  tmp_episodes):
     """compose 后 ep.frames 必须回同步磁盘真值，否则外层 save 覆盖真值致 verify 误判。"""
     import json
-    from app.config.config import ROOT
     from app.managers import load, save
     from app.models import Episode, Frame, Shot
+    from app.paths import episode_dir
     import app.orchestrator as orch
 
     ep_id = f"resync-{os.getpid()}"
     ep = Episode(id=ep_id, title="resync", episode_number=1, status="draft")
     save(ep)
-    ep_dir = ROOT / "episodes" / ep_id
+    ep_dir = episode_dir(ep_id)      # P1-6：跟随 tmp_episodes 重定向
     out_dir = ep_dir / "out"
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    try:
-        # 磁盘真值：frame 时长 2910ms（compose 重算后的值）
-        disk = load(ep_id)
-        disk.frames = [Frame(id="frame-000", text="真值", audio_duration_ms=2910)]
-        save(disk)
+    # 目录在 tmp 下，无需 finally 清理
+    # 磁盘真值：frame 时长 2910ms（compose 重算后的值）
+    disk = load(ep_id)
+    disk.frames = [Frame(id="frame-000", text="真值", audio_duration_ms=2910)]
+    save(disk)
 
-        # 内存旧对象：估计时长 3010ms（builder 估计，未含重算）
-        stale = load(ep_id)
-        stale.frames = [Frame(id="frame-000", text="旧值", audio_duration_ms=3010)]
-        # stage_compose 要求 shots 非空（无 shots 视为未完成装配直接拒绝）
-        stale.shots = {
-            "shot-000": Shot(id="shot-000", frame_id="frame-000", index=0,
-                             duration_ms=3010, audio_start_ms=0, audio_end_ms=3010,
-                             image_path=str(tmp_path / "img.png"),
-                             prompt="", subtitle_text="旧值"),
-        }
+    # 内存旧对象：估计时长 3010ms（builder 估计，未含重算）
+    stale = load(ep_id)
+    stale.frames = [Frame(id="frame-000", text="旧值", audio_duration_ms=3010)]
+    # stage_compose 要求 shots 非空（无 shots 视为未完成装配直接拒绝）
+    stale.shots = {
+        "shot-000": Shot(id="shot-000", frame_id="frame-000", index=0,
+                         duration_ms=3010, audio_start_ms=0, audio_end_ms=3010,
+                         image_path=str(tmp_path / "img.png"),
+                         prompt="", subtitle_text="旧值"),
+    }
 
-        final = out_dir / f"{ep_id}_m1.mp4"
-        # 造一个"成片"（内容任意，只要存在且 >1KB），并让 compose_episode 只落盘真值
-        final.write_bytes(b"\x00" * 2048)
+    final = out_dir / f"{ep_id}_m1.mp4"
+    # 造一个"成片"（内容任意，只要存在且 >1KB），并让 compose_episode 只落盘真值
+    final.write_bytes(b"\x00" * 2048)
 
-        def _fake_compose(eid, *a, **kw):
-            # 模拟 compose_episode：自载副本 → 按真实音频重算 → 落盘真值
-            d = load(eid)
-            d.frames = [Frame(id="frame-000", text="真值", audio_duration_ms=2910)]
-            save(d)
-            return final
+    def _fake_compose(eid, *a, **kw):
+        # 模拟 compose_episode：自载副本 → 按真实音频重算 → 落盘真值
+        d = load(eid)
+        d.frames = [Frame(id="frame-000", text="真值", audio_duration_ms=2910)]
+        save(d)
+        return final
 
-        monkeypatch.setattr("app.services.compose.compose_episode", _fake_compose)
-        orch.stage_compose(stale)
+    monkeypatch.setattr("app.services.compose.compose_episode", _fake_compose)
+    orch.stage_compose(stale)
 
-        # 关键断言：内存对象已同步为磁盘真值 2910，而非停留在旧估计 3010
-        assert stale.frames[0].audio_duration_ms == 2910, (
-            f"stage_compose 未回同步磁盘真值：内存仍是旧估计 "
-            f"{stale.frames[0].audio_duration_ms}（期望 2910）。"
-            f"外层 save(ep) 会用旧值覆盖磁盘 → verify 拿旧口径判 FAILED（P0-2 复发）")
-    finally:
-        try:
-            (ROOT / "episodes" / f"{ep_id}.json").unlink()
-        except Exception:
-            pass
-        import shutil
-        shutil.rmtree(ROOT / "episodes" / ep_id, ignore_errors=True)
+    # 关键断言：内存对象已同步为磁盘真值 2910，而非停留在旧估计 3010
+    assert stale.frames[0].audio_duration_ms == 2910, (
+        f"stage_compose 未回同步磁盘真值：内存仍是旧估计 "
+        f"{stale.frames[0].audio_duration_ms}（期望 2910）。"
+        f"外层 save(ep) 会用旧值覆盖磁盘 → verify 拿旧口径判 FAILED（P0-2 复发）")
 
 
 # ---------------------------------------------------------------------------

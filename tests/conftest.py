@@ -131,36 +131,110 @@ def _isolate_cost_ledger(tmp_path, monkeypatch):
     monkeypatch.setattr(_img, "_PRICES_PATH", tmp_path / "cost_prices_test.json")
 
 
+# ---------------------------------------------------------------------------
+# P1-6（2026-09-05）：测试 episodes 隔离 + 交付集硬保护
+# ---------------------------------------------------------------------------
+# 测试命名空间。会话末兜底清扫只认「{ns}-」这种带连字符的测试名，
+# 裸 ns（如恰好有个集叫 "smoke"）不删——那已经不是测试名了。
+TEST_NS = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest",
+           "sbguard", "resync", "imgscreen", "imgdup")
+
+# 交付集硬保护名单。**不能只靠 git ls-files**：laogongtuan / lsm-15min 是
+# 最新的两部成片（2.2GB out/*.mp4）却都未入库，git 挡不住它们。
+PROTECTED_EPISODES = frozenset({
+    "hanwu-ch3", "hanwu-feature", "hanwu-prologue", "hw-001", "hw-002",
+    "laogongtuan", "lsm-15min",
+})
+
+
+def is_delivery_episode(ep_id: str) -> bool:
+    """交付集判定：名单内，或该集目录下已存在成片 out/*.mp4。
+
+    「成片在场」是最强信号——有 mp4 说明这集出过片，删掉就是不可逆损失。
+    这条规则对未来新增的集自动生效，不依赖任何人记得更新名单。
+    """
+    if ep_id in PROTECTED_EPISODES:
+        return True
+    d = EPISODES / ep_id
+    return d.is_dir() and any((d / "out").glob("*.mp4"))
+
+
+@pytest.fixture
+def tmp_episodes(tmp_path, monkeypatch):
+    """把整条链的 episodes 根重定向到 tmp_path（P1-6 根因修复）。
+
+    背景：此前 episodes 根被 4 处 import 期常量写死，测试改不了，只能真写
+    D:/hv/episodes/ 再靠「会话末按前缀通配删」兜底 —— 中断即残留、前缀撞车
+    即误删。现已收口为 app.paths.episodes_dir()（调用期求值），monkeypatch
+    这一个点就能让 managers / compose / orchestrator / shot_builder 全部改道。
+
+    用法：需要落盘 episode 的测试带上本 fixture，然后照常用
+    `episode_path(ep_id)` / `episodes_dir()` 取路径，拿到的就是 tmp 下的。
+    真实 episodes/ 零写入，也就不需要任何删除兜底。
+    """
+    import app.paths as _paths
+    ep_root = tmp_path / "episodes"
+    ep_root.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(_paths, "episodes_dir", lambda: ep_root)
+    return ep_root
+
+
+def make_reuse_source(ep_root: Path, src_ep: str = "hw-002",
+                      key: str = "SC01") -> Path:
+    """在 tmp episodes 根里造一张可复用占位底图，供 reuse_from 命中。
+
+    shot_builder 只校验 reuse 图路径存在（不解码），所以一张 540×960 占位图
+    足够——不需要把真实 hw-002 的 49 张图搬进 tmp。
+    """
+    d = ep_root / src_ep / "shots"
+    d.mkdir(parents=True, exist_ok=True)
+    p = d / f"{key}.png"
+    if not p.exists():
+        from PIL import Image
+        Image.new("RGB", (540, 960), (90, 70, 50)).save(p)
+    return p
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _clean_test_episode_residue():
     """会话结束清扫测试自建 episode 残留（防中断跑次永久残留）。
 
-    各测试在真实 episodes/ 下建 {ns}-{pid} 集（compose 硬绑定该目录），teardown 用
-    finally 精确删。但进程被杀/超时中断时 teardown 不跑，会在 episodes/ 留 json+目录。
-    这里按已知测试命名空间前缀通配清扫（autouse session，结束时统一兜底）。
-    ⚠️ 只清这些前缀，绝不匹配真实交付集（laogongtuan/hanwu-*/hw-* 等）。
+    ⚠️ 这只是**兜底**。正规路径是测试用 tmp_episodes fixture 根本不写真实
+    episodes/；本清扫只为「进程被杀 → teardown 没跑」这种残留兜底，
+    所以它带三重闸：① 只认 {ns}- 带连字符的测试名 ② 交付集一律跳过
+    ③ 逐个文件 unlink，绝不用 rmtree 通配。
     """
     yield
-    _namespaces = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest",
-                   "sbguard", "resync", "imgscreen", "imgdup")
+    _namespaces = TEST_NS
     for jf in EPISODES.glob("*.json"):
         stem = jf.stem
-        if any(stem == f"{ns}" or stem.startswith(f"{ns}-") for ns in _namespaces):
-            try:
-                jf.unlink()
-            except Exception:
-                pass
+        if not any(stem.startswith(f"{ns}-") for ns in _namespaces):
+            continue
+        if is_delivery_episode(stem):
+            print(f"\n[测试基建] 跳过 {stem}：判定为交付集，任何清扫都不得触碰")
+            continue
+        try:
+            jf.unlink()
+        except Exception:
+            pass
     for d in EPISODES.iterdir():
-        if d.is_dir() and any(d.name.startswith(f"{ns}-") for ns in _namespaces):
-            import shutil
-            shutil.rmtree(d, ignore_errors=True)
+        if not d.is_dir():
+            continue
+        if not any(d.name.startswith(f"{ns}-") for ns in _namespaces):
+            continue
+        if is_delivery_episode(d.name):
+            print(f"\n[测试基建] 跳过目录 {d.name}：判定为交付集")
+            continue
+        import shutil
+        shutil.rmtree(d, ignore_errors=True)
 
 
 @pytest.fixture
-def smoke_episode(tmp_path):
-    """构建一个一次性微 episode（写到真实 episodes/），产出 (ep_id, img, wav)。
+def smoke_episode(tmp_path, tmp_episodes):
+    """构建一个一次性微 episode（**写在 tmp 的 episodes 根下**，P1-6）。
 
-    测试结束自动清理 json + build/out 目录。
+    产出 (ep_id, img, big_img, dur_ms)。因为走 tmp_episodes 重定向，
+    真实 D:/hv/episodes/ 一个字节都不写，测后无需任何清理。
     """
     src_p, big_p = make_small_images(tmp_path)
     wav = make_small_wav(tmp_path)
@@ -170,29 +244,10 @@ def smoke_episode(tmp_path):
     ep_id = f"smoke-{os.getpid()}"
     d = build_episode_dict(ep_id, str(src_p).replace("\\", "/"),
                            str(wav).replace("\\", "/"), dur_ms)
-    ep_json = EPISODES / f"{ep_id}.json"
+    ep_json = tmp_episodes / f"{ep_id}.json"
     ep_json.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
 
     yield ep_id, src_p, big_p, dur_ms
-
-    # cleanup：先精确删本 pid 集，再清扫历史 smoke-* 残留（防中断跑次永久残留）。
-    # 注：单进程跑 pytest 时，残留只可能来自更早失败/被杀的跑次，可安全按通配清；
-    # 若启用 xdist 多进程并行则须改回仅按 pid（避免误删他进程在用集）。
-    try:
-        ep_json.unlink()
-    except Exception:
-        pass
-    ep_dir = EPISODES / ep_id
-    if ep_dir.exists():
-        import shutil
-        shutil.rmtree(ep_dir, ignore_errors=True)
-    # 历史残留：只清 smoke-*（测试自建命名空间），绝不动真实交付集
-    for jf in EPISODES.glob("smoke-*.json"):
-        try:
-            jf.unlink()
-        except Exception:
-            pass
-    for d in EPISODES.glob("smoke-*"):
-        if d.is_dir():
-            import shutil
-            shutil.rmtree(d, ignore_errors=True)
+    # 无清理：tmp_path 由 pytest 自行回收。
+    # 此前这里有一段「通配删 EPISODES/smoke-*」的兜底——那正是 P1-6 的风险源
+    # （前缀一旦与交付集相撞就是误删成片）。根改掉之后兜底也就不必存在了。

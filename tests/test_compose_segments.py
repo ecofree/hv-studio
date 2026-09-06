@@ -17,15 +17,24 @@ from pathlib import Path
 
 import pytest
 
-from app.config.config import ROOT
 from conftest import NEEDS_FFMPEG
 
-EPISODES = ROOT / "episodes"
 N_SHOTS = 24          # 24 镜，每镜 ~3s → ~1800 帧
 SHOT_MS = 3200        # 单镜时长（错开整帧边界制造舍入分叉：3200ms→80帧整? 3200*25/1000=80 整）
 
+
+def _ep_dir(ep_id: str) -> Path:
+    """当前生效的 episodes 根下该集目录。
+
+    P1-6：不再用模块级 `ROOT/"episodes"` 常量——那是写死真实目录的写法。
+    调用 app.paths（调用期求值），测试期被 tmp_episodes 重定向到 tmp。
+    """
+    from app.paths import episode_dir
+    return episode_dir(ep_id)
+
+
 def _build_multi_episode(tmp_path, ep_id):
-    """造 N 镜静态 episode：共享一张小图 + 一段 wav。写真实 episodes/。"""
+    """造 N 镜静态 episode：共享一张小图 + 一段 wav。写在**当前** episodes 根。"""
     from tests.conftest import make_small_images, make_small_wav
     src_p, big_p = make_small_images(tmp_path)
     wav = make_small_wav(tmp_path, dur_s=3.2)
@@ -61,13 +70,14 @@ def _build_multi_episode(tmp_path, ep_id):
         "status": "draft", "frames": frames, "shots": shots, "state": {},
         "total_seconds": N_SHOTS * SHOT_MS / 1000,
     }
-    ep_json = EPISODES / f"{ep_id}.json"
+    from app.paths import episode_json
+    ep_json = episode_json(ep_id)
     ep_json.write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
     return ep_id, src_p, big_p, real_dur
 
 
 @pytest.fixture
-def segmented_episode(tmp_path, monkeypatch):
+def segmented_episode(tmp_path, monkeypatch, tmp_episodes):
     from app.config.config import get_settings
     cfg = get_settings().compose
     # 压低门槛强制走分段路径 + 压小段长制造 ≥2 段
@@ -75,21 +85,15 @@ def segmented_episode(tmp_path, monkeypatch):
     monkeypatch.setattr(cfg, "segment_max_sec", 8.0)        # 每段 ≤8s → 24*3.2/8 ≈ 9 段
     ep_id, src_p, big_p, dur = _build_multi_episode(tmp_path, f"segtest-{os.getpid()}")
     yield ep_id, big_p, dur
-    try:
-        (EPISODES / f"{ep_id}.json").unlink()
-    except Exception:
-        pass
-    ep_dir = EPISODES / ep_id
-    if ep_dir.exists():
-        import shutil
-        shutil.rmtree(ep_dir, ignore_errors=True)
+    # 无清理：tmp_episodes 重定向后一切都落在 tmp_path 里，pytest 自行回收。
+    # 此前这里按 pid 精确 unlink + rmtree 真实 episodes/segtest-*，是误删风险源。
 
 
 @NEEDS_FFMPEG
 def test_segmented_compose_produces_valid_mp4(segmented_episode):
     ep_id, big_p, dur = segmented_episode
     from app.services.compose import compose_episode
-    out = EPISODES / ep_id / "out"
+    out = _ep_dir(ep_id) / "out"
     final = out / f"{ep_id}_m1.mp4"
     assert not final.exists(), "前提：无旧成片"
 
@@ -98,11 +102,11 @@ def test_segmented_compose_produces_valid_mp4(segmented_episode):
 
     # 无 .tmp 残留（段 concat / mux 都应原子收口）
     tmps = list(out.glob("*.tmp")) + list(out.glob("*.mp4.tmp")) + \
-           list((EPISODES / ep_id / "build" / "segments").glob("*.tmp"))
+           list((_ep_dir(ep_id) / "build" / "segments").glob("*.tmp"))
     assert tmps == [], f"残留 .tmp: {tmps}"
 
     # 至少产出多段
-    seg_dir = EPISODES / ep_id / "build" / "segments"
+    seg_dir = _ep_dir(ep_id) / "build" / "segments"
     segs = sorted(seg_dir.glob("seg-*.mp4"))
     assert len(segs) >= 2, f"应分段产出, 实际 {len(segs)} 段"
 
@@ -137,7 +141,7 @@ def test_segments_are_skipped_when_already_done(segmented_episode, monkeypatch):
     from app.config.config import get_settings
     cfg = get_settings().compose
     segs = _segments_of(tl, cfg.segment_max_sec)
-    seg_dir = EPISODES / ep_id / "build" / "segments"
+    seg_dir = _ep_dir(ep_id) / "build" / "segments"
 
     # 手工验证：每个已有段的帧数 == expected_frames(段)（断点续跑能命中）
     for i, sl in enumerate(segs):

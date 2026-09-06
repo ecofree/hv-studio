@@ -22,7 +22,14 @@ import pytest
 from app.managers.episode import episode_path
 from app.services import image as m
 
-ROOT_EPISODES = Path(__file__).resolve().parent.parent / "episodes"
+# P1-6：不再用模块级 ROOT_EPISODES 常量（那是写死真实 D:/hv/episodes 的写法）。
+# 需要单集目录的用例改用 tmp_episodes 夹具返回的根，或 app.paths.episode_dir()。
+
+
+def _ep_dir(ep_id: str) -> Path:
+    """当前生效的 episodes 根下该集目录（测试期被 tmp_episodes 重定向到 tmp）。"""
+    from app.paths import episode_dir
+    return episode_dir(ep_id)
 
 
 # ---------------------------------------------------------------------------
@@ -366,11 +373,11 @@ def test_screen_prompt_passes_real_prompt():
 # 6. build_image_jobs 预筛集成
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def screen_ep(tmp_path):
+def screen_ep(tmp_path, tmp_episodes):
     from app.services import image as _unused  # noqa: F401
     # 必须带连字符：conftest 的会话级清扫按 f"{ns}-" 前缀匹配残留目录
     ep_id = f"imgscreen-{tmp_path.name}"
-    d = ROOT_EPISODES / ep_id
+    d = _ep_dir(ep_id)
     d.mkdir(parents=True, exist_ok=True)
     spec = {
         "LGT01": {"en": "Wide shot, Han dynasty desert at dusk, cinematic"},
@@ -383,11 +390,7 @@ def screen_ep(tmp_path):
     (d / "image_prompts.json").write_text(
         json.dumps(spec, ensure_ascii=False), encoding="utf-8")
     yield ep_id
-    import shutil
-    shutil.rmtree(d, ignore_errors=True)
-    p = episode_path(ep_id)
-    if p.exists():
-        p.unlink()
+    # 无清理：目录在 tmp_episodes 根下，pytest 回收 tmp_path 即可
 
 
 def test_build_image_jobs_blocks_bad_prompts(screen_ep, capsys):
@@ -420,11 +423,11 @@ def test_compose_prompt_is_single_source(screen_ep):
     assert _compose_prompt("abc", s, n) == f"abc, {s}. {n}".strip(", .") + "."
 
 
-def test_screen_image_prompts_reports_duplicates(tmp_path):
+def test_screen_image_prompts_reports_duplicates(tmp_path, tmp_episodes):
     """同 prompt 生两张 = 白烧一倍钱，预筛要能提前指出来。"""
     from app.orchestrator import screen_image_prompts
     ep_id = f"imgdup-{tmp_path.name}"
-    d = ROOT_EPISODES / ep_id
+    d = _ep_dir(ep_id)
     d.mkdir(parents=True, exist_ok=True)
     (d / "image_prompts.json").write_text(json.dumps({
         "L01": {"en": "Wide shot, Han dynasty desert at dusk, cinematic"},
@@ -470,7 +473,8 @@ def _fake_settings(size: str, quality: str, strict: bool):
     )
 
 
-def test_strict_param_validation_decides_before_spending(tmp_path, monkeypatch):
+def test_strict_param_validation_decides_before_spending(tmp_path, monkeypatch,
+                                                         tmp_episodes):
     """strict_param_validation=true 时非法参数必须在生图前拒绝。
 
     该开关此前全仓零消费者 —— 设成 true 也不会有任何事发生，非法 size 会
@@ -480,35 +484,33 @@ def test_strict_param_validation_decides_before_spending(tmp_path, monkeypatch):
     from app.orchestrator import build_image_jobs
 
     ep_id = f"smoke-imgstrict-{tmp_path.name}"
-    d = ROOT_EPISODES / ep_id
+    d = _ep_dir(ep_id)
     d.mkdir(parents=True, exist_ok=True)
     (d / "image_prompts.json").write_text(
         json.dumps({"LGT01": {"en": "ancient chinese palace hall " * 12}}),
         encoding="utf-8")
-    try:
-        # 合法参数 + strict=true：必须放行，不能误伤正常生产
-        monkeypatch.setattr(
-            C, "get_settings", lambda: _fake_settings("1080x1920", "low", True))
-        jobs = build_image_jobs(ep_id, prescreen=False)
-        assert jobs and jobs[0].req.size == "1080x1920"
+    # 目录已落在 tmp_episodes 根下，pytest 回收 tmp_path 即可，无需 finally rmtree
+    # 合法参数 + strict=true：必须放行，不能误伤正常生产
+    monkeypatch.setattr(
+        C, "get_settings", lambda: _fake_settings("1080x1920", "low", True))
+    jobs = build_image_jobs(ep_id, prescreen=False)
+    assert jobs and jobs[0].req.size == "1080x1920"
 
-        # 非法参数 + strict=true：必须在花钱之前拒绝
-        monkeypatch.setattr(
-            C, "get_settings", lambda: _fake_settings("9999x9999", "ultra", True))
-        with pytest.raises(RuntimeError, match="strict_param_validation"):
-            build_image_jobs(ep_id, prescreen=False)
+    # 非法参数 + strict=true：必须在花钱之前拒绝
+    monkeypatch.setattr(
+        C, "get_settings", lambda: _fake_settings("9999x9999", "ultra", True))
+    with pytest.raises(RuntimeError, match="strict_param_validation"):
+        build_image_jobs(ep_id, prescreen=False)
 
-        # 非法参数 + strict=false（生产默认）：放行，不阻碍出片
-        monkeypatch.setattr(
-            C, "get_settings", lambda: _fake_settings("9999x9999", "ultra", False))
-        jobs = build_image_jobs(ep_id, prescreen=False)
-        assert jobs and jobs[0].req.size == "9999x9999"
-    finally:
-        import shutil
-        shutil.rmtree(d, ignore_errors=True)
+    # 非法参数 + strict=false（生产默认）：放行，不阻碍出片
+    monkeypatch.setattr(
+        C, "get_settings", lambda: _fake_settings("9999x9999", "ultra", False))
+    jobs = build_image_jobs(ep_id, prescreen=False)
+    assert jobs and jobs[0].req.size == "9999x9999"
 
 
-def test_image_primary_is_the_source_of_engine_params(monkeypatch, tmp_path):
+def test_image_primary_is_the_source_of_engine_params(monkeypatch, tmp_path,
+                                                      tmp_episodes):
     """engine 参数（model/size/quality）必须来自 config.image.primary。
 
     此前全部取自 profile.image，顶层 image 整段（含 strict_param_validation）
@@ -518,17 +520,13 @@ def test_image_primary_is_the_source_of_engine_params(monkeypatch, tmp_path):
     from app.orchestrator import build_image_jobs
 
     ep_id = f"smoke-imgsrc-{tmp_path.name}"
-    d = ROOT_EPISODES / ep_id
+    d = _ep_dir(ep_id)
     d.mkdir(parents=True, exist_ok=True)
     (d / "image_prompts.json").write_text(
         json.dumps({"LGT01": {"en": "ancient chinese palace hall " * 12}}),
         encoding="utf-8")
-    try:
-        monkeypatch.setattr(
-            C, "get_settings", lambda: _fake_settings("1024x1536", "high", False))
-        req = build_image_jobs(ep_id, prescreen=False)[0].req
-        assert req.size == "1024x1536", f"size 没读 image.primary: {req.size}"
-        assert req.quality == "high", f"quality 没读 image.primary: {req.quality}"
-    finally:
-        import shutil
-        shutil.rmtree(d, ignore_errors=True)
+    monkeypatch.setattr(
+        C, "get_settings", lambda: _fake_settings("1024x1536", "high", False))
+    req = build_image_jobs(ep_id, prescreen=False)[0].req
+    assert req.size == "1024x1536", f"size 没读 image.primary: {req.size}"
+    assert req.quality == "high", f"quality 没读 image.primary: {req.quality}"

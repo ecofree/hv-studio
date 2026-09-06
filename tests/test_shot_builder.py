@@ -15,8 +15,14 @@ from app.services import shot_builder as SB
 
 
 @pytest.fixture
-def tiny_ep(tmp_path):
-    """构造一个 2-frame 一次性 episode（写真实 episodes/，测后清理）。"""
+def tiny_ep(tmp_path, tmp_episodes):
+    """构造一个 2-frame 一次性 episode（写在 tmp 的 episodes 根下，P1-6）。
+
+    真实底图依赖用 make_reuse_source 在 tmp 根里造同名占位图解决，
+    因此完全不碰 D:/hv/episodes/。
+    """
+    from conftest import make_reuse_source
+    make_reuse_source(tmp_episodes, "hw-002", "SC01")
     ep_id = f"sbguard-{tmp_path.name}"
     d = {
         "id": ep_id, "title": ep_id, "episode_number": 1, "schema_version": "1.0",
@@ -31,10 +37,7 @@ def tiny_ep(tmp_path):
     }
     episode_path(ep_id).write_text(json.dumps(d, ensure_ascii=False), encoding="utf-8")
     yield ep_id
-    try:
-        episode_path(ep_id).unlink()
-    except Exception:
-        pass
+    # 无清理：tmp_episodes 重定向后 json 也落在 tmp 下
 
 
 def _plan(ep_id, image="SC01", grades=("dawn", "noon"), frames=(0, 1)):
@@ -81,7 +84,7 @@ def test_oor_rejected(tiny_ep, tmp_path):
 
 def test_valid_plan_builds_shots(tiny_ep, tmp_path):
     """合法 plan 能成功装配 2 镜，且无 SystemExit。"""
-    # 用真实存在的 SC01（hw-002 复用底图）
+    # reuse_from: hw-002 的底图由 tiny_ep 在 tmp 根里造好（不再依赖真实集）
     p = tmp_path / "plan.json"
     p.write_text(json.dumps(_plan(tiny_ep), ensure_ascii=False), encoding="utf-8")
     ep, stats = SB.build_episode_shots(tiny_ep, plan_path=p, persist=False, preview_rows=0)

@@ -3,6 +3,8 @@
   episode  init/show/produce/reshot/shots/checkpoint/audit-wav
            run = 已废弃（2026-09-05 双轨编排器删除，仅打印指路提示后 exit 1）
   relay    status/sync/pick
+  clean    --all | --episode ID  [--segments] [--apply]
+                                 build/ 中间产物清理（默认 dry-run；图片资产永不删）
   image    test                  真实最小生图
   polyphone  text/stats/rules    多音字预处理
   cost     [--since D] [--raw]   花销对账（金额需自建 state/cost_prices.json）
@@ -129,6 +131,63 @@ def cmd_relay(args):
     elif args.action == "pick":
         c = r.pick()
         print(f"picked: {c.name}  base={c.base_url}")
+
+
+def cmd_clean(args):
+    """build/ 中间产物清理（P1-8）。默认 dry-run，--apply 才真删。
+
+    三条硬约束（见 app/services/cleanup.py）：
+      1) 白名单——只清 compose/调试的中间产物，绝不 glob 后 rm -rf
+      2) 图片资产永不删——底图是花钱生成且跨集复用的
+      3) 默认 dry-run——删之前必须让人看见清单和体积
+
+    段（build/segments/seg-*.mp4）默认不清：删了下次要全量重编，
+    所以它是一等公民缓存，要显式 --segments 才动。
+    """
+    from app.paths import episodes_dir
+    from app.services.cleanup import clean_episodes, _human
+
+    eps = args.episode or []
+    if not args.all and not eps:
+        raise SystemExit(
+            "error: 必须指定范围 —— --all（全部集）或 --episode <id>（可多次）\n"
+            "  hv clean --all                 # dry-run，只看能清出多少\n"
+            "  hv clean --all --apply         # 真删（build 中间产物）\n"
+            "  hv clean --all --segments --apply   # 连段一起删（下次全量重编）")
+
+    root = episodes_dir()
+    if args.all:
+        ids = sorted(p.stem for p in root.glob("*.json"))
+    else:
+        ids = list(eps)
+    ep_dirs = {}
+    for eid in ids:
+        d = root / eid
+        if d.is_dir():
+            ep_dirs[eid] = d
+        elif not (root / f"{eid}.json").exists():
+            print(f"  [!] 跳过 {eid}：episodes/{eid}/ 与 {eid}.json 都不存在")
+    if not ep_dirs:
+        raise SystemExit("error: 没有匹配到任何集")
+
+    res = clean_episodes(ep_dirs, include_build=True,
+                         include_segments=args.segments, apply=args.apply)
+
+    mode = "已删(apply)" if args.apply else "可清(dry-run)"
+    print(f"[clean] 范围 {len(ep_dirs)} 集  档位 "
+          f"{'build + segments' if args.segments else 'build（不含段）'}")
+    for it in res["items"]:
+        print(f"  [{it['tier']:8s}] {_human(it['size']):>9s}  {it['path']}")
+    if res["skipped"]:
+        print(f"[clean] 被硬闸拦下 {len(res['skipped'])} 项（永不删除）：")
+        for s in res["skipped"][:10]:
+            print(f"  [skip] {s['path']}  —— {s['reason']}")
+    print(f"[clean] {mode}: {len(res['items'])} 项 / "
+          f"{_human(res['total_bytes'])}"
+          + (f" → 实删 {res['deleted']} 项 / {_human(res['deleted_bytes'])}"
+             if args.apply else " （加 --apply 才真删）"))
+    if not args.apply and args.segments:
+        print("[clean] 注意：段是断点续跑的缓存，删后下次 compose 会全量重编。")
 
 
 def cmd_image(args):
@@ -289,6 +348,17 @@ def main():
     p = sub.add_parser("relay", help="subrouter 渠道池状态")
     p.add_argument("action", choices=["status", "sync", "pick"])
     p.set_defaults(func=cmd_relay)
+
+    # clean：build/ 中间产物清理（P1-8）
+    p = sub.add_parser("clean", help="清理 build/ 中间产物（默认 dry-run）")
+    p.add_argument("--all", action="store_true", help="扫全部集")
+    p.add_argument("--episode", action="append", default=None, metavar="ID",
+                   help="指定集，可多次：--episode hw-001 --episode lsm-15min")
+    p.add_argument("--segments", action="store_true",
+                   help="连 build/segments/seg-*.mp4 一起清（删后下次全量重编）")
+    p.add_argument("--apply", action="store_true",
+                   help="实际删除（默认只列出清单与体积）")
+    p.set_defaults(func=cmd_clean)
 
     # image
     p = sub.add_parser("image", help="测试生图")

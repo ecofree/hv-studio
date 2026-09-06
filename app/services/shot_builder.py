@@ -28,6 +28,7 @@ from app.config.config import get_settings
 from app.managers import save
 from app.managers.episode import load
 from app.models import MotionSpec, Shot
+from app.paths import episode_dir
 from app.services.script import frames_fingerprint
 
 GRADE_KEYS = {"dawn", "noon", "dusk", "night", "fire", "frost"}
@@ -67,7 +68,7 @@ from app.services.spec import HEAD_MS, TAIL_MS  # noqa: F401  (re-export)
 
 
 def _default_plan_path(ep_id: str) -> Path:
-    return ROOT / "episodes" / ep_id / "scene_plan.json"
+    return episode_dir(ep_id) / "scene_plan.json"
 
 
 def _resolve_image(images_cfg: dict, sid: str) -> Path:
@@ -81,7 +82,7 @@ def _resolve_image(images_cfg: dict, sid: str) -> Path:
             p = ROOT / p
         return p
     if spec.get("reuse_from"):
-        return ROOT / "episodes" / spec["reuse_from"] / "shots" / f"{sid}.png"
+        return episode_dir(spec["reuse_from"]) / "shots" / f"{sid}.png"
     raise KeyError(f"image {sid} 需有 path 或 reuse_from")
 
 

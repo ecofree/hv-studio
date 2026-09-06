@@ -35,15 +35,17 @@ from app.services.motion import (
     FPS, H, W, apply_grade, frames_for_duration_ms, plan_frames as _plan_frames,
 )
 from app.config.config import ROOT
+from app.paths import episode_dir
 from app.services.upscale import upscale
 # 输出规格常量（FPS/W/H/HEAD_MS/TAIL_MS/NARRATION_SR）统一来自 spec（整改 C1）。
 # 由 motion 转手的 FPS/W/H 保留（motion re-export，值同源）；间隔与采样率直接从
 # spec 取，不再在本模块另写一份。
 from app.services.spec import HEAD_MS, NARRATION_SR, TAIL_MS  # noqa: F401
 
-# BASE 单一真源：从 config.ROOT 推导（= 仓库根 / episodes），勿硬编码盘符
-# （2026-09-04 收敛：换盘符/换机失效）。兼容外部传入 base_dir 场景。
-BASE = ROOT / "episodes"
+# P1-6（2026-09-05）：原 `BASE = ROOT / "episodes"` 已删。它是 import 期常量，
+# 测试无法重定向 → 测试只能真写 D:/hv/episodes/，再靠「会话末按前缀通配删」
+# 兜底（进程被杀就残留；前缀与交付集相撞就是误删）。现统一走
+# app.paths.episode_dir()（调用期求值），本模块不再自己拼 episodes 根。
 
 
 def expected_frames(timeline_slice) -> int:
@@ -778,7 +780,7 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     render = render or _render
 
     ep = load(ep_id)
-    base = BASE / ep_id
+    base = episode_dir(ep_id)
     build = base / "build"
     out_dir = base / "out"
     build.mkdir(parents=True, exist_ok=True)
