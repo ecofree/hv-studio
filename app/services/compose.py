@@ -172,7 +172,23 @@ _NO_LINE_START = set("，。、；：？！）」』》〉·…—")
 _NO_LINE_END = set("（「『《〈【“‘")
 #  标点分界：偏好在此类标点之后断行（让上一行以语义标点收尾，更符合阅读习惯）。
 _BREAK_AFTER = set("，。、；：？！…—")
-_SENT_END_PUNCT = set("。！？；：…—")   # 句末标点：大字渲染前 rstrip 掉（防孤行/视觉占位）
+# 上屏前剥掉的尾部标点（防孤行/视觉占位）。
+#   2026-09-06 补 `，` `、`：原来只剥句末，切出来的碎片「幸好，」「陇西平原，」
+#   仍顶着逗号上屏 —— 竖屏大字每行都是独立碎片，句读标点在行尾毫无意义。
+# ⚠️ 不收 `.`：会吃掉「3.5」「0.5秒」这类小数点（实测剧本里有）。
+# ⚠️ 本集合进了段参数指纹（见 _seg_params_fingerprint），改它旧段会自动作废。
+_SENT_END_PUNCT = frozenset("。！？；：…—，、")
+
+
+def _sub_strip_punct() -> str:
+    """上屏前剥掉的尾部标点，**排序后**返回（进指纹，顺序必须稳定）。"""
+    return "".join(sorted(_SENT_END_PUNCT))
+
+
+def strip_sub_tail(text: str) -> str:
+    """上屏文案：剥掉尾部句读/句末标点；剥光了退回原文（别出空字幕）。"""
+    t = text.rstrip(_sub_strip_punct())
+    return t or text
 
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -271,7 +287,7 @@ def _draw_subtitle(img: Image.Image, text: str) -> None:
     d = ImageDraw.Draw(img)
     font = _get_font(_sub_font_size())
     # 句末标点 rstrip：大字解说不渲染句尾「。！？」（对抖音竖屏是行业惯例，避免孤标点/视觉占位）
-    t = text.rstrip("".join(_SENT_END_PUNCT))
+    t = strip_sub_tail(text)
     if not t:
         t = text
     lines = _wrap(d, t, font, TEXT_W)
@@ -699,7 +715,8 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
         "layout": [len(sl) for sl in segs],    # 短片与长片都写 seg-000，必须区分
         "vcodec": list(vcodec),
         "spec": [W, H, FPS, HEAD_MS, TAIL_MS],
-        "subtitle": [_sub_font_path(), _sub_font_size(), _sub_bottom(), _sub_stroke()],
+        "subtitle": [_sub_font_path(), _sub_font_size(), _sub_bottom(),
+                     _sub_stroke(), _sub_strip_punct()],
         "shots": shots,
     }
     return hashlib.md5(
