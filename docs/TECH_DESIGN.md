@@ -786,9 +786,15 @@ pose: standing three-quarter angle, hand on sword hilt
 `state/hw-002.state.json` 记录每个 shot 的 stage 完成度。CLI 启动扫描状态，跳过已完成节点：
 
 ```bash
+# ⚠️ 以下 `hv run` 命令已废弃（2026-09-05 双轨编排器 managers/pipeline.py 删除）
 python -m hv run --episode hw-002              # 从断点继续
 python -m hv run --episode hw-002 --force tts  # 强制重跑指定 stage
 python -m hv run --episode hw-002 --only S007  # 只重建第 7 个镜头
+
+# 现行命令
+python -m app.cli episode produce hw-002             # 全链重跑（可 --stage tts 等）
+python -m app.cli episode produce hw-002 --stage tts # 只重跑 TTS
+python -m app.cli episode reshot hw-002 --key S007   # 单镜重建（删图→重生图→重合成）
 ```
 
 ---
@@ -913,7 +919,7 @@ python -m hv run --episode hw-002 --only S007  # 只重建第 7 个镜头
 |---|---|---|
 | **M0** ✅ **已完成** | venv + 依赖 + GPU 验证 | `torch.cuda.is_available() == True`；显存 12GB；torch 2.14.0+cu126 / torchaudio 2.11.0+cu126 就绪 |
 | **M1** | **30 秒垂直切片** | "张骞被匈奴扣押"片段完整跑通 7 个 stage，产出可播放 MP4，**人工判断质感** |
-| **M2** | `episode.json` schema 固化 + CLI | `hv run --episode X --only S007` 可单镜头重建 |
+| **M2** | `episode.json` schema 固化 + CLI | ~~`hv run --episode X --only S007` 可单镜头重建~~ → 该命令已废弃，现为 `hv episode reshot X --key S007` |
 | **M3** | 缓存 + 幂等 + 断点续跑 | 改一句文案，只重建对应镜头 |
 | **M4** | 单集完整产出（汉武大帝第 2 集） | 4 分钟成片，通过 G1/G2 |
 | **M5** | 批量 10 集 + 资产库复用 | 第 3–10 集复用宫殿/草原场景与角色定妆照，单集成本下降 40% |
@@ -963,8 +969,8 @@ python -m hv run --episode hw-002 --only S007  # 只重建第 7 个镜头
 | **不采纳** | `services/material.py`（pexels/pixabay 拉视频，98KB） | **不可用**：历史类无 stock footage。改为 `services/image.py`（gpt-image-2 三渠道池） |
 | **不采纳** | `services/llm.py`（任意主题脚本生成） | 用法不同：我们的脚本是模板化的汉武大帝系列，LLM 只用于 prompt 润色/校对等局部 |
 | **不采纳** | 通用 BGM 库 | 需要朝堂/边塞/战场/祭祀的氛围 BGM，定向采编 |
-| **自造** | 角色一致性（ref pack + face sim） | `services/character_lock.py` |
-| **自造** | torchaudio MMS_FA 字符级强对齐 | `services/alignment.py` |
+| ~~自造~~ **已删** | ~~角色一致性（ref pack + face sim）~~ | ~~`services/character_lock.py`~~ 2026-09-05 删除（定妆包能力未落地，全仓零消费者） |
+| ~~自造~~ **已删** | ~~torchaudio MMS_FA 字符级强对齐~~ | ~~`services/alignment.py`~~ 2026-09-05 删除（MMS_FA 是英文模型，不能对齐中文；从未被 produce/compose 调用） |
 | **自造** | 音频时长反向驱动镜头切割（250ms 呼吸间隙） | `services/script.py` + `managers/episode.py` |
 | **自造** | Ken Burns 运镜（crop + zoompan + 2× 超采样） | `services/motion.py` |
 | **自造** | RealESRGAN 2× 必跑管线 | `services/upscale.py` |
@@ -1003,11 +1009,11 @@ D:\hv\
 │   │   ├── polyphone.py            ← 【已实装】多音字预处理
 │   │   ├── script.py               ← [STUB] 脚本切分
 │   │   ├── voice.py                ← [STUB] TTS
-│   │   ├── alignment.py            ← [STUB] 强制对齐
-│   │   ├── character_lock.py       ← [STUB] 角色一致性
+│   │   ├── alignment.py            ← ❌【已删】强制对齐（2026-09-05）
+│   │   ├── character_lock.py       ← ❌【已删】角色一致性（2026-09-05）
 │   │   ├── motion.py               ← [STUB] Ken Burns
 │   │   ├── upscale.py              ← [STUB] RealESRGAN
-│   │   ├── subtitle.py             ← [STUB] 字幕烧录
+│   │   ├── subtitle.py             ← ❌【已删】字幕烧录（2026-09-05；烧字幕实装在 compose.py）
 │   │   ├── bgm.py                  ← [STUB] BGM
 │   │   └── compose.py              ← [STUB] 最终合成
 │   ├── controllers/v1/             ← FastAPI 路由
@@ -1056,7 +1062,9 @@ python -m app.cli image --prompt "..."                真实最小生图
 python -m app.cli polyphone --text "单于冒顿"         多音字测试
 python -m app.cli episode init ep-001                 初始化 episode
 python -m app.cli episode show ep-001                 查看 episode.json
-python -m app.cli episode run ep-001                  推进到下一状态
+python -m app.cli episode produce ep-001              真实生产链（--stage 可指定子集）
+python -m app.cli episode reshot ep-001 --key LGT01   单镜重建
+# episode run —— 已废弃（2026-09-05），仅打印指路提示后 exit 1
 python -m app.cli api --port 8000                     启动 FastAPI
 python -m app.cli webui --port 8501                   启动 Streamlit
 ```

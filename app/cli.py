@@ -1,10 +1,13 @@
 """
 命令行入口。提供子命令：
-  episode  init/show/run/checkpoint
+  episode  init/show/produce/reshot/shots/checkpoint/audit-wav
+           run = 已废弃（2026-09-05 双轨编排器删除，仅打印指路提示后 exit 1）
   relay    status/sync/pick
   image    test                  真实最小生图
   polyphone  text/stats/rules    多音字预处理
+  cost     [--since D] [--raw]   花销对账（金额需自建 state/cost_prices.json）
   config   show                  打印当前配置
+  webui / api                    启动 Streamlit / FastAPI
 """
 from __future__ import annotations
 

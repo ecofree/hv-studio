@@ -22,8 +22,9 @@ app/
   config/config.py        ROOT/配置（单一真源；engine/编码/CORS 均在此收敛）
   models/                 Episode/Frame/Shot/MotionSpec schema
   managers/episode.py     load/save/状态机/schema 校验/路径可移植归一
-  managers/pipeline.py    按镜头重建编排
-  orchestrator.py         ★ 统一真实编排器（CLI 与 API 共用）
+  orchestrator.py         ★ 唯一编排器（CLI 与 API 共用）
+                            2026-09-05 起双轨编排器 managers/pipeline.py 已删，
+                            单镜重建走 `episode reshot --key`
   services/
     voice.py              TTS（CosyVoice v3.5 主 / edge 备；文本指纹幂等）
     upscale.py            超分（pil_lanczos；源图变更失效检测；engine 读 config）
@@ -58,6 +59,22 @@ python -m venv <hv-venv>
 <hv-venv>/python app/cli.py episode shots <id> [--plan path] [--dry-run]
 #   scene_plan.json 见 episodes/hanwu-feature/scene_plan.json 样例（B 项管线）
 
+# 单镜重建：删旧图 → 重生成 → 重装配 → 重合成（想让某镜重画就用这个）
+<hv-venv>/python app/cli.py episode reshot <id> --key LGT01 [--key LGT02] [--no-verify]
+
+# 孤儿 wav 清理（默认 dry-run 只列出，--apply 才真删）
+<hv-venv>/python app/cli.py episode audit-wav <id> [--apply]
+<hv-venv>/python app/cli.py episode audit-wav --all --apply    # 扫全部集
+
+# 其他子命令：init / show / checkpoint --label X
+#   episode run 已废弃（仅打印指路提示后 exit 1，不执行任何逻辑）
+
+# 花销对账（金额需自建 state/cost_prices.json，口径=成功落盘张数下界）
+<hv-venv>/python app/cli.py cost [--since 2026-09-04] [--raw]
+
+# 回归基线：打印所有 episode/scene_plan 的内容指纹 + notes 长度
+<hv-venv>/python bin/fp_episodes.py
+
 # API（需 fastapi/uvicorn）
 <hv-venv>/python app/cli.py api                    # 默认 127.0.0.1
 # POST /v1/episode/{id}/produce?stage=verify       真实编排；默认 /run 只读 verify
@@ -75,7 +92,8 @@ python -m venv <hv-venv>
 - **路径可移植**：episode 数据里的 `D:/hv` 绝对路径在 `load()` 边界按当前 `ROOT` 重映射，
   仓库搬移/换盘符后无需改数据即可继续消费。
 - **配置=运行事实**：upscale 实际 `pil_lanczos`（config 声明一致）；I2V/RealESRGAN 未实现
-  已标注为 disabled / 占位，不虚报已启用。
+  已标注为 disabled / 占位，不虚报已启用。2026-09-05 复查删掉了三处零消费者的死配置段
+  （`aligner` / 顶层 `motion` / `profile.rhythm`），规格常量收口在 `app/services/spec.py`。
 
 ## 剧本→分镜（scene_plan 规格）
 
