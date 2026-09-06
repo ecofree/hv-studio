@@ -101,6 +101,11 @@ def _derive_max_frag_chars() -> int:
 
 MAX_FRAG_CHARS = _derive_max_frag_chars()
 
+# 无逗号长句的「次级切点」：破折号 / 省略号都是口播里的真停顿，切在它后面
+# 语义完整，远好过按字数硬砍中分词语。仅在 comma_pos 为空时启用（不回归
+# 既有分逗号逻辑，交付集实测无变化）。
+SOFT_BREAK_CHARS = "—…"
+
 # 触发例（写死 6 时的实际产物）：
 #   22字句「归途上，他又一次被匈奴俘获，扣留了一年有余。」
 #   旧算法在 2 处逗号里挑最接近中点的，把「归途上，」4字前缀切成独立镜(1.2s)。
@@ -118,8 +123,8 @@ def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
         （旧算法用 `cut < len/2`，对 119 字一口气带 、；的长句会切出
         33~50 字大块，单镜配音超 8s，compose 时序 gate 直接失败。）
       - 两侧都 ≥ MIN_FRAG_CHARS：不制造「归途上，」这类 <1.6s 碎片镜。
-      - 只在有逗号处切，绝不中切 CJK；找不到任何可行逗号时才整句保留
-        （此时即使略超 HARD_CAP，也不制造孤立标点/碎字片段）。
+      - 优先在逗号处切；无逗号时改用 —— / …；都没有才按字数硬砍，且
+        硬砍不得留下 <MIN 的孤儿片段（绝不中切出「序正义的。」）。
     """
     HARD_CAP = 26  # 放宽上限；>26 字 ≈6.5s，仍 <8s 时序硬限
 
@@ -138,9 +143,19 @@ def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
     if len(sent) <= max_chars:
         return [sent]
     comma_pos = [i for i, c in enumerate(sent) if c in "，,、;；"]
+    soft_pos = [i for i, c in enumerate(sent) if c in SOFT_BREAK_CHARS]
     if not comma_pos:
-        # 无逗号：宁可整句保留（常短于 HARD_CAP），不中切 CJK 造碎片
-        return [sent] if len(sent) <= HARD_CAP else [sent[:HARD_CAP]] + split_long_sentence(sent[HARD_CAP:], max_chars)
+        # 无逗号：先试「—— / …」这类天然停顿，别急着硬砍。
+        #   反例（lsm 第一集）：「…绝境时——他们是不会跟你讲程序正义的。」31 字
+        #   全句无逗号 → 旧兜底按 HARD_CAP=26 硬砍，把「程序正义」劈成
+        #   「…跟你讲程」+「序正义的。」（5 字孤儿镜）。破折号才是正确切点。
+        for cut in reversed(soft_pos):
+            left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
+            if _valid(left, right):
+                return _parts(left, right)
+        if len(sent) <= HARD_CAP:
+            return [sent]
+        return _balanced_split(sent)
     # 1) 优先：窗口 [MIN-1, max_chars-1] 内最右逗号（左片段 ≈ max_chars 且合规）
     for cut in reversed([p for p in comma_pos if MIN_FRAG_CHARS - 1 <= p < max_chars]):
         left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
@@ -156,19 +171,89 @@ def split_long_sentence(sent: str, max_chars: int = 18) -> list[str]:
         left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
         if _valid(left, right):
             return _parts(left, right)
-    # 3.5) 必须切：整句已超字数硬顶（≈ MAX_FRAMES 帧）。
+    # 3.6) ★ 必须切：整句已超字数硬顶（≈ MAX_FRAMES 帧）。
     #      ★ 两个下限打架时，「不长于上限」优先（2026-09-05）：
     #        下限违规只是「可能」不过门禁（TTS 实际时长常因标点停顿更长，
     #        且 merge_short 还能把碎片并回去）；上限违规是「必然」不过
     #        —— 32 字 ÷ 3.9 ≈ 8.2s ≈ 205 帧 > MAX_FRAMES=200。
-    #        实测 MIN_FRAG_CHARS 6→7 后 lsm-15min 就有这么一句被整句保留。
+    #
+    #      旧的 3.5（「任何 p<MAX_FRAG_CHARS 的逗号，只要两侧非空就切」）
+    #      已被本分支取代：它为了压住上限，会接受 5 字的「陇西平原，」孤儿，
+    #      把问题从上限搬到下限。两侧都够 MIN 才算切开，切不出就中分。
+    #
+    #      反例 A（新集 016）：「那是整个隋唐军事史上最惊险的一幕——三千五百名
+    #        身披玄黑铁甲的幽州突骑，像一颗钢钉，」41 字。逗号只在 34/40 位，
+    #        path3 因右侧 6 字 <MIN 拒绝，3.5 因无 p<MAX_FRAG_CHARS 的逗号
+    #        放弃 → 旧逻辑整句返回 41 字 ≈10.5s，一镜撞穿 8s 硬限。
+    #        破折号切点给出 18 + 23，语义完整且都在上限内。
     if len(sent) > MAX_FRAG_CHARS:
         for cut in reversed([p for p in comma_pos if p < MAX_FRAG_CHARS]):
             left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
             if left and right:
                 return _parts(left, right)
+        # 逗号用不上：先试破折号 / 省略号这类软停顿（语义完整，远好过中切）
+        for cut in reversed(soft_pos):
+            left, right = sent[: cut + 1].strip(), sent[cut + 1 :].strip()
+            if _valid(left, right):
+                return _parts(left, right)
+        # 都没有：中分（可能中切一个词，但两侧均衡且都不撞门禁）
+        return _balanced_split(sent)
     # 4) 兜底：整句保留（不制造孤立标点碎片）
     return [sent]
+
+
+# 引号 / 书名号内部视为不可切断区：把「“关陇军政风投股份｜有限公司”」这类
+# 切口切出来比多一个短镜难看得多，宁可把切点挪一两个字。
+_PROTECTED_PAIRS = (("“", "”"), ("\"", "\""), ("《", "》"), ("〈", "〉"))
+
+
+def _protected_spans(sent: str) -> set[int]:
+    """引号/书名号**内部**的下标集合（不含定界符本身）。"""
+    spans: set[int] = set()
+    for open_ch, close_ch in _PROTECTED_PAIRS:
+        start = None
+        for i, c in enumerate(sent):
+            if c == open_ch and start is None:
+                start = i
+            elif c == close_ch and start is not None:
+                # 含闭引号本身：切点 c 表示左段止于 c-1，若 c ≤ 闭引号位置，
+                # 闭引号就会被甩到右段 → 仍然算切在引号里（实测切出
+                # 「…风投股份有限公司」+「”的一场超级并购案」）。
+                spans.update(range(start + 1, i + 1))
+                start = None
+    return spans
+
+
+def _balanced_split(sent: str) -> list[str]:
+    """无可用标点时的中分兜底：两侧都 ≥ MIN_FRAG_CHARS，保证递归收敛。
+
+    两害相权：宁可中切一个词，也不接受
+      · 「超硬顶整句保留」——必然撞 8s 门禁；
+      · 「一侧只剩 5~7 字孤儿」——字幕断词（旧 HARD_CAP 硬砍的产物，
+        如「…跟你讲程」+「序正义的。」）。
+
+    切点从中点向两侧扩散，跳过引号/书名号内部，取第一个合法位置。
+    """
+    n = len(sent)
+    lo, hi = MIN_FRAG_CHARS, n - MIN_FRAG_CHARS
+    if lo > hi:
+        return [sent]
+    protected = _protected_spans(sent)
+    mid = n // 2
+    cut = None
+    for d in range(max(mid - lo, hi - mid) + 1):
+        for cand in ((mid - d,) if d == 0 else (mid - d, mid + d)):
+            if lo <= cand <= hi and cand not in protected:
+                cut = cand
+                break
+        if cut is not None:
+            break
+    if cut is None:  # 整句被保护包住：退回纯中分，认了
+        cut = min(max(mid, lo), hi)
+    left, right = sent[:cut].strip(), sent[cut:].strip()
+    if not left or not right:
+        return [sent]
+    return [left] + split_long_sentence(right)
 
 
 # ---------------------------------------------------------------------------
@@ -293,7 +378,13 @@ def merge_short_pieces(pieces: list[str],
         if merged and (PUNCT_ONLY.fullmatch(p)
                        or (len(merged[-1]) < min_keep
                            and len(merged[-1]) + len(p) <= max_join)):
-            merged[-1] = merged[-1] + p
+            # 孤立标点吸附也受硬顶约束：max_join(29) < MAX_FRAG_CHARS(31)，
+            # 但吸附是在「已合格片段」后面追加，不受 max_join 管 → 单独封顶，
+            # 否则 30 字片段 + '，' 也能顶到 31 字以上，白瞎了切分器的上限保证。
+            if len(merged[-1]) + len(p) > MAX_FRAG_CHARS:
+                merged.append(p)
+            else:
+                merged[-1] = merged[-1] + p
         else:
             merged.append(p)
     # 收尾：末片仍是碎片则并入倒数第二片（若放得下）
