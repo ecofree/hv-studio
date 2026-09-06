@@ -22,6 +22,7 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
+from app.config.config import env_get
 from app.models import Episode
 
 _EPISODES = Path(__file__).resolve().parent.parent / "episodes"
@@ -124,8 +125,10 @@ def _read_image_prompts(ep_id: str) -> dict:
 # 阈值依据（实测 episodes/*/image_prompts.json）：
 #   laogongtuan n=56 最短141 中位192 / lsm-15min n=64 最短146 中位181
 # 故 12 字门槛距真实最短值有 10 倍余量，只拦漏写与占位符，不做质量判断。
-PROMPT_MIN_CHARS = int(os.environ.get("HV_PROMPT_MIN_CHARS", "12"))
-PROMPT_MAX_CHARS = int(os.environ.get("HV_PROMPT_MAX_CHARS", "4000"))
+# I 批（2026-09-05）：改走 env_get（.env 优先、真实环境变量兜底）。
+# 此前直读 os.environ，这些键写进 .env 是无效的。
+PROMPT_MIN_CHARS = int(env_get("HV_PROMPT_MIN_CHARS", "12"))
+PROMPT_MAX_CHARS = int(env_get("HV_PROMPT_MAX_CHARS", "4000"))
 
 # 占位符/未完成标记：出现即视为漏写（不区分大小写）
 _PROMPT_PLACEHOLDER = (
@@ -303,7 +306,7 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
             print(f"      … 另有 {len(blocked)-20} 条被拦截")
         # 默认只拦不炸（老集可能有历史短 prompt，不该一夜之间全跑不起来）；
         # 需要「预筛即门禁」时用 HV_PROMPT_PRESCREEN_STRICT=1。
-        if blocked and os.environ.get("HV_PROMPT_PRESCREEN_STRICT") in (
+        if blocked and env_get("HV_PROMPT_PRESCREEN_STRICT") in (
                 "1", "true", "yes"):
             raise RuntimeError(
                 f"episode {ep_id} 有 {len(blocked)} 条 prompt 未通过预筛，"

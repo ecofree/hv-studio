@@ -211,7 +211,11 @@ _BJ_WS_WS_TMPL = "wss://{ws}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
 
 def _resolve_voice_design_endpoint() -> str:
     """根据 .env 的 workspace 配置决定声音设计端点（北京专属域名优先）。"""
-    ws = os.environ.get(DASHSCOPE_ENV_WS) or _env_get(DASHSCOPE_ENV_WS)
+    # I 批（2026-09-05）：原为 `os.environ.get(...) or _env_get(...)`（环境变量
+    # 优先），与下面的 _resolve_synth_ws_url 及 :390 的 `_env_get(...)`（.env
+    # 优先）**语义相反** —— 同一个 key 两种优先级，改了其中一处另一处就不生效。
+    # 统一按 C4 定的语义：.env 优先，真实环境变量兜底。
+    ws = _env_get(DASHSCOPE_ENV_WS)
     if ws:
         ws = ws.strip().rstrip("/")
         # 支持两种写法：ws-ba6d5skqpa8m020f 或完整 ws-ba6d5...cn-beijing.maas.aliyuncs.com
@@ -224,7 +228,8 @@ def _resolve_voice_design_endpoint() -> str:
 
 def _resolve_synth_ws_url() -> str | None:
     """根据 .env 的 workspace 决定语音合成 WebSocket URL（北京专属）。无则 None。"""
-    ws = os.environ.get(DASHSCOPE_ENV_WS) or _env_get(DASHSCOPE_ENV_WS)
+    # I 批（2026-09-05）：同上，统一为 .env 优先（原本与 :390 相反）。
+    ws = _env_get(DASHSCOPE_ENV_WS)
     if ws:
         ws = ws.strip().rstrip("/")
         if "cn-beijing.maas.aliyuncs.com" in ws:

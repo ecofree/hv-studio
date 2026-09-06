@@ -18,6 +18,7 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 
+from app.config.config import env_get
 from app.models import Episode, EpisodeStatus
 
 ROOT = Path(__file__).resolve().parent.parent.parent
@@ -27,7 +28,9 @@ CHECKPOINT_DIR = STATE_DIR / "checkpoints"
 
 # D6：checkpoint 无上限增长（每 stage 一份、文件名带微秒时间戳，永不复写）。
 # 单集只保留最近 KEEP 份；设 HV_CHECKPOINT_KEEP=0 表示不轮转（保留全部）。
-CHECKPOINT_KEEP = int(os.environ.get("HV_CHECKPOINT_KEEP", "20"))
+# I 批（2026-09-05）：改走 env_get（.env 优先、真实环境变量兜底）。
+# 此前直读 os.environ，这个键写进 .env 是无效的。
+CHECKPOINT_KEEP = int(env_get("HV_CHECKPOINT_KEEP", "20"))
 
 
 # ---------------------------------------------------------------------------

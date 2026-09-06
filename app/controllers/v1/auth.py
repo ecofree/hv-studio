@@ -28,13 +28,18 @@ from typing import Optional
 
 from fastapi import Header, HTTPException
 
+from app.config.config import env_get
+
 ENV_TOKEN = "HV_API_TOKEN"
 HEADER_NAME = "X-HV-Token"
 
 
 def configured_token() -> str:
     """当前生效的 token；空串代表「未启用鉴权」。"""
-    return (os.environ.get(ENV_TOKEN) or "").strip()
+    # I 批（2026-09-05）：改走 env_get —— 此前直读 os.environ，token 写进
+    # .env 是不生效的（.env 是本仓推荐的本地配置落点，不入库）。
+    # 语义：.env 优先，真实环境变量兜底。
+    return (env_get(ENV_TOKEN) or "").strip()
 
 
 def auth_enabled() -> bool:

@@ -42,7 +42,12 @@ app = FastAPI(
 # 不再用 allow_origins=["*"]（配合 allow_credentials=True 是危险组合）。
 # 生产部署需显式经 env HV_CORS_ORIGINS 白名单放开，并由反向代理做鉴权。
 import os
-_cors_origins = [o.strip() for o in os.environ.get("HV_CORS_ORIGINS", "").split(",") if o.strip()] \
+
+from app.config.config import env_get
+
+# I 批（2026-09-05）：改走 env_get（.env 优先、真实环境变量兜底）。
+# 此前直读 os.environ，这个键写进 .env 是无效的。
+_cors_origins = [o.strip() for o in env_get("HV_CORS_ORIGINS", "").split(",") if o.strip()] \
     or ["http://127.0.0.1", "http://localhost", "http://127.0.0.1:8501", "http://localhost:8501"]
 app.add_middleware(
     CORSMiddleware,

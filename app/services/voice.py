@@ -31,6 +31,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+from app.config.config import env_get
 from app.models import Frame
 
 # ---------------------------------------------------------------------------
@@ -136,7 +137,9 @@ def _save_manifest(base: Path, manifest: dict) -> None:
 #
 # 判据**直接复用** image.is_transient_error（类型→状态码→requests 异常→文案指纹），
 # 不在 TTS 侧另写一份分类逻辑 —— 写两份就必然漂移，这是本项目反复踩的坑。
-_TTS_TRANSIENT_RETRY = int(os.environ.get("HV_TTS_TRANSIENT_RETRY", "2"))
+# I 批（2026-09-05）：改走 env_get（.env 优先、真实环境变量兜底）。
+# 此前直读 os.environ，这个键写进 .env 是无效的。
+_TTS_TRANSIENT_RETRY = int(env_get("HV_TTS_TRANSIENT_RETRY", "2"))
 
 
 def _is_transient(e: BaseException) -> bool:

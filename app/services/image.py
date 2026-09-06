@@ -24,7 +24,7 @@ from pathlib import Path
 
 import requests
 
-from app.config.config import Channel
+from app.config.config import Channel, env_get
 from app.managers.relay import STATE_DIR, get_relay
 from app.models import ImageEditRequest, ImageGenRequest, ImageGenResponse
 
@@ -264,7 +264,7 @@ from queue import Empty, Queue
 # 全局 QPS 闸：并发下保护中转，避免 3×并发把某 key 打 429。
 # 用「时间窗限速」而非固定令牌数：每 _QPS_INTERVAL 秒放行一次。
 # （曾误用固定 permit 的 Semaphore——acquire 后不归还，N 次后永久死锁。）
-_QPS_MAX = float(os.environ.get("HV_IMAGE_QPS_MAX", "2"))
+_QPS_MAX = float(env_get("HV_IMAGE_QPS_MAX", "2"))
 _QPS_INTERVAL = 1.0 / max(1.0, _QPS_MAX)
 _qps_lock = threading.Lock()
 _qps_next = 0.0  # 下一次放行时刻
@@ -293,9 +293,9 @@ def _backoff(attempt: int) -> float:
 
 
 # 同一渠道上的瞬时故障重试次数（换路前的原地重试；总尝试 = 渠道数 × (1+本值)）
-_MAX_TRANSIENT_RETRY = int(os.environ.get("HV_IMAGE_TRANSIENT_RETRY", "2"))
+_MAX_TRANSIENT_RETRY = int(env_get("HV_IMAGE_TRANSIENT_RETRY", "2"))
 # 打印每次瞬时重试细节（默认关，避免刷屏）
-_VERBOSE = os.environ.get("HV_IMAGE_VERBOSE", "0") not in ("0", "", "false")
+_VERBOSE = env_get("HV_IMAGE_VERBOSE", "0") not in ("0", "", "false")
 
 
 @dataclass
@@ -431,7 +431,7 @@ def _download(url: str, ch_name: str) -> bytes:
 # ---------------------------------------------------------------------------
 # 进度 / ETA（长任务不可静默：300 张图跑 1h 无输出会被当卡死）
 # ---------------------------------------------------------------------------
-_PROGRESS_EVERY = float(os.environ.get("HV_IMAGE_PROGRESS_EVERY", "15"))
+_PROGRESS_EVERY = float(env_get("HV_IMAGE_PROGRESS_EVERY", "15"))
 
 
 @dataclass
@@ -555,7 +555,7 @@ def generate_many(
 _COST_PATH = STATE_DIR / "cost_ledger.json"
 _PRICES_PATH = STATE_DIR / "cost_prices.json"
 _COST_LOCK = threading.Lock()
-_COST_MAX = int(os.environ.get("HV_COST_MAX_ENTRIES", "20000"))
+_COST_MAX = int(env_get("HV_COST_MAX_ENTRIES", "20000"))
 
 
 def _load_prices() -> dict:
