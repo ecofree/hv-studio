@@ -77,15 +77,23 @@ def stage_script(ep: Episode, md: str | None = None,
 
 
 def stage_tts(ep: Episode, fallback: bool = True,
-              granularity: str = "paragraph",
+              granularity: str = "frame",
               group_chars: int | None = None) -> None:
     """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
 
-    granularity（2026-09-06）：
-      "paragraph"（默认）按段落合成长音频再切回逐帧 —— 逐帧只给 TTS 13~15 字，
-      句子被切碎后韵律/情感塌陷（用户实测反馈）。字数不变所以花费基本不变。
-      "frame" 退回旧的逐帧合成。
-      ⚠️ 段落边界靠 ep.script_path 还原；还原不出会**安全退化**成逐帧并打印提示。
+    granularity：
+      "frame"（**默认**，2026-09-07 起）逐帧合成。
+      "paragraph" 按段落合成长音频再切回逐帧。
+
+      ⚠️ 为什么默认改成 frame（保守选择，2026-09-07 实测）：段落级在长上下文
+      下会把「晋阳令刘文静」断成「晋阳 / 令刘文静」，且 ≥45 字必错，
+      而段落级中位长度正是 65 字 —— 结构性错误，不是偶发。插空格 / 逗号 /
+      破折号都救不回来，模型会忽略这些韵律提示。只有逐帧（≈11 字上下文）
+      实测断对，与用户听感一致。
+      代价：每帧多约 300ms 首尾静音（全片约 +8%），但那是**纯静音**，
+      不动语音本身；用户明确表示宁可多这 20 多秒。
+      文本里没有「地名/官名+人名」紧连专名时，可手动切 paragraph 换句间韵律。
+      ⚠️ 段落边界靠 ep.script_path 还原；还原不出会**安全退化**成按句预算分组。
 
     fallback（整改 B2-3，审计 P0-2 + 复核新发现 N2）：
       cosyvoice 失败时是否静默降级 edge。此前本函数**根本没传**这个参数，
@@ -360,7 +368,7 @@ def stage_images(ep: Episode) -> None:
 
 
 def stage_assets(ep: Episode, tts_fallback: bool = True,
-                 tts_granularity: str = "paragraph",
+                 tts_granularity: str = "frame",
                  tts_group_chars: int | None = None) -> None:
     """生图 ∥ TTS 并行（两家独立厂商/配额，可真并行）。两侧都结束才返回。
 
@@ -581,14 +589,15 @@ def produce(
     script_md: str | None = None,
     tts_fallback: bool = True,
     merge_short: bool = False,
-    tts_granularity: str = "paragraph",
+    tts_granularity: str = "frame",
     tts_group_chars: int | None = None,
 ) -> dict:
     """
     跑真实生产链（不滥用 rigid 状态枚举空推）；状态由产物真值导出。
       stages: None=全跑适用的；或 ['script','tts','compose','verify'] 子集。
-      tts_granularity: "paragraph"（默认）按段落合成长音频再切回逐帧，
-        改善韵律/情感；"frame" 退回逐帧合成（见 stage_tts）。
+      tts_granularity: "frame"（**默认**，正确性优先，见 stage_tts 的实测说明）；
+        "paragraph" 按段落合成长音频再切回逐帧，句间韵律更好，但长上下文下
+        会把「地名/官名+人名」这类紧连专名读断，且 ≥45 字必错。
       tts_fallback: cosyvoice 失败是否静默降级 edge（B2-3）。交付集建议 False。
       merge_short: 合并过短片段（见 stage_script）。**新集建档才开**，
         既有多集开它会让帧数变化 → 音频与 scene_plan 错位。默认 False。

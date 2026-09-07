@@ -338,10 +338,17 @@ def main():
                    help="[produce] 新集建档时合并过短片段（<10 字，≈2.5s 以下）。"
                         "⚠️ 既有多集不要开：帧数会变，已配好的音频与 scene_plan 全错位")
     p.add_argument("--tts-granularity", choices=["paragraph", "frame"],
-                   default="paragraph",
-                   help="[produce] TTS 合成粒度：paragraph=按段落合成长音频再切回"
-                        "逐帧（默认，韵律/情感更好，字数不变故花费基本不变）；"
-                        "frame=旧的逐帧合成")
+                   default="frame",
+                   help="[produce] TTS 合成粒度：frame=逐帧合成（**默认**）；"
+                        "paragraph=按段落合成长音频再切回逐帧。"
+                        "⚠️ 默认选 frame 是**正确性优先**的保守选择（2026-09-07）："
+                        "实测段落级在长上下文下会把「晋阳令刘文静」断成"
+                        "「晋阳 / 令刘文静」，且 ≥45 字必错，而段落级中位长度就是"
+                        "65 字 —— 是结构性错误，不是偶发。插空格/逗号/破折号都"
+                        "救不回来，模型会忽略这些韵律提示。"
+                        "paragraph 的代价：每帧多约 300ms 首尾静音（全片约 +8%%），"
+                        "换来的是更连贯的句间韵律。文本里没有「地名/官名+人名」"
+                        "这类紧连专名时，可以手动切到 paragraph。")
     p.add_argument("--tts-group-chars", type=int, default=None,
                    help="[produce] 单次 TTS 的目标字数（默认 400）。相邻段落会被"
                         "打包到这个长度。服务端非流式上限 2 万字符（中文按 2 计），"
