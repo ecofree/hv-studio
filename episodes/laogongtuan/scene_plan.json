@@ -1,0 +1,1179 @@
+{
+ "episode": "laogongtuan",
+ "images": {
+  "SC01": {
+   "reuse_from": "hw-002"
+  },
+  "NEW-4": {
+   "reuse_from": "hanwu-feature"
+  },
+  "NEW-6": {
+   "reuse_from": "hanwu-feature"
+  },
+  "NEW-8": {
+   "reuse_from": "hanwu-feature"
+  },
+  "LGT01": {
+   "path": "episodes/laogongtuan/shots/LGT01.png"
+  },
+  "LGT02": {
+   "path": "episodes/laogongtuan/shots/LGT02.png"
+  },
+  "LGT03": {
+   "path": "episodes/laogongtuan/shots/LGT03.png"
+  },
+  "LGT04": {
+   "path": "episodes/laogongtuan/shots/LGT04.png"
+  },
+  "LGT05": {
+   "path": "episodes/laogongtuan/shots/LGT05.png"
+  },
+  "LGT06": {
+   "path": "episodes/laogongtuan/shots/LGT06.png"
+  },
+  "LGT07": {
+   "path": "episodes/laogongtuan/shots/LGT07.png"
+  },
+  "LGT08": {
+   "path": "episodes/laogongtuan/shots/LGT08.png"
+  },
+  "LGT09": {
+   "path": "episodes/laogongtuan/shots/LGT09.png"
+  },
+  "LGT10": {
+   "path": "episodes/laogongtuan/shots/LGT10.png"
+  },
+  "LGT11": {
+   "path": "episodes/laogongtuan/shots/LGT11.png"
+  },
+  "LGT12": {
+   "path": "episodes/laogongtuan/shots/LGT12.png"
+  },
+  "LGT13": {
+   "path": "episodes/laogongtuan/shots/LGT13.png"
+  },
+  "LGT14": {
+   "path": "episodes/laogongtuan/shots/LGT14.png"
+  },
+  "LGT15": {
+   "path": "episodes/laogongtuan/shots/LGT15.png"
+  },
+  "LGT16": {
+   "path": "episodes/laogongtuan/shots/LGT16.png"
+  },
+  "LGT17": {
+   "path": "episodes/laogongtuan/shots/LGT17.png"
+  },
+  "LGT18": {
+   "path": "episodes/laogongtuan/shots/LGT18.png"
+  },
+  "LGT19": {
+   "path": "episodes/laogongtuan/shots/LGT19.png"
+  },
+  "LGT20": {
+   "path": "episodes/laogongtuan/shots/LGT20.png"
+  },
+  "LGT21": {
+   "path": "episodes/laogongtuan/shots/LGT21.png"
+  },
+  "LGT22": {
+   "path": "episodes/laogongtuan/shots/LGT22.png"
+  },
+  "LGT23": {
+   "path": "episodes/laogongtuan/shots/LGT23.png"
+  },
+  "LGT24": {
+   "path": "episodes/laogongtuan/shots/LGT24.png"
+  },
+  "LGT25": {
+   "path": "episodes/laogongtuan/shots/LGT25.png"
+  },
+  "LGT26": {
+   "path": "episodes/laogongtuan/shots/LGT26.png"
+  },
+  "LGT27": {
+   "path": "episodes/laogongtuan/shots/LGT27.png"
+  },
+  "LGT28": {
+   "path": "episodes/laogongtuan/shots/LGT28.png"
+  },
+  "LGT29": {
+   "path": "episodes/laogongtuan/shots/LGT29.png"
+  },
+  "LGT30": {
+   "path": "episodes/laogongtuan/shots/LGT30.png"
+  },
+  "LGT31": {
+   "path": "episodes/laogongtuan/shots/LGT31.png"
+  },
+  "LGT32": {
+   "path": "episodes/laogongtuan/shots/LGT32.png"
+  },
+  "LGT33": {
+   "path": "episodes/laogongtuan/shots/LGT33.png"
+  },
+  "LGT34": {
+   "path": "episodes/laogongtuan/shots/LGT34.png"
+  },
+  "LGT35": {
+   "path": "episodes/laogongtuan/shots/LGT35.png"
+  },
+  "LGT36": {
+   "path": "episodes/laogongtuan/shots/LGT36.png"
+  },
+  "LGT37": {
+   "path": "episodes/laogongtuan/shots/LGT37.png"
+  },
+  "LGT38": {
+   "path": "episodes/laogongtuan/shots/LGT38.png"
+  },
+  "LGT39": {
+   "path": "episodes/laogongtuan/shots/LGT39.png"
+  },
+  "LGT40": {
+   "path": "episodes/laogongtuan/shots/LGT40.png"
+  },
+  "LGT41": {
+   "path": "episodes/laogongtuan/shots/LGT41.png"
+  },
+  "LGT42": {
+   "path": "episodes/laogongtuan/shots/LGT42.png"
+  },
+  "LGT43": {
+   "path": "episodes/laogongtuan/shots/LGT43.png"
+  },
+  "LGT44": {
+   "path": "episodes/laogongtuan/shots/LGT44.png"
+  },
+  "LGT45": {
+   "path": "episodes/laogongtuan/shots/LGT45.png"
+  },
+  "LGT46": {
+   "path": "episodes/laogongtuan/shots/LGT46.png"
+  },
+  "LGT47": {
+   "path": "episodes/laogongtuan/shots/LGT47.png"
+  },
+  "LGT48": {
+   "path": "episodes/laogongtuan/shots/LGT48.png"
+  },
+  "LGT49": {
+   "path": "episodes/laogongtuan/shots/LGT49.png"
+  },
+  "LGT50": {
+   "path": "episodes/laogongtuan/shots/LGT50.png"
+  },
+  "LGT51": {
+   "path": "episodes/laogongtuan/shots/LGT51.png"
+  },
+  "LGT52": {
+   "path": "episodes/laogongtuan/shots/LGT52.png"
+  },
+  "LGT53": {
+   "path": "episodes/laogongtuan/shots/LGT53.png"
+  },
+  "LGT54": {
+   "path": "episodes/laogongtuan/shots/LGT54.png"
+  },
+  "LGT55": {
+   "path": "episodes/laogongtuan/shots/LGT55.png"
+  },
+  "LGT56": {
+   "path": "episodes/laogongtuan/shots/LGT56.png"
+  }
+ },
+ "scenes": [
+  {
+   "frames": [
+    0,
+    5
+   ],
+   "image": "SC01",
+   "grades": [
+    "noon",
+    "dusk",
+    "dawn",
+    "noon",
+    "dusk",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    6,
+    10
+   ],
+   "image": "LGT01",
+   "grades": [
+    "dawn",
+    "noon",
+    "dusk",
+    "dawn",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    11,
+    13
+   ],
+   "image": "SC01",
+   "grades": [
+    "noon",
+    "dusk",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    14,
+    20
+   ],
+   "image": "LGT35",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    21,
+    27
+   ],
+   "image": "LGT02",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    28,
+    30
+   ],
+   "image": "LGT03",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    31,
+    33
+   ],
+   "image": "LGT36",
+   "grades": [
+    "dusk",
+    "noon",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    34,
+    40
+   ],
+   "image": "LGT04",
+   "grades": [
+    "dawn",
+    "noon",
+    "dawn",
+    "noon",
+    "dawn",
+    "noon",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    41,
+    50
+   ],
+   "image": "LGT05",
+   "grades": [
+    "noon",
+    "dawn",
+    "dusk",
+    "noon",
+    "dawn",
+    "dusk",
+    "noon",
+    "dawn",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    51,
+    53
+   ],
+   "image": "LGT06",
+   "grades": [
+    "dusk",
+    "fire",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    54,
+    61
+   ],
+   "image": "LGT37",
+   "grades": [
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    62,
+    66
+   ],
+   "image": "LGT07",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    67,
+    68
+   ],
+   "image": "LGT38",
+   "grades": [
+    "frost",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    69,
+    73
+   ],
+   "image": "SC01",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    74,
+    78
+   ],
+   "image": "LGT39",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    79,
+    80
+   ],
+   "image": "LGT08",
+   "grades": [
+    "noon",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    81,
+    82
+   ],
+   "image": "LGT40",
+   "grades": [
+    "noon",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    83,
+    91
+   ],
+   "image": "LGT09",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    92,
+    94
+   ],
+   "image": "LGT10",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    95,
+    103
+   ],
+   "image": "LGT41",
+   "grades": [
+    "dusk",
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    104,
+    108
+   ],
+   "image": "LGT11",
+   "grades": [
+    "dusk",
+    "night",
+    "fire",
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    109,
+    113
+   ],
+   "image": "LGT42",
+   "grades": [
+    "dusk",
+    "night",
+    "fire",
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    114,
+    124
+   ],
+   "image": "LGT12",
+   "grades": [
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    125,
+    129
+   ],
+   "image": "LGT13",
+   "grades": [
+    "dusk",
+    "fire",
+    "dusk",
+    "fire",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    130,
+    131
+   ],
+   "image": "LGT14",
+   "grades": [
+    "dawn",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    132,
+    140
+   ],
+   "image": "LGT43",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    141,
+    141
+   ],
+   "image": "LGT15",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    142,
+    144
+   ],
+   "image": "LGT44",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    145,
+    146
+   ],
+   "image": "LGT16",
+   "grades": [
+    "night",
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    147,
+    150
+   ],
+   "image": "LGT45",
+   "grades": [
+    "fire",
+    "night",
+    "fire",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    151,
+    154
+   ],
+   "image": "LGT12",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    155,
+    158
+   ],
+   "image": "SC01",
+   "grades": [
+    "dusk",
+    "dusk",
+    "dusk",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    159,
+    167
+   ],
+   "image": "NEW-4",
+   "grades": [
+    "fire",
+    "dusk",
+    "dawn",
+    "fire",
+    "dusk",
+    "dawn",
+    "fire",
+    "dusk",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    168,
+    173
+   ],
+   "image": "NEW-6",
+   "grades": [
+    "dawn",
+    "noon",
+    "dusk",
+    "dawn",
+    "noon",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    174,
+    176
+   ],
+   "image": "LGT17",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    177,
+    181
+   ],
+   "image": "LGT46",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    182,
+    199
+   ],
+   "image": "LGT18",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    200,
+    202
+   ],
+   "image": "SC01",
+   "grades": [
+    "noon",
+    "dusk",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    203,
+    204
+   ],
+   "image": "LGT47",
+   "grades": [
+    "frost",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    205,
+    211
+   ],
+   "image": "NEW-6",
+   "grades": [
+    "frost",
+    "dawn",
+    "night",
+    "frost",
+    "dawn",
+    "night",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    212,
+    215
+   ],
+   "image": "LGT48",
+   "grades": [
+    "night",
+    "fire",
+    "frost",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    216,
+    220
+   ],
+   "image": "SC01",
+   "grades": [
+    "noon",
+    "dusk",
+    "noon",
+    "dusk",
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    221,
+    225
+   ],
+   "image": "NEW-8",
+   "grades": [
+    "fire",
+    "dusk",
+    "night",
+    "fire",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    226,
+    227
+   ],
+   "image": "LGT19",
+   "grades": [
+    "fire",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    228,
+    238
+   ],
+   "image": "LGT49",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    239,
+    243
+   ],
+   "image": "LGT20",
+   "grades": [
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    244,
+    245
+   ],
+   "image": "LGT21",
+   "grades": [
+    "night",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    246,
+    249
+   ],
+   "image": "LGT50",
+   "grades": [
+    "night",
+    "frost",
+    "night",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    250,
+    256
+   ],
+   "image": "LGT22",
+   "grades": [
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    257,
+    260
+   ],
+   "image": "LGT23",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    261,
+    266
+   ],
+   "image": "LGT51",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    267,
+    269
+   ],
+   "image": "LGT24",
+   "grades": [
+    "dusk",
+    "dawn",
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    270,
+    273
+   ],
+   "image": "LGT25",
+   "grades": [
+    "night",
+    "fire",
+    "night",
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    274,
+    282
+   ],
+   "image": "LGT26",
+   "grades": [
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire",
+    "night",
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    283,
+    286
+   ],
+   "image": "LGT52",
+   "grades": [
+    "fire",
+    "night",
+    "fire",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    287,
+    289
+   ],
+   "image": "LGT27",
+   "grades": [
+    "fire",
+    "fire",
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    290,
+    295
+   ],
+   "image": "LGT28",
+   "grades": [
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    296,
+    300
+   ],
+   "image": "LGT53",
+   "grades": [
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    301,
+    306
+   ],
+   "image": "LGT29",
+   "grades": [
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    307,
+    316
+   ],
+   "image": "LGT54",
+   "grades": [
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    317,
+    320
+   ],
+   "image": "LGT30",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    321,
+    324
+   ],
+   "image": "LGT55",
+   "grades": [
+    "dusk",
+    "frost",
+    "dusk",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    325,
+    326
+   ],
+   "image": "LGT31",
+   "grades": [
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    327,
+    332
+   ],
+   "image": "SC01",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    333,
+    337
+   ],
+   "image": "LGT56",
+   "grades": [
+    "frost",
+    "dawn",
+    "frost",
+    "dawn",
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    338,
+    343
+   ],
+   "image": "LGT32",
+   "grades": [
+    "dusk",
+    "night",
+    "dusk",
+    "night",
+    "dusk",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    344,
+    352
+   ],
+   "image": "LGT33",
+   "grades": [
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night",
+    "frost",
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    353,
+    361
+   ],
+   "image": "SC01",
+   "grades": [
+    "noon",
+    "dusk",
+    "dawn",
+    "noon",
+    "dusk",
+    "dawn",
+    "noon",
+    "dusk",
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    362,
+    364
+   ],
+   "image": "LGT34",
+   "grades": [
+    "frost",
+    "dawn",
+    "dusk"
+   ]
+  }
+ ],
+ "frames_fingerprint": {
+  "count": 365,
+  "sha1": "e641d0acca9f",
+  "head": "都说伴君如伴虎。",
+  "tail": "让人毛骨悚然。"
+ }
+}

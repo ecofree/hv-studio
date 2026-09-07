@@ -1,0 +1,845 @@
+{
+ "episode": "lsm-15min",
+ "images": {
+  "L01": {
+   "path": "episodes/lsm-15min/shots/L01.png"
+  },
+  "L02": {
+   "path": "episodes/lsm-15min/shots/L02.png"
+  },
+  "L03": {
+   "path": "episodes/lsm-15min/shots/L03.png"
+  },
+  "L04": {
+   "path": "episodes/lsm-15min/shots/L04.png"
+  },
+  "L05": {
+   "path": "episodes/lsm-15min/shots/L05.png"
+  },
+  "L06": {
+   "path": "episodes/lsm-15min/shots/L06.png"
+  },
+  "L07": {
+   "path": "episodes/lsm-15min/shots/L07.png"
+  },
+  "L08": {
+   "path": "episodes/lsm-15min/shots/L08.png"
+  },
+  "L09": {
+   "path": "episodes/lsm-15min/shots/L09.png"
+  },
+  "L10": {
+   "path": "episodes/lsm-15min/shots/L10.png"
+  },
+  "L11": {
+   "path": "episodes/lsm-15min/shots/L11.png"
+  },
+  "L12": {
+   "path": "episodes/lsm-15min/shots/L12.png"
+  },
+  "L13": {
+   "path": "episodes/lsm-15min/shots/L13.png"
+  },
+  "L14": {
+   "path": "episodes/lsm-15min/shots/L14.png"
+  },
+  "L15": {
+   "path": "episodes/lsm-15min/shots/L15.png"
+  },
+  "L16": {
+   "path": "episodes/lsm-15min/shots/L16.png"
+  },
+  "L17": {
+   "path": "episodes/lsm-15min/shots/L17.png"
+  },
+  "L18": {
+   "path": "episodes/lsm-15min/shots/L18.png"
+  },
+  "L19": {
+   "path": "episodes/lsm-15min/shots/L19.png"
+  },
+  "L20": {
+   "path": "episodes/lsm-15min/shots/L20.png"
+  },
+  "L21": {
+   "path": "episodes/lsm-15min/shots/L21.png"
+  },
+  "L22": {
+   "path": "episodes/lsm-15min/shots/L22.png"
+  },
+  "L23": {
+   "path": "episodes/lsm-15min/shots/L23.png"
+  },
+  "L24": {
+   "path": "episodes/lsm-15min/shots/L24.png"
+  },
+  "L25": {
+   "path": "episodes/lsm-15min/shots/L25.png"
+  },
+  "L26": {
+   "path": "episodes/lsm-15min/shots/L26.png"
+  },
+  "L27": {
+   "path": "episodes/lsm-15min/shots/L27.png"
+  },
+  "L28": {
+   "path": "episodes/lsm-15min/shots/L28.png"
+  },
+  "L29": {
+   "path": "episodes/lsm-15min/shots/L29.png"
+  },
+  "L30": {
+   "path": "episodes/lsm-15min/shots/L30.png"
+  },
+  "L31": {
+   "path": "episodes/lsm-15min/shots/L31.png"
+  },
+  "L32": {
+   "path": "episodes/lsm-15min/shots/L32.png"
+  },
+  "L33": {
+   "path": "episodes/lsm-15min/shots/L33.png"
+  },
+  "L34": {
+   "path": "episodes/lsm-15min/shots/L34.png"
+  },
+  "L35": {
+   "path": "episodes/lsm-15min/shots/L35.png"
+  },
+  "L36": {
+   "path": "episodes/lsm-15min/shots/L36.png"
+  },
+  "L37": {
+   "path": "episodes/lsm-15min/shots/L37.png"
+  },
+  "L38": {
+   "path": "episodes/lsm-15min/shots/L38.png"
+  },
+  "L39": {
+   "path": "episodes/lsm-15min/shots/L39.png"
+  },
+  "L40": {
+   "path": "episodes/lsm-15min/shots/L40.png"
+  },
+  "L41": {
+   "path": "episodes/lsm-15min/shots/L41.png"
+  },
+  "L42": {
+   "path": "episodes/lsm-15min/shots/L42.png"
+  },
+  "L43": {
+   "path": "episodes/lsm-15min/shots/L43.png"
+  },
+  "L44": {
+   "path": "episodes/lsm-15min/shots/L44.png"
+  },
+  "L45": {
+   "path": "episodes/lsm-15min/shots/L45.png"
+  },
+  "L46": {
+   "path": "episodes/lsm-15min/shots/L46.png"
+  },
+  "L47": {
+   "path": "episodes/lsm-15min/shots/L47.png"
+  },
+  "L48": {
+   "path": "episodes/lsm-15min/shots/L48.png"
+  },
+  "L49": {
+   "path": "episodes/lsm-15min/shots/L49.png"
+  },
+  "L50": {
+   "path": "episodes/lsm-15min/shots/L50.png"
+  },
+  "L51": {
+   "path": "episodes/lsm-15min/shots/L51.png"
+  },
+  "L52": {
+   "path": "episodes/lsm-15min/shots/L52.png"
+  },
+  "L53": {
+   "path": "episodes/lsm-15min/shots/L53.png"
+  },
+  "L54": {
+   "path": "episodes/lsm-15min/shots/L54.png"
+  },
+  "L55": {
+   "path": "episodes/lsm-15min/shots/L55.png"
+  },
+  "L56": {
+   "path": "episodes/lsm-15min/shots/L56.png"
+  },
+  "L57": {
+   "path": "episodes/lsm-15min/shots/L57.png"
+  },
+  "L58": {
+   "path": "episodes/lsm-15min/shots/L58.png"
+  },
+  "L59": {
+   "path": "episodes/lsm-15min/shots/L59.png"
+  },
+  "L60": {
+   "path": "episodes/lsm-15min/shots/L60.png"
+  },
+  "L61": {
+   "path": "episodes/lsm-15min/shots/L61.png"
+  },
+  "L62": {
+   "path": "episodes/lsm-15min/shots/L62.png"
+  },
+  "L63": {
+   "path": "episodes/lsm-15min/shots/L63.png"
+  },
+  "L64": {
+   "path": "episodes/lsm-15min/shots/L64.png"
+  }
+ },
+ "scenes": [
+  {
+   "frames": [
+    0,
+    3
+   ],
+   "image": "L01",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    4,
+    8
+   ],
+   "image": "L02",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    9,
+    13
+   ],
+   "image": "L03",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    14,
+    21
+   ],
+   "image": "L04",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    22,
+    27
+   ],
+   "image": "L05",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    28,
+    33
+   ],
+   "image": "L06",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    34,
+    37
+   ],
+   "image": "L07",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    38,
+    43
+   ],
+   "image": "L08",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    44,
+    47
+   ],
+   "image": "L09",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    48,
+    51
+   ],
+   "image": "L10",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    52,
+    56
+   ],
+   "image": "L11",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    57,
+    61
+   ],
+   "image": "L12",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    62,
+    67
+   ],
+   "image": "L13",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    68,
+    70
+   ],
+   "image": "L14",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    71,
+    74
+   ],
+   "image": "L15",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    75,
+    79
+   ],
+   "image": "L16",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    80,
+    83
+   ],
+   "image": "L17",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    84,
+    89
+   ],
+   "image": "L18",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    90,
+    95
+   ],
+   "image": "L19",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    96,
+    99
+   ],
+   "image": "L20",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    100,
+    103
+   ],
+   "image": "L21",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    104,
+    108
+   ],
+   "image": "L22",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    109,
+    111
+   ],
+   "image": "L23",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    112,
+    116
+   ],
+   "image": "L24",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    117,
+    121
+   ],
+   "image": "L25",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    122,
+    125
+   ],
+   "image": "L26",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    126,
+    130
+   ],
+   "image": "L27",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    131,
+    135
+   ],
+   "image": "L28",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    136,
+    141
+   ],
+   "image": "L29",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    142,
+    145
+   ],
+   "image": "L30",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    146,
+    152
+   ],
+   "image": "L31",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    153,
+    155
+   ],
+   "image": "L32",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    156,
+    160
+   ],
+   "image": "L33",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    161,
+    165
+   ],
+   "image": "L34",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    166,
+    169
+   ],
+   "image": "L35",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    170,
+    177
+   ],
+   "image": "L36",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    178,
+    181
+   ],
+   "image": "L37",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    182,
+    188
+   ],
+   "image": "L38",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    189,
+    194
+   ],
+   "image": "L39",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    195,
+    197
+   ],
+   "image": "L40",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    198,
+    204
+   ],
+   "image": "L41",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    205,
+    211
+   ],
+   "image": "L42",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    212,
+    216
+   ],
+   "image": "L43",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    217,
+    220
+   ],
+   "image": "L44",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    221,
+    226
+   ],
+   "image": "L45",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    227,
+    230
+   ],
+   "image": "L46",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    231,
+    233
+   ],
+   "image": "L47",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    234,
+    237
+   ],
+   "image": "L48",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    238,
+    242
+   ],
+   "image": "L49",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    243,
+    247
+   ],
+   "image": "L50",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    248,
+    254
+   ],
+   "image": "L51",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    255,
+    260
+   ],
+   "image": "L52",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    261,
+    265
+   ],
+   "image": "L53",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    266,
+    270
+   ],
+   "image": "L54",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    271,
+    275
+   ],
+   "image": "L55",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    276,
+    282
+   ],
+   "image": "L56",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    283,
+    287
+   ],
+   "image": "L57",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    288,
+    294
+   ],
+   "image": "L58",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    295,
+    300
+   ],
+   "image": "L59",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    301,
+    304
+   ],
+   "image": "L60",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    305,
+    308
+   ],
+   "image": "L61",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    309,
+    314
+   ],
+   "image": "L62",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    315,
+    319
+   ],
+   "image": "L63",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    320,
+    323
+   ],
+   "image": "L64",
+   "grades": [
+    "night"
+   ]
+  }
+ ],
+ "frames_fingerprint": {
+  "count": 324,
+  "sha1": "f4f1f397d245",
+  "head": "在中国两千年的帝王序列里，",
+  "tail": "而不得不逼着自己伟大了一辈子的孤苦灵魂"
+ }
+}
