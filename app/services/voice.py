@@ -225,10 +225,21 @@ def synthesize(
     fallback_to_edge: bool = True,     # cosyvoice 失败是否降级 edge
     force: bool = False,               # 强制全部重合成（忽略幂等指纹）
     workers: int = 4,                  # 并发合成路数（2026-09-04：此前串行 14.5min/365 帧）
+    granularity: str = "frame",        # "frame" 逐帧 | "paragraph" 按段落合成后切回帧
+    script_md: str | None = None,      # paragraph 模式需要（用来还原段落边界）
+    target_chars: int | None = None,   # paragraph 模式的单次目标字数（None=默认 400）
 ) -> None:
     """
-    逐 frame 合成。每段写入 frame.audio_path(16k wav) + frame.audio_duration_ms。
+    合成 frames 的配音。每段写入 frame.audio_path(16k wav) + frame.audio_duration_ms。
     engine: "cosyvoice" | "edge"。
+
+    granularity="paragraph"（2026-09-06 起）：
+      逐帧合成只给 TTS 13~15 字，句子被切碎 → 韵律/情感塌（用户实测反馈）。
+      改成**按段落合成**（中位 65 字 ≈16.7s，长 5 倍），再按静音切回逐帧 wav。
+      ⚠️ 总字数不变 → **花费基本不变**，只是请求次数少了。
+      ⚠️ 切回逐帧是必须的：compose 逐帧读 wav 拼时间线，帧时长还决定每镜时长。
+      ⚠️ 段落边界靠 script_md 还原；还原不出（脚本缺失/被改过）→ **安全退化成
+         逐帧**，绝不把帧划进错的段落。
 
     幂等（P0-1 修复，见模块头注释）：默认对【文本未变】的已合成段复用旧 wav；
     但若本段旁白文本【变了】（指纹不同），则删除旧 wav 重新合成，杜绝
@@ -239,6 +250,7 @@ def synthesize(
       - force=True：忽略指纹与已存在 wav，全部重合成（并重建 manifest）。
     """
     from app.config.config import ROOT
+    from app.services import tts_group as _tts_group   # 段落合成 + 静音切片
     base = out_dir or (ROOT / "episodes" / "default" / "audio")
     base.mkdir(parents=True, exist_ok=True)
 
@@ -249,6 +261,26 @@ def synthesize(
     import threading
     _man_lock = threading.Lock()
     degraded: list[str] = []      # 本次「请求 cosyvoice、实际用 edge」的帧（B2-2）
+
+    def _render(text: str, wav: Path, tag: str) -> tuple[bool, str]:
+        """真正发声：cosyvoice 失败可选降级 edge。返回 (是否成功, 实际引擎)。
+
+        used 记录**实际**发声的引擎：降级后它是 edge，与请求的 engine 不同。
+        这个标记会写进 manifest，是「本片音色是否一致」的唯一证据（B2-2）。
+        """
+        ok, used = False, engine
+        if engine == ENGINE_DASHSCOPE:
+            ok = _try_one_cosyvoice(text, wav, voice_prompt)
+            if not ok and fallback_to_edge:
+                print(f"  [voice] {tag} cosyvoice 失败，降级 edge "
+                      f"（音色与其余帧不同，已记入 _tts_manifest.json）")
+                _one_edge(text, wav, voice, rate, volume)
+                ok = wav.exists()
+                used = ENGINE_EDGE if ok else engine
+        else:  # edge
+            _one_edge(text, wav, voice, rate, volume)
+            ok = wav.exists()
+        return ok, used
 
     def _synth_one(f: Frame) -> None:
         """单个 frame：幂等判断 + 合成 + 回填。线程独立（各 frame 各 wav 互不干扰）。"""
@@ -296,21 +328,7 @@ def synthesize(
                 pass
 
         # ---- 真正合成：cosyvoice 失败可选降级 edge ----
-        # used 记录**实际**发声的引擎：降级后它是 edge，与请求的 engine 不同。
-        # 这个标记会写进 manifest，是「本片音色是否一致」的唯一证据（B2-2）。
-        ok, used = False, engine
-        if engine == ENGINE_DASHSCOPE:
-            ok = _try_one_cosyvoice(text, wav, voice_prompt)
-            if not ok and fallback_to_edge:
-                print(f"  [voice] {f.id} cosyvoice 失败，降级 edge "
-                      f"（音色与其余帧不同，已记入 _tts_manifest.json）")
-                _one_edge(text, wav, voice, rate, volume)
-                ok = wav.exists()
-                used = ENGINE_EDGE if ok else engine
-        else:  # edge
-            _one_edge(text, wav, voice, rate, volume)
-            ok = wav.exists()
-
+        ok, used = _render(text, wav, f.id)
         if not ok:
             raise RuntimeError(f"[voice] {f.id} 合成失败(engine={engine})")
         f.audio_path = str(wav).replace("\\", "/")
@@ -320,15 +338,105 @@ def synthesize(
             if used != engine:
                 degraded.append(f.id)
 
+    def _report_slice_deviation(fs, texts, segs, sr, gid) -> None:
+        """切片偏差自检：实际时长 vs 按字数权重的期望，差太多就点名。
+
+        比例估算扛不住成倍的语速差（某段突然慢很多）。真发生了不静默——
+        打印出来让人能定位是哪一帧，再决定缩小分组还是接受。
+        """
+        ws = [_tts_group.piece_weight(t) for t in texts]
+        tot = sum(ws) or 1.0
+        real = sum(len(s) for s in segs) / sr * 1000
+        bad = []
+        for f, w, s in zip(fs, ws, segs):
+            want = real * w / tot
+            got = len(s) / sr * 1000
+            if want > 0 and not (0.5 * want <= got <= 2.0 * want):
+                bad.append(f"{f.id} 期望{want:.0f}ms 实得{got:.0f}ms")
+        if bad:
+            print(f"  [voice][告警] 段落 {gid} 切片偏差过大（TTS 语速与字数权重"
+                  f"不成比例）：{bad[:5]}{' …' if len(bad) > 5 else ''}")
+            print("  [voice][提示] 可减小 --tts-group-chars，或听一下那几帧是否"
+                  "被切在词中间")
+
+    def _synth_group(idxs: list[int]) -> None:
+        """段落模式：一组帧合成**一次**，再按静音切回逐帧 wav。
+
+        幂等粒度仍是**帧**：组内所有帧 wav 都在且指纹未变 → 整组跳过。
+        任一片段文本变了 → 整组重合成（段落级音频不能只补一帧）。
+        """
+        if len(idxs) == 1:
+            return _synth_one(frames[idxs[0]])
+
+        fs = [frames[i] for i in idxs]
+        texts = [((f.narration_text or f.text) or "").strip() for f in fs]
+        if any(not t for t in texts):        # 空文本无法参与拼接 → 退回逐帧
+            for i in idxs:
+                _synth_one(frames[i])
+            return
+        fps = [_text_fingerprint(t) for t in texts]
+        wavs = [base / f"{f.id}.wav" for f in fs]
+
+        if not force and all(w.exists() for w in wavs) and all(
+                (manifest.get(f.id) or {}).get("fp") == fp
+                for f, fp in zip(fs, fps)):
+            for f, w in zip(fs, wavs):
+                f.audio_path = str(w).replace("\\", "/")
+                if f.audio_duration_ms is None:
+                    f.audio_duration_ms = _audio_duration_ms(w)
+            return
+
+        gtext = _tts_group.group_text(texts)
+        # 段落 wav 是中间产物，落在 audio/ 下（hv clean --build 会收走）
+        gwav = base / f"_grp_{idxs[0]:05d}.wav"
+        ok, used = _render(gtext, gwav, f"grp{idxs[0]:05d}({len(fs)}帧)")
+        if not ok:
+            raise RuntimeError(f"[voice] 段落 {idxs[0]} 合成失败(engine={engine})")
+
+        data, sr = _tts_group.read_wav(gwav)
+        segs = _tts_group.slice_samples(
+            data, sr, [_tts_group.piece_weight(t) for t in texts])
+        if len(segs) != len(fs):            # 理论上不会发生，兜底免得静默错位
+            raise RuntimeError(
+                f"[voice] 段落 {idxs[0]} 切片数 {len(segs)} != 帧数 {len(fs)}")
+
+        gw = _report_slice_deviation(fs, texts, segs, sr, idxs[0])
+        for f, seg, w in zip(fs, segs, wavs):
+            _tts_group.write_wav(w, seg, sr)
+            f.audio_path = str(w).replace("\\", "/")
+            f.audio_duration_ms = int(round(len(seg) / sr * 1000))
+        with _man_lock:
+            for f, fp in zip(fs, fps):
+                manifest[f.id] = {"fp": fp, "wav": f"{f.id}.wav", "engine": used}
+            if used != engine:
+                degraded.extend(f.id for f in fs)
+
+    # 分组：paragraph 模式按段落，frame 模式退化成逐帧
+    if granularity == "paragraph":
+        tc = _tts_group.TARGET_GROUP_CHARS if target_chars is None else target_chars
+        groups = _tts_group.plan_groups(frames, script_md, target_chars=tc)
+        n_par = sum(1 for g in groups if len(g) > 1)
+        if n_par:
+            print(f"  [voice] 段落级合成：{len(frames)} 帧 → {len(groups)} 组"
+                  f"（{n_par} 组为多帧段落）")
+        else:
+            print("  [voice] 段落级合成：还原不出段落边界，退回「按句边界的字数预算」"
+                  "分组（仍会把碎片并长，只是不保证贴着段落）")
+        todo = groups
+        runner = _synth_group
+    else:
+        todo = [[i] for i in range(len(frames))]
+        runner = _synth_group
+
     # 并发合成（workers 路）。幂等段近乎瞬时；真合成段打 DashScope/edge。
-    n = max(1, min(workers, len(frames)))
-    if n <= 1 or len(frames) <= 1:
-        for f in frames:
-            _synth_one(f)
+    n = max(1, min(workers, len(todo)))
+    if n <= 1 or len(todo) <= 1:
+        for g in todo:
+            runner(g)
     else:
         with ThreadPoolExecutor(max_workers=n) as ex:
-            # 任一帧失败 → futures 传播首个异常（保持原「失败即抛」语义）
-            list(ex.map(_synth_one, frames))
+            # 任一组失败 → futures 传播首个异常（保持原「失败即抛」语义）
+            list(ex.map(runner, todo))
 
     # 收口：落 manifest。文本已删的段不残留旧指纹（manifest 只保留本次 frames 覆盖的键）。
     if not legacy_missing_manifest or force:

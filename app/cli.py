@@ -70,7 +70,9 @@ def cmd_episode(args):
         # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
         res = produce(args.episode_id, stages=args.stage or None,
                       tts_fallback=not args.no_fallback,
-                      merge_short=args.merge_short)
+                      merge_short=args.merge_short,
+                      tts_granularity=args.tts_granularity,
+                      tts_group_chars=args.tts_group_chars)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "audit-wav":
         # 孤儿 wav 清理（opt-in）：默认只列，--apply 才删。
@@ -335,6 +337,17 @@ def main():
     p.add_argument("--merge-short", action="store_true",
                    help="[produce] 新集建档时合并过短片段（<10 字，≈2.5s 以下）。"
                         "⚠️ 既有多集不要开：帧数会变，已配好的音频与 scene_plan 全错位")
+    p.add_argument("--tts-granularity", choices=["paragraph", "frame"],
+                   default="paragraph",
+                   help="[produce] TTS 合成粒度：paragraph=按段落合成长音频再切回"
+                        "逐帧（默认，韵律/情感更好，字数不变故花费基本不变）；"
+                        "frame=旧的逐帧合成")
+    p.add_argument("--tts-group-chars", type=int, default=None,
+                   help="[produce] 单次 TTS 的目标字数（默认 400）。相邻段落会被"
+                        "打包到这个长度。服务端非流式上限 2 万字符（中文按 2 计），"
+                        "本集全篇通常也就 3~4 千字 —— 想一次合成整集可以设大，"
+                        "但组越大切片越依赖语速估算，偏差过大会有告警。"
+                        "设 1 = 严格一段一组，设 0 = 退回逐帧")
     p.add_argument("--no-fallback", action="store_true",
                    help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
                         "音色；交付集建议加）")

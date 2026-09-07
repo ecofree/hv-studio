@@ -76,8 +76,16 @@ def stage_script(ep: Episode, md: str | None = None,
     print(f"  [orchestrator] script: frames={len(ep.frames)}")
 
 
-def stage_tts(ep: Episode, fallback: bool = True) -> None:
+def stage_tts(ep: Episode, fallback: bool = True,
+              granularity: str = "paragraph",
+              group_chars: int | None = None) -> None:
     """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
+
+    granularity（2026-09-06）：
+      "paragraph"（默认）按段落合成长音频再切回逐帧 —— 逐帧只给 TTS 13~15 字，
+      句子被切碎后韵律/情感塌陷（用户实测反馈）。字数不变所以花费基本不变。
+      "frame" 退回旧的逐帧合成。
+      ⚠️ 段落边界靠 ep.script_path 还原；还原不出会**安全退化**成逐帧并打印提示。
 
     fallback（整改 B2-3，审计 P0-2 + 复核新发现 N2）：
       cosyvoice 失败时是否静默降级 edge。此前本函数**根本没传**这个参数，
@@ -96,7 +104,10 @@ def stage_tts(ep: Episode, fallback: bool = True) -> None:
     audio_dir = _episode_dir(ep.id) / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
     rep = synthesize(ep.frames, engine="cosyvoice", out_dir=audio_dir,
-                     fallback_to_edge=fallback)
+                     fallback_to_edge=fallback,
+                     granularity=granularity,
+                     script_md=_load_script_md(ep),
+                     target_chars=group_chars)
     missing = [f.id for f in ep.frames
                if not (f.audio_path and Path(f.audio_path).exists())]
     if missing:
@@ -348,7 +359,9 @@ def stage_images(ep: Episode) -> None:
     print(f"  [orchestrator] image: {len(jobs)} 张全部就绪")
 
 
-def stage_assets(ep: Episode, tts_fallback: bool = True) -> None:
+def stage_assets(ep: Episode, tts_fallback: bool = True,
+                 tts_granularity: str = "paragraph",
+                 tts_group_chars: int | None = None) -> None:
     """生图 ∥ TTS 并行（两家独立厂商/配额，可真并行）。两侧都结束才返回。
 
     - 线程 A：stage_tts（DashScope）
@@ -374,7 +387,10 @@ def stage_assets(ep: Episode, tts_fallback: bool = True) -> None:
 
     tasks = []
     if has_frames:
-        tasks.append(_run_t(lambda e: stage_tts(e, fallback=tts_fallback), "tts"))
+        tasks.append(_run_t(
+            lambda e: stage_tts(e, fallback=tts_fallback,
+                                granularity=tts_granularity,
+                                group_chars=tts_group_chars), "tts"))
     if has_prompts:
         tasks.append(_run_t(stage_images, "images"))
     if not tasks:
@@ -565,10 +581,14 @@ def produce(
     script_md: str | None = None,
     tts_fallback: bool = True,
     merge_short: bool = False,
+    tts_granularity: str = "paragraph",
+    tts_group_chars: int | None = None,
 ) -> dict:
     """
     跑真实生产链（不滥用 rigid 状态枚举空推）；状态由产物真值导出。
       stages: None=全跑适用的；或 ['script','tts','compose','verify'] 子集。
+      tts_granularity: "paragraph"（默认）按段落合成长音频再切回逐帧，
+        改善韵律/情感；"frame" 退回逐帧合成（见 stage_tts）。
       tts_fallback: cosyvoice 失败是否静默降级 edge（B2-3）。交付集建议 False。
       merge_short: 合并过短片段（见 stage_script）。**新集建档才开**，
         既有多集开它会让帧数变化 → 音频与 scene_plan 错位。默认 False。
@@ -629,9 +649,15 @@ def produce(
     # tts/assets 需要透传 tts_fallback；STAGE_FN 是模块级映射，不在原地改它
     # （API 与 CLI 共用），只在本轮调用上覆盖一份。
     stage_fn = dict(STAGE_FN)
-    if not tts_fallback:
-        stage_fn["tts"] = lambda ep: stage_tts(ep, fallback=False)
-        stage_fn["assets"] = lambda ep: stage_assets(ep, tts_fallback=False)
+    # ⚠️ 必须**无条件**覆盖，不能写成 `if not tts_fallback:` ——
+    #   那样只有 --no-fallback 时闭包才带参数，其余情况 tts_granularity 会被
+    #   静默丢掉（同坑 #38：--merge-short 当年就是这么失效的）。
+    stage_fn["tts"] = lambda ep: stage_tts(
+        ep, fallback=tts_fallback, granularity=tts_granularity,
+        group_chars=tts_group_chars)
+    stage_fn["assets"] = lambda ep: stage_assets(
+        ep, tts_fallback=tts_fallback, tts_granularity=tts_granularity,
+        tts_group_chars=tts_group_chars)
     if script_md or merge_short:
         # D4：把正文用闭包喂给 stage_script，而不是写进 ep.notes 再读回。
         # merge_short 也必须走这个闭包——STAGE_FN 里存的是默认参数版本，
