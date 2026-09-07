@@ -45,6 +45,39 @@ def test_voice_synthesize_defaults_to_frame():
     assert sig.parameters["granularity"].default == "frame"
 
 
+def test_workers_default_is_auto():
+    """workers 默认 None = 按粒度自动（2026-09-07 前写死 4 且无开关）。"""
+    from app.services import voice as V
+
+    for fn in (V.synthesize, ):
+        p = inspect.signature(fn).parameters.get("workers")
+        assert p is not None, f"{fn.__name__} 没有 workers 参数"
+        assert p.default is None
+
+
+def test_resolve_workers_by_granularity():
+    """逐帧 2（请求数 20 倍，4 路实测撞限流）；段落 4；显式值优先。"""
+    from app.services.voice import _resolve_workers as R
+
+    assert R(None, "frame") == 2
+    assert R(None, "paragraph") == 4
+    assert R(8, "frame") == 8          # 显式覆盖
+    assert R(1, "paragraph") == 1
+    assert R(0, "frame") == 1          # 兜底：至少 1 路
+
+
+def test_orchestrator_threads_workers():
+    """workers 要能一路传到 stage_tts —— 闭包漏传是本项目踩过三次的坑（#38）。"""
+    from app import orchestrator as O
+
+    for fn, key in ((O.stage_tts, "workers"),
+                    (O.stage_assets, "tts_workers"),
+                    (O.produce, "tts_workers")):
+        p = inspect.signature(fn).parameters.get(key)
+        assert p is not None, f"{fn.__name__} 缺 {key} 参数"
+        assert p.default is None
+
+
 def _cli_granularity_kw() -> dict:
     """跑一次 `app.cli.main(["episode", "--help"])`，用 spy 抓
     --tts-granularity 的 add_argument 参数。

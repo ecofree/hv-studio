@@ -141,6 +141,28 @@ def _save_manifest(base: Path, manifest: dict) -> None:
 # 此前直读 os.environ，这个键写进 .env 是无效的。
 _TTS_TRANSIENT_RETRY = int(env_get("HV_TTS_TRANSIENT_RETRY", "2"))
 
+# 并发路数的「按粒度自动取值」（2026-09-07）。
+#   逐帧档：一帧一次请求 —— lishimin-01 220 帧 = 220 次。实测 4 路并发突发会撞
+#     Throttling.RateQuota（D 档 83 次请求只成功 25 帧，降到 2 才补完），取 2。
+#   段落档：请求数少一个数量级（220 帧 → 9 组），可以跑满，取 4。
+# 可用 --tts-workers 或 HV_TTS_WORKERS 显式覆盖。
+_TTS_WORKERS_FRAME = int(env_get("HV_TTS_WORKERS_FRAME", "2"))
+_TTS_WORKERS_PARAGRAPH = int(env_get("HV_TTS_WORKERS_PARAGRAPH", "4"))
+_TTS_WORKERS_OVERRIDE = env_get("HV_TTS_WORKERS", "") or None
+
+
+def _resolve_workers(workers: int | None, granularity: str) -> int:
+    """算出实际并发路数，并**打印出来** —— 静默选值等于埋雷。"""
+    if workers is None and _TTS_WORKERS_OVERRIDE:
+        try:
+            workers = int(_TTS_WORKERS_OVERRIDE)
+        except ValueError:
+            workers = None
+    if workers is not None:
+        return max(1, int(workers))
+    return (_TTS_WORKERS_FRAME if granularity == "frame"
+            else _TTS_WORKERS_PARAGRAPH)
+
 
 def _is_transient(e: BaseException) -> bool:
     """TTS 侧瞬时判定。复用生图的判据链（唯一真源），只补 TTS 特有的空产物。"""
@@ -224,7 +246,9 @@ def synthesize(
     out_dir: Path | None = None,
     fallback_to_edge: bool = True,     # cosyvoice 失败是否降级 edge
     force: bool = False,               # 强制全部重合成（忽略幂等指纹）
-    workers: int = 4,                  # 并发合成路数（2026-09-04：此前串行 14.5min/365 帧）
+    # None = 按粒度自动取（见 _resolve_workers）。2026-09-07 前写死 4 且没有
+    # CLI 开关 —— 默认档退回逐帧后请求数是段落档的 20 倍，4 路必定撞限流。
+    workers: int | None = None,
     granularity: str = "frame",        # "frame" 逐帧 | "paragraph" 按段落合成后切回帧
     script_md: str | None = None,      # paragraph 模式需要（用来还原段落边界）
     target_chars: int | None = None,   # paragraph 模式的单次目标字数（None=默认 400）
@@ -432,7 +456,8 @@ def synthesize(
         runner = _synth_group
 
     # 并发合成（workers 路）。幂等段近乎瞬时；真合成段打 DashScope/edge。
-    n = max(1, min(workers, len(todo)))
+    n = max(1, min(_resolve_workers(workers, granularity), len(todo)))
+    print(f"  [voice] 并发 {n} 路（粒度={granularity}，--tts-workers 可覆盖）")
     if n <= 1 or len(todo) <= 1:
         for g in todo:
             runner(g)

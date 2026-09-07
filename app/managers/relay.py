@@ -80,7 +80,14 @@ class ChannelHealth:
         return {
             "channel_name": self.channel.name,
             "history": list(self.history),
-            "last_quota": self.last_quota.model_dump() if self.last_quota else None,
+            # ⚠️ 必须 mode="json"：QuotaSnapshot.fetched_at 是 datetime，
+            # 默认 model_dump() 会**保留 datetime 对象**而非转成字符串，
+            # 下游 json.dumps 直接抛 TypeError: Object of type datetime is not
+            # JSON serializable（2026-09-07 审计发现，hv relay sync 因此 100% 崩）。
+            # 后果不止是命令崩：配额刷不出来 → score() 的 -500 配额惩罚永不生效
+            # → 渠道没钱时调度器不会降权。model_dump_json() 也行，但这里要 dict。
+            "last_quota": (self.last_quota.model_dump(mode="json")
+                           if self.last_quota else None),
             "last_quota_fetch": self.last_quota_fetch.isoformat() if self.last_quota_fetch else None,
         }
 

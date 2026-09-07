@@ -78,7 +78,8 @@ def stage_script(ep: Episode, md: str | None = None,
 
 def stage_tts(ep: Episode, fallback: bool = True,
               granularity: str = "frame",
-              group_chars: int | None = None) -> None:
+              group_chars: int | None = None,
+              workers: int | None = None) -> None:
     """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
 
     granularity：
@@ -93,6 +94,9 @@ def stage_tts(ep: Episode, fallback: bool = True,
       代价：每帧多约 300ms 首尾静音（全片约 +8%），但那是**纯静音**，
       不动语音本身；用户明确表示宁可多这 20 多秒。
       文本里没有「地名/官名+人名」紧连专名时，可手动切 paragraph 换句间韵律。
+      workers: TTS 并发路数。None = 按粒度自动（逐帧 2 / 段落 4，
+        见 voice._resolve_workers）；逐帧档 220 帧 = 220 次请求，
+        4 路并发实测撞 Throttling.RateQuota。
       ⚠️ 段落边界靠 ep.script_path 还原；还原不出会**安全退化**成按句预算分组。
 
     fallback（整改 B2-3，审计 P0-2 + 复核新发现 N2）：
@@ -115,7 +119,8 @@ def stage_tts(ep: Episode, fallback: bool = True,
                      fallback_to_edge=fallback,
                      granularity=granularity,
                      script_md=_load_script_md(ep),
-                     target_chars=group_chars)
+                     target_chars=group_chars,
+                     workers=workers)
     missing = [f.id for f in ep.frames
                if not (f.audio_path and Path(f.audio_path).exists())]
     if missing:
@@ -369,7 +374,8 @@ def stage_images(ep: Episode) -> None:
 
 def stage_assets(ep: Episode, tts_fallback: bool = True,
                  tts_granularity: str = "frame",
-                 tts_group_chars: int | None = None) -> None:
+                 tts_group_chars: int | None = None,
+                 tts_workers: int | None = None) -> None:
     """生图 ∥ TTS 并行（两家独立厂商/配额，可真并行）。两侧都结束才返回。
 
     - 线程 A：stage_tts（DashScope）
@@ -398,7 +404,8 @@ def stage_assets(ep: Episode, tts_fallback: bool = True,
         tasks.append(_run_t(
             lambda e: stage_tts(e, fallback=tts_fallback,
                                 granularity=tts_granularity,
-                                group_chars=tts_group_chars), "tts"))
+                                group_chars=tts_group_chars,
+                                workers=tts_workers), "tts"))
     if has_prompts:
         tasks.append(_run_t(stage_images, "images"))
     if not tasks:
@@ -591,6 +598,7 @@ def produce(
     merge_short: bool = False,
     tts_granularity: str = "frame",
     tts_group_chars: int | None = None,
+    tts_workers: int | None = None,
 ) -> dict:
     """
     跑真实生产链（不滥用 rigid 状态枚举空推）；状态由产物真值导出。
@@ -663,10 +671,10 @@ def produce(
     #   静默丢掉（同坑 #38：--merge-short 当年就是这么失效的）。
     stage_fn["tts"] = lambda ep: stage_tts(
         ep, fallback=tts_fallback, granularity=tts_granularity,
-        group_chars=tts_group_chars)
+        group_chars=tts_group_chars, workers=tts_workers)
     stage_fn["assets"] = lambda ep: stage_assets(
         ep, tts_fallback=tts_fallback, tts_granularity=tts_granularity,
-        tts_group_chars=tts_group_chars)
+        tts_group_chars=tts_group_chars, tts_workers=tts_workers)
     if script_md or merge_short:
         # D4：把正文用闭包喂给 stage_script，而不是写进 ep.notes 再读回。
         # merge_short 也必须走这个闭包——STAGE_FN 里存的是默认参数版本，

@@ -72,7 +72,8 @@ def cmd_episode(args):
                       tts_fallback=not args.no_fallback,
                       merge_short=args.merge_short,
                       tts_granularity=args.tts_granularity,
-                      tts_group_chars=args.tts_group_chars)
+                      tts_group_chars=args.tts_group_chars,
+                      tts_workers=args.tts_workers)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "audit-wav":
         # 孤儿 wav 清理（opt-in）：默认只列，--apply 才删。
@@ -357,6 +358,13 @@ def main():
                         "设 1（或 0）= 不打包，严格一段一组。"
                         "⚠️ 想退回逐帧合成请用 --tts-granularity frame，"
                         "本参数设 0 不会退回逐帧")
+    p.add_argument("--tts-workers", type=int, default=None,
+                   help="[produce] TTS 并发路数。不设则按粒度自动取值："
+                        "逐帧档 2（默认档，220 帧 = 220 次请求，4 路并发实测会撞"
+                        " Throttling.RateQuota：D 档 83 次突发只成功 25 帧）；"
+                        "段落档 4（请求数少得多，可以跑满）。"
+                        "⚠️ 2026-09-07 前这个值是写死 4 且**没有开关** —— "
+                        "默认档退回逐帧后请求数涨了 20 倍，等于没得调。")
     p.add_argument("--no-fallback", action="store_true",
                    help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
                         "音色；交付集建议加）")
