@@ -109,13 +109,18 @@ def stage_tts(ep: Episode, fallback: bool = True,
     """
     from pathlib import Path
     from app.managers.episode import episode_path
-    from app.services.voice import synthesize
+    from app.services.voice import synthesize, DEFAULT_ENGINE as DEFAULT_VOICE_ENGINE
 
     if not ep.frames:
         raise RuntimeError(f"episode {ep.id} 无 frames，先跑 script stage")
     audio_dir = _episode_dir(ep.id) / "audio"
     audio_dir.mkdir(parents=True, exist_ok=True)
-    rep = synthesize(ep.frames, engine="cosyvoice", out_dir=audio_dir,
+        # 引擎从配置读取（2026-09-08 起：qwen-audio-3.0-tts / cosyvoice 可切换）。
+    # 之前这里写死 "cosyvoice"，导致 engine: qwen 配置完全不起作用。
+    from app.config.config import get_settings
+    _eng = (get_settings().get_profile().voice.engine
+            or DEFAULT_VOICE_ENGINE)
+    rep = synthesize(ep.frames, engine=_eng, out_dir=audio_dir,
                      fallback_to_edge=fallback,
                      granularity=granularity,
                      script_md=_load_script_md(ep),

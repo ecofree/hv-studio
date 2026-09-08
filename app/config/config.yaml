@@ -44,8 +44,11 @@ profiles:
       require_pose_spec: true
 
     voice:
-      # 实际出片引擎由 app/services/voice.py 决定（cosyvoice 主 / edge 回退）
-      engine: cosyvoice
+      # 实际出片引擎由 app/services/voice.py 决定
+      # 2026-09-08 切到 qwen：免费额度大（3.6万次）、设计音色+instruction+
+      # hot_fix 官方多音字修复都支持；A/B 实测响度std 41.0（cosyvoice 指令版
+      # 13.65、SSML 26.58），PER 0.6%，组间 F0 极差 29Hz（一致）。
+      engine: qwen
       fallback_engine: edge
       speaker: zm_yunxi
       speed: 1.0
@@ -65,6 +68,56 @@ profiles:
       # ⚠️ 必须是**内容无关**的通用情绪指令：这条会作用于每一组，
       #    不能写「读到某某词时放慢」这种只适用于某一段的描述。
       instruction: "用低沉压抑、充满张力的语气朗读，节奏快慢对比明显，情绪层层推进，在转折处停顿并压低声音。"
+
+      # ---- qwen-audio-3.0-tts ----
+      # 官方示例指令（纪录片解说场景原话），W1 实测效果最佳
+      qwen_model: qwen-audio-3.0-tts-flash
+      qwen_ssml: true   # W5 路线：逐句 SSML（rate+phoneme），不用 pitch/instruction
+      qwen_rate: 1.05
+      qwen_instruction: "沉稳的中年男性，语速缓慢，音色低沉有磁性，适合朗读历史纪录片解说。"
+      qwen_hot_fix:
+        pronunciation:
+          - 尉迟: yu4 chi2
+          - 长孙: zhang3 sun1
+          - 可汗: ke4 han2
+          - 单于: chan2 yu2
+          - 冒顿: mo4 du2
+          - 月氏: yue4 zhi1
+          - 龟兹: qiu1 ci2
+          - 大宛: da4 yuan1
+          - 康居: kang1 qu2
+          - 乌孙: wu1 sun1
+          - 身毒: juan1 du2
+          - 阏氏: yan1 zhi1
+          - 吐蕃: tu3 bo1
+          - 回鹘: hui2 hu2
+          - 高句丽: gao1 gou1 li2
+          - 吐谷浑: tu3 yu4 hun2
+          - 柔然: rou2 ran2
+          - 突厥: tu1 jue2
+          - 鲜卑: xian1 bei1
+          - 契丹: qi4 dan1
+          - 休屠: xiu1 chu2
+          - 昆邪: hun2 ye2
+          - 先零: xian1 lian2
+          - 郦食其: li4 yi4 ji1
+          - 伍子胥: wu3 zi3 xu1
+          - 范雎: fan4 ju1
+          - 乐毅: yue4 yi4
+          - 曹参: cao2 can1
+          - 华佗: hua4 tuo2
+          - 李悝: li3 kui1
+          - 呼韩邪: hu1 han2 ye2
+          - 扁鹊: bian3 que4
+          - 马邑: ma3 yi4
+          - 焉耆: yan1 qi2
+          - 氐族: di1 zu2
+          - 羌族: qiang1 zu2
+          - 羯族: jie2 zu2
+          - 骑都尉: ji4 du1 wei4
+        replace:
+          - 万石: 万担
+          - 晋阳令刘文静: 晋阳县令刘文静
 
     # 2026-09-05 整改 C2 起，本段**真正生效**（此前 compose.py 里全是硬编码，
     # 改这里完全不起作用）。改完记得它确实会影响出片。

@@ -613,6 +613,70 @@ def synthesize_dashscope_whole(
 
 
 # ---------------------------------------------------------------------------
+# qwen-audio-3.0-tts（HTTP 非流式；支持 instruction / hot_fix / seed）
+# ---------------------------------------------------------------------------
+# 为什么不走 SDK：dashscope 的 SpeechSynthesizer.call() 不暴露 instruction 与
+# hot_fix 参数（2026-09-08 实测），而这两个是 qwen 路线的核心能力
+#（情感风格 + 官方多音字修复）。走 HTTP 非流式，音频从返回 URL 下载。
+
+_QWEN_HTTP_URL = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/SpeechSynthesizer"
+
+
+def synthesize_qwen_whole(
+    text: str,
+    out_audio: Path,
+    voice: str | None = None,
+    model: str = "qwen-audio-3.0-tts-plus",
+    instruction: str | None = None,
+    hot_fix: dict | None = None,
+    response_format: str = "mp3",
+    sample_rate: int = 24000,
+    overwrite: bool = False,
+    rate: float | None = None,
+) -> tuple[Path, int]:
+    """qwen-audio-3.0-tts 整段合成（HTTP 非流式）。
+
+    instruction：自然语言风格指令（如纪录片解说）。⚠️ 与 CosyVoice 同名参数，
+    但行为是「整段风格设定」—— 实测组间一致性远好于 CosyVoice 的 instruction。
+    hot_fix：官方多音字修复 {"pronunciation": [{"石": "dan4"}],
+    "replace": [{"七十万石": "七十万担"}]}。
+    ⚠️ pronunciation 是**全局**替换：单字 key 会误伤同形字（实测「磨刀石」
+    被石→dan4 带坏），量词类务必用短语级 replace。
+    返回 (out_path, duration_ms)。
+    """
+    import base64
+
+    import requests as _rq
+
+    if out_audio.exists() and not overwrite:
+        return out_audio, _audio_duration_ms(out_audio)
+    inp: dict = {"text": text, "voice": voice, "format": response_format,
+                 "sample_rate": sample_rate}
+    if instruction:
+        inp["instruction"] = instruction
+    if hot_fix:
+        inp["hot_fix"] = hot_fix
+    if rate is not None:
+        inp["rate"] = float(rate)
+    r = _rq.post(_QWEN_HTTP_URL, timeout=300,
+                 json={"model": model, "input": inp},
+                 headers={"Authorization": f"Bearer {_dashscope_key()}",
+                          "Content-Type": "application/json"})
+    if r.status_code != 200:
+        raise RuntimeError(f"[qwen-tts] HTTP {r.status_code}: {r.text[:200]}")
+    au = (r.json().get("output") or {}).get("audio") or {}
+    if au.get("data"):
+        raw = base64.b64decode(au["data"])
+    elif au.get("url"):
+        raw = _rq.get(au["url"], timeout=180).content
+    else:
+        raise RuntimeError(f"[qwen-tts] 无音频: {str(r.json())[:200]}")
+    out_audio.parent.mkdir(parents=True, exist_ok=True)
+    out_audio.write_bytes(raw)
+    return out_audio, _audio_duration_ms(out_audio)
+
+
+# ---------------------------------------------------------------------------
 # CLI：整段合成一段文本到文件
 # ---------------------------------------------------------------------------
 def main():

@@ -37,7 +37,9 @@ from app.models import Frame
 # ---------------------------------------------------------------------------
 # 引擎常量
 # ---------------------------------------------------------------------------
-ENGINE_DASHSCOPE = "cosyvoice"   # 主用：阿里云百炼 CosyVoice v3.5-flash
+ENGINE_DASHSCOPE = "cosyvoice"   # 主用：阿里云百炼 CosyVoice v3.5
+ENGINE_QWEN = "qwen"             # qwen-audio-3.0-tts（免费额度大，
+                                 # 设计音色+instruction+hot_fix 都支持）
 ENGINE_EDGE = "edge"             # 回退：微软 edge-tts
 DEFAULT_ENGINE = ENGINE_DASHSCOPE
 # manifest 里「这帧是谁念的」不可考时用它（历史 audio 目录建档早于打标功能）。
@@ -225,6 +227,12 @@ def _voice_shaping_defaults() -> dict:
     """
     base: dict = {"pitch_rate": None, "speech_rate": None,
                   "volume": None, "instruction": None}
+    # qwen 专属开关不在塑形语义里，单独读
+    try:
+        base["qwen_ssml"] = getattr(
+            get_settings().get_profile().voice, "qwen_ssml", False)
+    except Exception:  # noqa: BLE001
+        base["qwen_ssml"] = False
     try:
         from app.config.config import get_settings
         v = get_settings().get_profile().voice
@@ -257,7 +265,7 @@ def _synth_cosyvoice(text: str, out_mp3: Path, voice_prompt: str | None = None,
     音色塑形参数缺省时取 config.yaml profile.voice 的配置
     （pitch_rate<1 压低音调 → 更浑厚，改善"声音薄"）。
     """
-    from app.services.cosyvoice import synthesize_dashscope_whole
+    from app.services.cosyvoice import synthesize_dashscope_whole, get_voice_id
     d = _voice_shaping_defaults()
     _, _ = synthesize_dashscope_whole(
         text, out_mp3,
@@ -344,7 +352,11 @@ def synthesize(
         这个标记会写进 manifest，是「本片音色是否一致」的唯一证据（B2-2）。
         """
         ok, used = False, engine
-        if engine == ENGINE_DASHSCOPE:
+        if engine == ENGINE_QWEN:
+            # qwen 的 instruction/hot_fix 来自 config（全局风格），
+            # 不接收逐次 instruction 参数（W1 实测：全程一条指令最稳）
+            ok = _try_one_qwen(text, wav)
+        elif engine == ENGINE_DASHSCOPE:
             if instruction is None:
                 ok = _try_one_cosyvoice(text, wav, voice_prompt)
             else:
@@ -465,7 +477,10 @@ def synthesize(
                     f.audio_duration_ms = _audio_duration_ms(w)
             return
 
-        gtext = _tts_group.group_text(texts)
+        if engine == ENGINE_QWEN and getattr(v_cfg, "qwen_ssml", False):
+            gtext = build_group_ssml(texts)      # W5 路线：逐句 rate+phoneme
+        else:
+            gtext = _tts_group.group_text(texts)
         # 段落 wav 是中间产物，落在 audio/ 下（hv clean --build 会收走）
         gwav = base / f"_grp_{idxs[0]:05d}.wav"
         ok, used = _render(gtext, gwav, f"grp{idxs[0]:05d}({len(fs)}帧)")
@@ -477,22 +492,31 @@ def synthesize(
         # 首句「进入角色」时失稳，句首若是生僻专名就被念糊
         # （「尉迟恭在后院」→「尉迟恭为后院」）。同一个文本重合成结果完全一致，
         # 所以能被稳定检出 → 检出后这一组去掉指令重合成即可。
-        _cfg_instr = _voice_shaping_defaults().get("instruction")
+        v_cfg = _voice_shaping_defaults()
+        _cfg_instr = v_cfg.get("instruction")
         if engine == ENGINE_DASHSCOPE and _cfg_instr:
             from app.services import asr_check as _ac
             _good, _why = _ac.check(gwav, gtext)
             if not _good:
-                print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
-                      f"→ 去掉风格指令重合成")
-                ok, used = _render(gtext, gwav,
-                                   f"grp{idxs[0]:05d}(无指令)",
-                                   instruction=INSTRUCTION_OFF)
-                if not ok:
-                    raise RuntimeError(
-                        f"[voice] 段落 {idxs[0]} 回检后重合成失败")
-                _good2, _why2 = _ac.check(gwav, gtext)
-                print(f"  [voice] 段落 {idxs[0]} 重合成后回检：{_why2}"
-                      f"（该组无风格指令，情感略平但发音准确）")
+                # 两种不合格，处置不同：
+                #  · 英文串 = 硬信号（不依赖阈值，中文旁白里绝不该有英文）
+                #    → **必定**去掉指令重合成
+                #  · 仅 PER 超限 = 软信号（阈值未标定，可能是同音误判）
+                #    → 默认只告警；开启 HV_ASR_DOWNGRADE=1 才降级
+                _hard = _ac.suspicious(_ac.transcribe(gwav) or "")
+                if not (_hard or _ac.downgrade_enabled()):
+                    print(f"  [voice][告警] 段落 {idxs[0]} 发音回检：{_why}")
+                else:
+                    print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
+                          f"→ 去掉风格指令重合成")
+                    ok, used = _render(
+                        gtext, gwav, f"grp{idxs[0]:05d}(无指令)",
+                        instruction=INSTRUCTION_OFF)
+                    if not ok:
+                        raise RuntimeError(
+                            f"[voice] 段落 {idxs[0]} 回检后重合成失败")
+                    _good2, _why2 = _ac.check(gwav, gtext)
+                    print(f"  [voice] 段落 {idxs[0]} 重合成后：{_why2}")
 
         data, sr = _tts_group.read_wav(gwav)
         segs = _tts_group.slice_samples(
@@ -594,6 +618,122 @@ def engine_report(base: "Path | str") -> dict:
         "mixed": len([k for k in by if k != main]) > 0,
         "degraded": sorted(degraded),
     }
+
+
+# ---------------------------------------------------------------------------
+# SSML 生成（qwen 引擎，W5 路线 2026-09-08 定稿）
+# ---------------------------------------------------------------------------
+# 设计原则（全部来自当日实测）：
+#   · 起伏只用 rate —— 实测单调可复现（1.0→6.0s / 0.8→6.8s / 0.6→7.9s）；
+#     pitch 的输出不跟随标注值（尾部 F0 97~172Hz 乱跳），**绝不用**。
+#   · 多音字用 <phoneme> —— 拼音+声调直接钉死，取代 cosyvoice 的同音字替换。
+#   · 不用 instruction —— 它是整段提示，模型自由发挥 → 组间 F0 88~186Hz 漂移。
+#   · 不用音质重铸型标签（[whispers]/[tired]/[like dracula]）—— qwen 实测
+#     [whispers] 让 F0 飙到 186Hz，听感即"换了个人"。
+
+# 历史读音表（词 → 拼音，空格分隔，数目必须与字数一致）。
+# ⚠️ 顺序无关（匹配时按词长倒序），但**避免同形异音词**：「万石」安全
+#    （磨刀石不含"万石"子串），单字「石」绝不入表。
+_SSML_PHONEMES: dict[str, str] = {
+    "尉迟": "yu4 chi2", "长孙": "zhang3 sun1", "可汗": "ke4 han2",
+    "单于": "chan2 yu2", "冒顿": "mo4 du2", "月氏": "yue4 zhi1",
+    "龟兹": "qiu1 ci2", "大宛": "da4 yuan1", "康居": "kang1 qu2",
+    "乌孙": "wu1 sun1", "身毒": "juan1 du2", "阏氏": "yan1 zhi1",
+    "吐蕃": "tu3 bo1", "回鹘": "hui2 hu2", "高句丽": "gao1 gou1 li2",
+    "吐谷浑": "tu3 yu4 hun2", "柔然": "rou2 ran2", "突厥": "tu1 jue2",
+    "鲜卑": "xian1 bei1", "契丹": "qi4 dan1", "休屠": "xiu1 chu2",
+    "昆邪": "hun2 ye2", "先零": "xian1 lian2", "郦食其": "li4 yi4 ji1",
+    "伍子胥": "wu3 zi3 xu1", "范雎": "fan4 ju1", "乐毅": "yue4 yi4",
+    "曹参": "cao2 can1", "华佗": "hua4 tuo2", "李悝": "li3 kui1",
+    "呼韩邪": "hu1 han2 ye2", "扁鹊": "bian3 que4", "马邑": "ma3 yi4",
+    "焉耆": "yan1 qi2", "氐族": "di1 zu2", "羌族": "qiang1 zu2",
+    "羯族": "jie2 zu2", "骑都尉": "ji4 du1 wei4", "万石": "wan4 dan4",
+}
+_SSML_SENT_SPLIT = re.compile(r"(?<=[。！？；…])")
+_SSML_RATE_DEFAULT = 0.92
+_SSML_RATE_EXCL = 0.96      # 感叹
+_SSML_RATE_QUES = 0.90      # 疑问
+_SSML_RATE_GROUP_TAIL = 0.86  # 组末收束（略慢，留悬念）
+
+
+def _ssml_escape(t: str) -> str:
+    return t.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _apply_phonemes(sent: str) -> str:
+    for word in sorted(_SSML_PHONEMES, key=len, reverse=True):
+        if word in sent:
+            sent = sent.replace(
+                word,
+                f'<phoneme alphabet="py" ph="{_SSML_PHONEMES[word]}">{word}</phoneme>')
+    return sent
+
+
+def build_group_ssml(texts: list[str]) -> str:
+    """一组帧的文本 → SSML（逐句 <speak rate> + <phoneme>）。
+
+    策略（确定性，无随机）：
+      · 基础语速 0.92；感叹句 0.96；疑问句 0.90；组末句 0.86（收束留悬念）
+      · 句子按 。！？；… 切分，一句一个 <speak>（可并列、不可嵌套）
+    """
+    parts: list[str] = []
+    n = len(texts)
+    for gi, t in enumerate(texts):
+        sents = [x for x in _SSML_SENT_SPLIT.split(t) if x.strip()]
+        for si, sent in enumerate(sents):
+            rate = _SSML_RATE_DEFAULT
+            if sent.rstrip().endswith("！"):
+                rate = _SSML_RATE_EXCL
+            elif sent.rstrip().endswith("？"):
+                rate = _SSML_RATE_QUES
+            if gi == n - 1 and si == len(sents) - 1:
+                rate = _SSML_RATE_GROUP_TAIL
+            # 先转义原文，再插 phoneme 标签（顺序反了会把标签一起转义掉）
+            body = _apply_phonemes(_ssml_escape(sent.strip()))
+            parts.append(f'<speak rate="{rate:.2f}">{body}</speak>')
+    return "".join(parts)
+
+
+def _try_one_qwen(text: str, wav: Path,
+                  retries: int | None = None) -> bool:
+    """qwen-audio-3.0-tts 整段合成并转 wav（带瞬时重试）。
+
+    instruction / hot_fix 从 config（profile.voice）读取：
+      qwen_instruction / qwen_hot_fix。voice 由 qwen_model 对应的设计音色给出。
+    """
+    n = _TTS_TRANSIENT_RETRY if retries is None else max(0, int(retries))
+    last: BaseException | None = None
+    from app.config.config import get_settings
+    from app.services.cosyvoice import get_voice_id
+    v = get_settings().get_profile().voice
+    model = v.qwen_model or "qwen-audio-3.0-tts-plus"
+    voice = get_voice_id(model, DASHSCOPE_VOICE_PROMPT)
+    for attempt in range(n + 1):
+        try:
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_mp3 = Path(tmp) / "tts.mp3"
+                from app.services.cosyvoice import synthesize_qwen_whole
+                synthesize_qwen_whole(
+                    text, tmp_mp3, voice=voice, model=model,
+                    instruction=v.qwen_instruction,
+                    hot_fix=v.qwen_hot_fix, rate=v.qwen_rate,
+                    enable_ssml=text.lstrip().startswith("<speak"),
+                    overwrite=True)
+                if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
+                    raise RuntimeError("qwen-tts 返回空音频(empty body)")
+                _mp3_to_wav(tmp_mp3, wav)
+            if wav.exists():
+                return True
+            last = RuntimeError("qwen-tts 合成后未生成 wav")
+        except Exception as e:  # noqa: BLE001
+            last = e
+            if _is_transient(e) and attempt < n:
+                time.sleep(_tts_backoff(attempt + 1))
+                continue
+            break
+    if last is not None:
+        print(f"  [voice] qwen-tts 失败: {type(last).__name__}: {str(last)[:120]}")
+    return False
 
 
 def _try_one_cosyvoice(text: str, wav: Path, voice_prompt: str | None,

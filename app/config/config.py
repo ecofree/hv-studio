@@ -144,6 +144,19 @@ class ProfileVoice(BaseModel):
     volume: int | None = None
     instruction: str | None = None
 
+    # ---- qwen-audio-3.0-tts（engine: qwen 时生效）----
+    # qwen_model      : qwen-audio-3.0-tts-plus / -flash
+    # qwen_instruction: 全局风格指令（W1 实测：全程一条最稳，组间不漂移）
+    # qwen_hot_fix    : 官方多音字修复 {"pronunciation":[{词:拼音}],
+    #                   "replace":[{词:替换文本}]}。
+    #                   ⚠️ pronunciation 是全局替换，量词类（石 dan4/shí）
+    #                   必须用短语级 replace，否则误伤同形字（磨刀石踩坑）。
+    qwen_model: str | None = None
+    qwen_instruction: str | None = None
+    qwen_hot_fix: dict | None = None
+    qwen_rate: float | None = None
+    qwen_ssml: bool = False   # W5 路线：逐句 SSML（rate+phoneme）
+
 
 # H 批（2026-09-05）：ProfileRhythm 整段删除。
 # 六个键（fps/pad_head_ms/pad_tail_ms/min_shot_ms/max_shot_ms/split_threshold_ms）
