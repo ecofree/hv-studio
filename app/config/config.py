@@ -130,7 +130,9 @@ class ProfileImage(BaseModel):
 class ProfileVoice(BaseModel):
     """音色塑形（CosyVoice v3.5 合成参数，可选；None = 服务端默认）。"""
     engine: str
-    fallback_engine: str | None = None
+    # fallback_engine 已删（P1-3 审计）：全仓零消费者，配置在撒谎。
+    # 2026-09-08 起引擎失败直接 raise（--no-fallback 语义）。
+    fallback_engine: str | None = None  # 已废弃，勿配置
     speaker: str
     speed: float = 1.0
     pitch: float = 0.0

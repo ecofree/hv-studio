@@ -49,7 +49,6 @@ profiles:
       # hot_fix 官方多音字修复都支持；A/B 实测响度std 41.0（cosyvoice 指令版
       # 13.65、SSML 26.58），PER 0.6%，组间 F0 极差 29Hz（一致）。
       engine: qwen
-      fallback_engine: edge
       speaker: zm_yunxi
       speed: 1.0
       pitch: 0.0

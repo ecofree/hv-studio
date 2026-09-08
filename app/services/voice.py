@@ -95,10 +95,36 @@ _MANIFEST_NAME = "_tts_manifest.json"
 _FP_NOTE = None  # 惰性：进程内只提示一次 manifest 缺失（向后兼容旧 audio 目录）
 
 
+def _tts_strategy_tag() -> str:
+    """TTS 策略指纹：engine + model + 影响产出的关键配置。
+
+    P0-1（2026-09-08 审计）：旧指纹只含文本 —— 切引擎/调 rate/改 SSML 档位后，
+    旧音频会被静默复用（当日被迫手动 mv 音频目录 6 次，全是这个缺陷的人工代偿）。
+    策略变化 → 指纹变化 → 全量重合成，这才是正确语义。
+    """
+    try:
+        from app.config.config import get_settings
+        v = get_settings().get_profile().voice
+        return "|".join([
+            v.engine or DEFAULT_ENGINE,
+            v.qwen_model or "",
+            "ssml" if getattr(v, "qwen_ssml", False) else "",
+            str(v.qwen_rate or ""),
+            (v.qwen_instruction or "")[:32],
+            DASHSCOPE_VOICE_PROMPT[:32],
+        ])
+    except Exception:  # noqa: BLE001 —— 配置读不到就退化为纯文本指纹
+        return ""
+
+
 def _text_fingerprint(text: str) -> str:
-    """旁白内容指纹（16 进制前 12 位）。用于判断「同一句是否已按当前文本合成」。"""
+    """旁白内容指纹（16 进制前 12 位）= 策略指纹 + 文本指纹。
+
+    ⚠️ 策略（引擎/模型/rate/SSML 档位）参与指纹：策略变了 → 旧音频全部判失效。
+    """
     norm = _normalize_numbers(text).strip()
-    return hashlib.md5(norm.encode("utf-8")).hexdigest()[:12]
+    payload = f"{_tts_strategy_tag()}|{norm}"
+    return hashlib.md5(payload.encode("utf-8")).hexdigest()[:12]
 
 
 def _manifest_path(base: Path) -> Path:
@@ -442,7 +468,7 @@ def synthesize(
         for f, w, s in zip(fs, ws, segs):
             want = real * w / tot
             got = len(s) / sr * 1000
-            if want > 0 and not (0.5 * want <= got <= 2.0 * want):
+            if want > 0 and not (0.66 * want <= got <= 1.5 * want):
                 bad.append(f"{f.id} 期望{want:.0f}ms 实得{got:.0f}ms")
         if bad:
             print(f"  [voice][告警] 段落 {gid} 切片偏差过大（TTS 语速与字数权重"
@@ -716,6 +742,13 @@ def _try_one_qwen(text: str, wav: Path,
     v = get_settings().get_profile().voice
     model = v.qwen_model or "qwen-audio-3.0-tts-plus"
     voice = get_voice_id(model, DASHSCOPE_VOICE_PROMPT)
+    # P1-5（审计）：读音修复单一真源 = _SSML_PHONEMES（SSML phoneme 与
+    # hot_fix 共用一张表），config 里只保留**短语级** replace（量词类）。
+    hf_cfg = v.qwen_hot_fix or {}
+    hot_fix = {
+        "pronunciation": [{w: py} for w, py in _SSML_PHONEMES.items()],
+        "replace": hf_cfg.get("replace", []),
+    }
     for attempt in range(n + 1):
         try:
             with tempfile.TemporaryDirectory() as tmp:
@@ -724,7 +757,7 @@ def _try_one_qwen(text: str, wav: Path,
                 synthesize_qwen_whole(
                     text, tmp_mp3, voice=voice, model=model,
                     instruction=v.qwen_instruction,
-                    hot_fix=v.qwen_hot_fix, rate=v.qwen_rate,
+                    hot_fix=hot_fix, rate=v.qwen_rate,
                     enable_ssml=text.lstrip().startswith("<speak"),
                     overwrite=True)
                 if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
@@ -735,12 +768,20 @@ def _try_one_qwen(text: str, wav: Path,
             last = RuntimeError("qwen-tts 合成后未生成 wav")
         except Exception as e:  # noqa: BLE001
             last = e
+            msg = str(e)
+            # 配额耗尽是**致命**错误：重试无意义，且要把原因说人话
+            if "FreeTierOnly" in msg or "Free quota exhausted" in msg                     or ("403" in msg and "quota" in msg.lower()):
+                print(f"  [voice][额度耗尽] {model} 免费额度已用完"
+                      f"（HTTP 403 FreeTierOnly）。"
+                      f"处理：①控制台充值；②切换 qwen_model 到有额度的档位；"
+                      f"③等免费额度刷新。本次 TTS 终止。")
+                return False
             if _is_transient(e) and attempt < n:
                 time.sleep(_tts_backoff(attempt + 1))
                 continue
             break
     if last is not None:
-        print(f"  [voice] qwen-tts 失败: {type(last).__name__}: {str(last)[:120]}")
+        print(f"  [voice] qwen-tts 失败: {type(last).__name__}: {str(last)[:160]}")
     return False
 
 
@@ -813,7 +854,7 @@ def main():
     import argparse
     ap = argparse.ArgumentParser()
     ap.add_argument("--episode", required=True)
-    ap.add_argument("--engine", choices=[ENGINE_DASHSCOPE, ENGINE_EDGE],
+    ap.add_argument("--engine", choices=[ENGINE_DASHSCOPE, ENGINE_QWEN, ENGINE_EDGE],
                     default=DEFAULT_ENGINE, help="合成引擎")
     ap.add_argument("--voice", default=DEFAULT_VOICE_EDGE, help="edge 引擎音色")
     ap.add_argument("--rate", default="+0%")
