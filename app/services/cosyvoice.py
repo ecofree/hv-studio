@@ -633,6 +633,7 @@ def synthesize_qwen_whole(
     sample_rate: int = 24000,
     overwrite: bool = False,
     rate: float | None = None,
+    enable_ssml: bool = False,
 ) -> tuple[Path, int]:
     """qwen-audio-3.0-tts 整段合成（HTTP 非流式）。
 
@@ -658,6 +659,8 @@ def synthesize_qwen_whole(
         inp["hot_fix"] = hot_fix
     if rate is not None:
         inp["rate"] = float(rate)
+    if enable_ssml:
+        inp["enable_ssml"] = True
     r = _rq.post(_QWEN_HTTP_URL, timeout=300,
                  json={"model": model, "input": inp},
                  headers={"Authorization": f"Bearer {_dashscope_key()}",

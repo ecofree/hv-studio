@@ -477,7 +477,7 @@ def synthesize(
                     f.audio_duration_ms = _audio_duration_ms(w)
             return
 
-        if engine == ENGINE_QWEN and getattr(v_cfg, "qwen_ssml", False):
+        if engine == ENGINE_QWEN and _voice_shaping_defaults().get("qwen_ssml", False):
             gtext = build_group_ssml(texts)      # W5 路线：逐句 rate+phoneme
         else:
             gtext = _tts_group.group_text(texts)
@@ -609,7 +609,10 @@ def engine_report(base: "Path | str") -> dict:
         if isinstance(v, dict):
             by[v.get("engine", _ENGINE_UNKNOWN)] = \
                 by.get(v.get("engine", _ENGINE_UNKNOWN), 0) + 1
-    main = ENGINE_DASHSCOPE
+    # 主引擎 = 占帧数最多的引擎（而非写死的 cosyvoice）：
+    # 2026-09-08 起整集可整体跑在 qwen 引擎上，220/220 全是 qwen 是
+    # 「音色一致」，旧逻辑（main=cosyvoice）会误报「成片会中途换人声」。
+    main = (max(by.items(), key=lambda kv: kv[1])[0] if by else ENGINE_DASHSCOPE)
     degraded = [k for k, v in man.items()
                 if isinstance(v, dict) and v.get("engine", _ENGINE_UNKNOWN) != main]
     return {
@@ -686,6 +689,11 @@ def build_group_ssml(texts: list[str]) -> str:
                 rate = _SSML_RATE_EXCL
             elif sent.rstrip().endswith("？"):
                 rate = _SSML_RATE_QUES
+            # 长句自动提速：0.92 档下 ≥25 字会超过单镜 8s 硬顶
+            # （实测 30 字 ≈ 8.1s → 209 帧 > 200）。组末句让位给收束档。
+            _plain = len(re.sub(r"[，。！？；：、…—\s“”（）《》·]", "", sent))
+            if _plain >= 25 and not (gi == n - 1 and si == len(sents) - 1):
+                rate = min(1.0, rate + 0.08)
             if gi == n - 1 and si == len(sents) - 1:
                 rate = _SSML_RATE_GROUP_TAIL
             # 先转义原文，再插 phoneme 标签（顺序反了会把标签一起转义掉）
