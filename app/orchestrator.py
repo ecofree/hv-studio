@@ -77,7 +77,7 @@ def stage_script(ep: Episode, md: str | None = None,
 
 
 def stage_tts(ep: Episode, fallback: bool = True,
-              granularity: str = "frame",
+              granularity: str = "paragraph",
               group_chars: int | None = None,
               workers: int | None = None) -> None:
     """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
@@ -373,7 +373,7 @@ def stage_images(ep: Episode) -> None:
 
 
 def stage_assets(ep: Episode, tts_fallback: bool = True,
-                 tts_granularity: str = "frame",
+                 tts_granularity: str = "paragraph",
                  tts_group_chars: int | None = None,
                  tts_workers: int | None = None) -> None:
     """生图 ∥ TTS 并行（两家独立厂商/配额，可真并行）。两侧都结束才返回。
@@ -596,7 +596,7 @@ def produce(
     script_md: str | None = None,
     tts_fallback: bool = True,
     merge_short: bool = False,
-    tts_granularity: str = "frame",
+    tts_granularity: str = "paragraph",
     tts_group_chars: int | None = None,
     tts_workers: int | None = None,
 ) -> dict:

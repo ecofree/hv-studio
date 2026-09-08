@@ -18,31 +18,31 @@ import sys
 import pytest
 
 
-def test_stage_tts_defaults_to_frame():
+def test_stage_tts_defaults_to_paragraph():
     from app import orchestrator as O
 
-    assert inspect.signature(O.stage_tts).parameters["granularity"].default == "frame"
+    assert inspect.signature(O.stage_tts).parameters["granularity"].default == "paragraph"
 
 
-def test_stage_assets_defaults_to_frame():
+def test_stage_assets_defaults_to_paragraph():
     from app import orchestrator as O
 
     sig = inspect.signature(O.stage_assets)
-    assert sig.parameters["tts_granularity"].default == "frame"
+    assert sig.parameters["tts_granularity"].default == "paragraph"
 
 
-def test_produce_defaults_to_frame():
+def test_produce_defaults_to_paragraph():
     from app import orchestrator as O
 
     sig = inspect.signature(O.produce)
-    assert sig.parameters["tts_granularity"].default == "frame"
+    assert sig.parameters["tts_granularity"].default == "paragraph"
 
 
-def test_voice_synthesize_defaults_to_frame():
+def test_voice_synthesize_defaults_to_paragraph():
     from app.services import voice as V
 
     sig = inspect.signature(V.synthesize)
-    assert sig.parameters["granularity"].default == "frame"
+    assert sig.parameters["granularity"].default == "paragraph"
 
 
 def test_workers_default_is_auto():
@@ -64,6 +64,50 @@ def test_resolve_workers_by_granularity():
     assert R(8, "frame") == 8          # 显式覆盖
     assert R(1, "paragraph") == 1
     assert R(0, "frame") == 1          # 兜底：至少 1 路
+
+
+def test_voice_id_matches_model():
+    """voice_id 与模型必须匹配 —— 拿 flash 的 id 去跑 plus → HTTP 418。
+
+    2026-09-08 实测：测试脚本漏传 voice_id，回退取了 flash 的 id 配 plus，
+    四个用例全部 418。这里钉死：不同模型必须给出不同的 voice_id，
+    且 id 里带模型名（便于一眼看出是否串了）。
+    """
+    from app.services.cosyvoice import get_voice_id
+
+    v_plus = get_voice_id("cosyvoice-v3.5-plus")
+    v_flash = get_voice_id("cosyvoice-v3.5-flash")
+    assert v_plus != v_flash
+    assert "plus" in v_plus and "flash" in v_flash
+
+
+def test_default_model_is_plus():
+    """2026-09-08 起默认升 plus（¥0.54 vs ¥0.29，绝对值可忽略，韵律更好）。"""
+    from app.services.cosyvoice import _cosyvoice_model_from_env
+    assert _cosyvoice_model_from_env() == "cosyvoice-v3.5-plus"
+
+
+def test_instruction_is_configured_and_content_agnostic():
+    """指令必须已配置，且不能点名具体词（它作用于每一组）。"""
+    from app.config.config import get_settings
+    ins = (get_settings().get_profile().voice.instruction or "").strip()
+    assert ins, "instruction 未配置 → 出片又是平的"
+    for q in ("「", "」", "“", "”"):
+        assert q not in ins, (
+            f"instruction 里出现了引号 {q}：点名具体词的指令只适用于某一段，"
+            "但它会作用于每一组")
+
+
+def test_voice_prompt_is_not_news_anchor():
+    """旧 prompt 里的「语速平稳」「新闻播报」＝直接指示产出播报腔。"""
+    from app.services.cosyvoice import DEFAULT_VOICE_PROMPT as P
+    # 「语速平稳」是纯负面指示，任何位置都不该出现
+    assert "语速平稳" not in P, "音色描述里又出现「语速平稳」→ 又是平的"
+    # 「新闻播报」只能出现在否定语境（如"避免…播音腔和新闻播报腔"），
+    # 不能是描述目标（旧版写的是"适合历史纪录片旁白或新闻播报"）
+    if "新闻播报" in P:
+        assert "避免" in P or "不要" in P or "非" in P, (
+            "音色描述把「新闻播报」当成了目标风格（应是否定语境）")
 
 
 def test_orchestrator_threads_workers():
@@ -108,11 +152,11 @@ def _cli_granularity_kw() -> dict:
     return captured
 
 
-def test_cli_default_is_frame():
+def test_cli_default_is_paragraph():
     kw = _cli_granularity_kw()
     assert kw, "没抓到 --tts-granularity 的定义，测试 spy 失效了"
-    assert kw.get("default") == "frame", \
-        f"CLI --tts-granularity default = {kw.get('default')!r}，应为 frame"
+    assert kw.get("default") == "paragraph", \
+        f"CLI --tts-granularity default = {kw.get('default')!r}，应为 paragraph"
 
 
 def test_cli_help_renders_without_percent_crash():

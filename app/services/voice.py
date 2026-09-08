@@ -151,6 +151,12 @@ _TTS_WORKERS_PARAGRAPH = int(env_get("HV_TTS_WORKERS_PARAGRAPH", "4"))
 _TTS_WORKERS_OVERRIDE = env_get("HV_TTS_WORKERS", "") or None
 
 
+# 显式关闭「自然语言风格指令」的哨兵。
+# 为什么需要：instruction=None 表示「沿用 config.yaml」，而回检失败时
+# 要的是「这一组强制不用指令」—— 两者语义不同，不能用 None 兼表。
+INSTRUCTION_OFF = object()
+
+
 def _resolve_workers(workers: int | None, granularity: str) -> int:
     """算出实际并发路数，并**打印出来** —— 静默选值等于埋雷。"""
     if workers is None and _TTS_WORKERS_OVERRIDE:
@@ -162,6 +168,38 @@ def _resolve_workers(workers: int | None, granularity: str) -> int:
         return max(1, int(workers))
     return (_TTS_WORKERS_FRAME if granularity == "frame"
             else _TTS_WORKERS_PARAGRAPH)
+
+
+# 破折号（连续 2 个以上）：**必须剥掉**，否则会被念出来。
+# 实测（2026-09-08，正确归一化后的成片 ASR）：
+#   帧59「…唯一选择——把自己的两个嫡子」→ 听写「…唯一选择。马琳把自己的两个嫡子」
+#   帧11「…孤本——」→ 变成硬句号
+# 即 `——` 要么被念成杂音，要么变硬停。音频里毫无意义。
+# 替换成逗号保留停顿，再归一化连续标点（避免出现「，，」「，。」）。
+_TTS_DASH_RUN = re.compile(r"-{2,}|—{2,}|－{2,}")
+_TTS_PUNCT_COLLAPSE = [
+    (re.compile(r"，\s*，+"), "，"),
+    (re.compile(r"，\s*(?=[。！？])"), ""),
+    (re.compile(r"(?<=[。！？])\s*，"), ""),
+]
+
+
+def tts_clean(text: str) -> str:
+    """送 TTS 前的文本清洗（唯一真源，三处取值点共用）。
+
+    ⚠️ 必须在算文本指纹**之前**调用，否则旧 wav 不会被判失效。
+    """
+    if not text:
+        return text
+    out = _TTS_DASH_RUN.sub("，", text)
+    for pat, rep in _TTS_PUNCT_COLLAPSE:
+        out = pat.sub(rep, out)
+    return out.strip()
+
+
+def frame_tts_text(f) -> str:
+    """取一帧真正要送 TTS 的文本（narration_text 优先，已做 polyphone 替换）。"""
+    return tts_clean((getattr(f, "narration_text", None) or f.text or "").strip())
 
 
 def _is_transient(e: BaseException) -> bool:
@@ -200,6 +238,15 @@ def _voice_shaping_defaults() -> dict:
     return base
 
 
+def _pick_instruction(cfg: dict, instruction) -> str | None:
+    """None = 沿用 config.yaml；INSTRUCTION_OFF = 强制不用；其余按字面值。"""
+    if instruction is INSTRUCTION_OFF:
+        return None
+    if instruction is None:
+        return cfg.get("instruction")
+    return instruction
+
+
 def _synth_cosyvoice(text: str, out_mp3: Path, voice_prompt: str | None = None,
                      pitch_rate: float | None = None,
                      speech_rate: float | None = None,
@@ -220,7 +267,7 @@ def _synth_cosyvoice(text: str, out_mp3: Path, voice_prompt: str | None = None,
         pitch_rate=d["pitch_rate"] if pitch_rate is None else pitch_rate,
         speech_rate=d["speech_rate"] if speech_rate is None else speech_rate,
         volume=d["volume"] if volume is None else volume,
-        instruction=d["instruction"] if instruction is None else instruction,
+        instruction=_pick_instruction(d, instruction),
     )
 
 
@@ -249,7 +296,7 @@ def synthesize(
     # None = 按粒度自动取（见 _resolve_workers）。2026-09-07 前写死 4 且没有
     # CLI 开关 —— 默认档退回逐帧后请求数是段落档的 20 倍，4 路必定撞限流。
     workers: int | None = None,
-    granularity: str = "frame",        # "frame" 逐帧 | "paragraph" 按段落合成后切回帧
+    granularity: str = "paragraph",    # "paragraph" 按段落合成后切回帧 | "frame" 逐帧
     script_md: str | None = None,      # paragraph 模式需要（用来还原段落边界）
     target_chars: int | None = None,   # paragraph 模式的单次目标字数（None=默认 400）
 ) -> None:
@@ -289,7 +336,8 @@ def synthesize(
     _man_lock = threading.Lock()
     degraded: list[str] = []      # 本次「请求 cosyvoice、实际用 edge」的帧（B2-2）
 
-    def _render(text: str, wav: Path, tag: str) -> tuple[bool, str]:
+    def _render(text: str, wav: Path, tag: str,
+                instruction=None) -> tuple[bool, str]:
         """真正发声：cosyvoice 失败可选降级 edge。返回 (是否成功, 实际引擎)。
 
         used 记录**实际**发声的引擎：降级后它是 edge，与请求的 engine 不同。
@@ -297,7 +345,11 @@ def synthesize(
         """
         ok, used = False, engine
         if engine == ENGINE_DASHSCOPE:
-            ok = _try_one_cosyvoice(text, wav, voice_prompt)
+            if instruction is None:
+                ok = _try_one_cosyvoice(text, wav, voice_prompt)
+            else:
+                ok = _try_one_cosyvoice(text, wav, voice_prompt,
+                                       instruction=instruction)
             if not ok and fallback_to_edge:
                 print(f"  [voice] {tag} cosyvoice 失败，降级 edge "
                       f"（音色与其余帧不同，已记入 _tts_manifest.json）")
@@ -311,7 +363,7 @@ def synthesize(
 
     def _synth_one(f: Frame) -> None:
         """单个 frame：幂等判断 + 合成 + 回填。线程独立（各 frame 各 wav 互不干扰）。"""
-        text = (f.narration_text or f.text or "").strip()
+        text = frame_tts_text(f)
         if not text:
             return
         fp = _text_fingerprint(text)
@@ -396,7 +448,7 @@ def synthesize(
             return _synth_one(frames[idxs[0]])
 
         fs = [frames[i] for i in idxs]
-        texts = [((f.narration_text or f.text) or "").strip() for f in fs]
+        texts = [frame_tts_text(f) for f in fs]
         if any(not t for t in texts):        # 空文本无法参与拼接 → 退回逐帧
             for i in idxs:
                 _synth_one(frames[i])
@@ -419,6 +471,28 @@ def synthesize(
         ok, used = _render(gtext, gwav, f"grp{idxs[0]:05d}({len(fs)}帧)")
         if not ok:
             raise RuntimeError(f"[voice] 段落 {idxs[0]} 合成失败(engine={engine})")
+
+        # ---- 发音回检 ----
+        # 根因（2026-09-08 实测，可复现）：`instruction` 会让模型在每组
+        # 首句「进入角色」时失稳，句首若是生僻专名就被念糊
+        # （「尉迟恭在后院」→「尉迟恭为后院」）。同一个文本重合成结果完全一致，
+        # 所以能被稳定检出 → 检出后这一组去掉指令重合成即可。
+        _cfg_instr = _voice_shaping_defaults().get("instruction")
+        if engine == ENGINE_DASHSCOPE and _cfg_instr:
+            from app.services import asr_check as _ac
+            _good, _why = _ac.check(gwav, gtext)
+            if not _good:
+                print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
+                      f"→ 去掉风格指令重合成")
+                ok, used = _render(gtext, gwav,
+                                   f"grp{idxs[0]:05d}(无指令)",
+                                   instruction=INSTRUCTION_OFF)
+                if not ok:
+                    raise RuntimeError(
+                        f"[voice] 段落 {idxs[0]} 回检后重合成失败")
+                _good2, _why2 = _ac.check(gwav, gtext)
+                print(f"  [voice] 段落 {idxs[0]} 重合成后回检：{_why2}"
+                      f"（该组无风格指令，情感略平但发音准确）")
 
         data, sr = _tts_group.read_wav(gwav)
         segs = _tts_group.slice_samples(
@@ -471,7 +545,7 @@ def synthesize(
         # engine 必须跟着走：这段重建若丢掉它，「本片音色是否一致」就查无实据了。
         keep = {}
         for f in frames:
-            t = (f.narration_text or f.text or "").strip()
+            t = frame_tts_text(f)
             if not t:
                 continue
             prev = manifest.get(f.id) or {}
@@ -523,7 +597,8 @@ def engine_report(base: "Path | str") -> dict:
 
 
 def _try_one_cosyvoice(text: str, wav: Path, voice_prompt: str | None,
-                       retries: int | None = None) -> bool:
+                       retries: int | None = None,
+                       instruction=None) -> bool:
     """CosyVoice 整段合成并转 wav。成功 True；瞬时故障先原地重试再判失败。
 
     B2-1 之前：任何异常都立即 return False → 调用方走 edge 降级 → 音色突变。
@@ -537,7 +612,8 @@ def _try_one_cosyvoice(text: str, wav: Path, voice_prompt: str | None,
         try:
             with tempfile.TemporaryDirectory() as tmp:
                 tmp_mp3 = Path(tmp) / "tts.mp3"
-                _synth_cosyvoice(text, tmp_mp3, voice_prompt)
+                _synth_cosyvoice(text, tmp_mp3, voice_prompt,
+                                 instruction=instruction)
                 if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
                     # 空产物按瞬时处理：中转偶发回 200 但 body 为空，重试通常就好
                     raise RuntimeError("cosyvoice 返回空音频(empty body)")

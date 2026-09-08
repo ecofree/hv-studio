@@ -224,6 +224,33 @@ def _protected_spans(sent: str) -> set[int]:
     return spans
 
 
+# 无标点长句「中分」时，切口右侧**不宜开头**的字。
+# 这些字绝大多数情况下是双音节词的后一音节（打到 / 功臣 / 长安 / 大军 …），
+# 切在它们前面会把一个词劈成两帧 —— 实测踩过两处（2026-09-08）：
+#   帧54  「…西秦铁骑甚至打」+「到了离长安只有几十里的浅水原。」
+#   帧160 「…天策府内部几百名百战功」+「臣面临被和平解散的生存绝境。」（"功臣"被切）
+# 中分兜底本来就是"两害相权"，这里只是让它在**同样合法**的候选里优先选不破词的位置；
+# 找不到就照旧中分，绝不会因为挑位置而放弃切分（否则又撞 8s 硬顶）。
+_NO_FRAG_START = set(
+    "到了臣民兵马城门年月日天下上中里后前时事心力气地者家儿子儿头面出起开关"
+    "军国士人官兵骑将相王侯公卿府州县道路边关山河江海风雨雪霜"
+)
+
+
+def _pick_cut(sent: str, mid: int, lo: int, hi: int, protected: set[int],
+              avoid_after=None) -> int | None:
+    """从中点向两侧扩散找切点。avoid_after(ch) 为真表示该位置不采用。"""
+    for d in range(max(mid - lo, hi - mid) + 1):
+        for cand in ((mid - d,) if d == 0 else (mid - d, mid + d)):
+            if not (lo <= cand <= hi) or cand in protected:
+                continue
+            if avoid_after is not None and cand < len(sent) \
+                    and avoid_after(sent[cand]):
+                continue
+            return cand
+    return None
+
+
 def _balanced_split(sent: str) -> list[str]:
     """无可用标点时的中分兜底：两侧都 ≥ MIN_FRAG_CHARS，保证递归收敛。
 
@@ -240,14 +267,12 @@ def _balanced_split(sent: str) -> list[str]:
         return [sent]
     protected = _protected_spans(sent)
     mid = n // 2
-    cut = None
-    for d in range(max(mid - lo, hi - mid) + 1):
-        for cand in ((mid - d,) if d == 0 else (mid - d, mid + d)):
-            if lo <= cand <= hi and cand not in protected:
-                cut = cand
-                break
-        if cut is not None:
-            break
+    cut = _pick_cut(sent, mid, lo, hi, protected,
+                    avoid_after=lambda c: c in _NO_FRAG_START)
+    if cut is None:                      # 挑不到不破词的位置 → 照旧中分
+        cut = _pick_cut(sent, mid, lo, hi, protected)
+    if cut is None:
+        cut = min(max(mid, lo), hi)
     if cut is None:  # 整句被保护包住：退回纯中分，认了
         cut = min(max(mid, lo), hi)
     left, right = sent[:cut].strip(), sent[cut:].strip()

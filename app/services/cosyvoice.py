@@ -204,7 +204,9 @@ DASHSCOPE_ENV_WS = "DASHSCOPE_WORKSPACE"   # 可选：业务空间域名前缀�
 DASHSCOPE_ENV_WORKSPACE_ID = "DASHSCOPE_WORKSPACE_ID"  # 若 workspace 是纯 ID（非域名前缀）用它
 # 声音设计/复刻 customization 端点（北京地域）。若配了 workspace 域名前缀则自动切换专属域名。
 _DEFAULT_ENDPOINT = "https://dashscope.aliyuncs.com/api/v1/services/audio/tts/customization"
-DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3.5-flash"
+# 2026-09-08 升到 plus：与 flash 的价差在绝对值上可忽略（14.6min 片
+# ¥0.54 vs ¥0.29），但韵律与质感是更高档位，A/B 里用户也明显更认可 plus。
+DEFAULT_COSYVOICE_MODEL = "cosyvoice-v3.5-plus"
 DEFAULT_BJ_WS_TMPL = "https://{ws}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/customization"
 _BJ_WS_WS_TMPL = "wss://{ws}.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
 
@@ -242,9 +244,16 @@ def _resolve_synth_ws_url() -> str | None:
         return _BJ_WS_WS_TMPL.format(ws=ws)
     return None
 # 沉稳纪录片男声的语音设计描述（可再调；中文表述，供 voice design 理解）
+# 2026-09-08：原 prompt 里写了「语速平稳」「适合…新闻播报」，等于指示语音设计
+# 产出播报腔 —— 出片后用户反馈「语音太平、没有起伏」。改成戏剧化描述。
+# ⚠️ 换 prompt 必须换 prefix：design_voice 按 (prefix, target_model) 缓存，
+#    复用旧 prefix 会拿回旧音色，改了等于没改。
 DEFAULT_VOICE_PROMPT = (
-    "一位沉稳的中年男声播音员，声音低沉浑厚、富有磁性，语速平稳，吐字清晰，"
-    "适合历史纪录片旁白或新闻播报。"
+    "成熟的中年男声，嗓音低沉浑厚、带胸腔共鸣、富有磁性。"
+    "叙述节奏起伏明显：平铺时舒缓低沉，紧张时语速收紧、语气压低，"
+    "关键处会刻意放慢并加重，句末有自然的收束与停顿。"
+    "情绪饱满、有戏剧张力与压迫感，适合悬念感强的历史解说，"
+    "避免一字一顿的播音腔和新闻播报腔。"
 )
 
 
@@ -544,23 +553,29 @@ _VOICE_DESIGN_PREVIEW_TEXT = (
 )
 
 
-def get_flash_voice_id(voice_prompt: str = DEFAULT_VOICE_PROMPT) -> str:
-    """
-    取 cosyvoice-v3.5-flash 的沉稳男声 voice_id。
-    首次调用会创建（voice design，少量扣费）；之后命中本地缓存直接复用，不再扣费。
+# 2026-09-08 起用这个 prefix（对应上面的新音色描述）。换描述必须换 prefix，
+# 否则 design_voice 命中旧缓存，改了等于没改。
+_VOICE_PREFIX = "hvndrama"
 
-    ⚠️ 必须传 preview_text：百炼 voice-design 接口现已强制要求
-       "provide url, or provide both voice_prompt and preview_text"，
-       只传 voice_prompt 会 HTTP 400。缓存命中时不影响，但 .cache 一旦清空
-       就会在新机器上直接崩，所以这里显式带上。
+
+def get_voice_id(model: str | None = None,
+                 voice_prompt: str = DEFAULT_VOICE_PROMPT) -> str:
+    """取**指定模型**的 voice_id（按模型缓存，首次创建会少量扣费）。
+
+    ⚠️ voice_id 与模型强绑定：拿 flash 的 voice_id 去跑 plus → HTTP 418。
+       所以这里按 model 分别 design，缓存键是 (prefix, target_model)。
     """
-    vd = design_voice(
+    return design_voice(
         voice_prompt=voice_prompt,
         preview_text=_VOICE_DESIGN_PREVIEW_TEXT,
-        prefix=_FLASH_VOICE_PREFIX,
-        target_model="cosyvoice-v3.5-flash",
-    )
-    return vd["voice_id"]
+        prefix=_VOICE_PREFIX,
+        target_model=model or _cosyvoice_model_from_env(),
+    )["voice_id"]
+
+
+def get_flash_voice_id(voice_prompt: str = DEFAULT_VOICE_PROMPT) -> str:
+    """（兼容旧调用）显式取 flash 的 voice_id。"""
+    return get_voice_id("cosyvoice-v3.5-flash", voice_prompt)
 
 
 def synthesize_dashscope_whole(
@@ -577,15 +592,18 @@ def synthesize_dashscope_whole(
     instruction: str | None = None,
 ) -> tuple[Path, int]:
     """
-    用 DashScope CosyVoice v3.5 整段合成旁白（默认 flash + 缓存沉稳男声）。
-    这是管线应使用的入口：自动取/复用 flash 专属 voice_id，合成整段文本落盘。
+    用 DashScope CosyVoice v3.5 整段合成旁白（plus + 缓存男声）。
+    这是管线应使用的入口：自动取/复用该模型的 voice_id，合成整段文本落盘。
 
     音色塑形（可选透传，见 DashScopeCosyVoiceSynthesizer.__init__）：
       pitch_rate<1 → 压低音调、更浑厚；instruction → 自然语言风格引导。
+
+    ⚠️ 先定 model 再取 voice_id：voice_id 与模型必须匹配，
+       拿 flash 的 voice_id 去跑 plus 会 HTTP 418（2026-09-08 实测）。
     返回 (out_path, duration_ms)。
     """
-    voice_id = voice_id or get_flash_voice_id(voice_prompt)
-    model = model or DEFAULT_COSYVOICE_MODEL
+    model = model or _cosyvoice_model_from_env()
+    voice_id = voice_id or get_voice_id(model, voice_prompt)
     svc = DashScopeCosyVoiceSynthesizer(
         voice=voice_id, model=model, response_format=response_format,
         pitch_rate=pitch_rate, speech_rate=speech_rate,
