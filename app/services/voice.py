@@ -551,24 +551,52 @@ def synthesize(
         if not ok:
             raise RuntimeError(f"[voice] 段落 {idxs[0]} 合成失败(engine={engine})")
 
-        # ---- 发音回检 ----
-        # 根因（2026-09-08 实测，可复现）：`instruction` 会让模型在每组
-        # 首句「进入角色」时失稳，句首若是生僻专名就被念糊
-        # （「尉迟恭在后院」→「尉迟恭为后院」）。同一个文本重合成结果完全一致，
-        # 所以能被稳定检出 → 检出后这一组去掉指令重合成即可。
-        v_cfg = _voice_shaping_defaults()
-        _cfg_instr = v_cfg.get("instruction")
-        if engine == ENGINE_DASHSCOPE and _cfg_instr:
-            from app.services import asr_check as _ac
-            _good, _why = _ac.check(gwav, gtext)
+        # ---- 发音回检（2026-09-09 改造：无条件跑 + 自动重试 + 差异定位）----
+        # 旧版只在 instruction 非空时跑且只做「去指令重试」，SSML 模式下
+        # 完全不跑（2026-09-09 用户实听发现「晋阳令刘文静」断词就是漏网之鱼）。
+        # 新版：①每次必跑 ②失败先试「去 SSML 纯文本」③打印差异词让你加 replace
+        from app.services import asr_check as _ac
+        _good, _why = _ac.check(gwav, gtext)
+        if not _good:
+            _hyp = _ac.transcribe(gwav) or ""
+            _hard = _ac.suspicious(_hyp)
+            _diff = _asr_diff_words(gtext, _hyp)
+            # 策略一：去掉 SSML 用纯文本重合成（phoneme/replace 有时反而帮倒忙）
+            print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
+                  f"→ 尝试去 SSML 纯文本重合成")
+            _plain_text = _tts_group.group_text(texts)
+            ok2, _ = _render(_plain_text, gwav,
+                             f"grp{idxs[0]:05d}(无SSML)", instruction=INSTRUCTION_OFF)
+            if ok2:
+                _good2, _why2 = _ac.check(gwav, gtext)
+                if _good2:
+                    print(f"  [voice] 段落 {idxs[0]} 纯文本重合成通过：{_why2}")
+                else:
+                    _hyp2 = _ac.transcribe(gwav) or ""
+                    _diff2 = _asr_diff_words(gtext, _hyp2)
+                    # 取 PER 更低的版本
+                    _p1 = _ac.per(gtext, _hyp)
+                    _p2 = _ac.per(gtext, _hyp2)
+                    if _p2 < _p1:
+                        print(f"  [voice] 段落 {idxs[0]} 纯文本 PER {_p2:.1%} "
+                              f"< SSML PER {_p1:.1%}，保留纯文本版")
+                    else:
+                        # SSML 版更好，重合成回去
+                        print(f"  [voice] 段落 {idxs[0]} SSML PER {_p1:.1%} "
+                              f"< 纯文本 PER {_p2:.1%}，恢复 SSML 版")
+                        _render(gtext, gwav, f"grp{idxs[0]:05d}(SSML恢复)")
+                    _good, _why = (_good2, _why2) if _p2 < _p1 else (_good, _why)
+                    _diff = _diff2 if _p2 < _p1 else _diff
             if not _good:
-                # 两种不合格，处置不同：
-                #  · 英文串 = 硬信号（不依赖阈值，中文旁白里绝不该有英文）
-                #    → **必定**去掉指令重合成
-                #  · 仅 PER 超限 = 软信号（阈值未标定，可能是同音误判）
-                #    → 默认只告警；开启 HV_ASR_DOWNGRADE=1 才降级
-                _hard = _ac.suspicious(_ac.transcribe(gwav) or "")
-                if not (_hard or _ac.downgrade_enabled()):
+                # 无法自动修复 → 打印精确差异让你加 replace
+                if _diff:
+                    print(f"  [voice][⚠️ 需人工] 段落 {idxs[0]} 差异词："
+                          f"{_diff}")
+                    print(f"  [voice][⚠️ 需人工] 处理：在 config.yaml 的 "
+                          f"qwen_hot_fix.replace 里加对应替换条目，"
+                          f"然后删该组 wav 重跑 --stage tts")
+                _hard2 = _ac.suspicious(_ac.transcribe(gwav) or "")
+                if not (_hard2 or _ac.downgrade_enabled()):
                     print(f"  [voice][告警] 段落 {idxs[0]} 发音回检：{_why}")
                 else:
                     print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
@@ -758,6 +786,26 @@ def _ssml_text_replace(text: str) -> str:
     except Exception:  # noqa: BLE001
         pass
     return text
+
+
+def _asr_diff_words(expected: str, hyp: str) -> list[str]:
+    """对比原文与 ASR 听写，定位被 TTS 读错/断开的词。
+
+    用 difflib 做词级 diff（先按标点去噪），只返回**原文有但 ASR 没有**
+    的片段（即被 TTS 吞掉或念糊的词）——这是用户加 replace 的依据。
+    """
+    import difflib as _dl
+    _P = re.compile(r"[，。！？；：、…—\s“”（）《》·]")
+    a = _P.sub("", expected)
+    b = _P.sub("", hyp)
+    if not a or not b:
+        return []
+    sm = _dl.SequenceMatcher(None, a, b)
+    broken = []
+    for tag, i1, i2, j1, j2 in sm.get_opcodes():
+        if tag in ("delete", "replace") and i2 - i1 >= 1:
+            broken.append(a[i1:i2])
+    return broken
 
 
 def build_group_ssml(texts: list[str]) -> str:
