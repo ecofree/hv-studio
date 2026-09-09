@@ -228,7 +228,15 @@ def _pack_groups(groups: list[list[int]], texts: list[str],
 # 切片：段落 wav → 逐帧 wav
 # ---------------------------------------------------------------------------
 def read_wav(path) -> tuple[np.ndarray, int]:
-    """读 wav → (float32 单声道样本, 采样率)。"""
+    """读 wav → (单声道样本, 采样率)。
+
+    ⚠️⚠️ 返回值是 **int16 原始标度（±32768），不是 [-1, 1] 浮点**！
+    dtype 是 float32 只是为了让后续计算不溢出 —— 数值范围仍是 ±32768。
+
+    为什么特意强调（2026-09-08 血泪）：我按「[-1,1]」的直觉写了 `np.clip(x,
+    -1, 1) * 32767`，把整段波形削成方波，导致当天所有 ASR 结论全部作废
+    （"模型念出英文 No." 纯属自造）。**要归一化请用 read_wav_float()。**
+    """
     np = _np()
     with wave.open(str(path), "rb") as w:
         sr = w.getframerate()
@@ -336,3 +344,13 @@ def group_text(texts: list[str]) -> str:
     **不要**插空格或换行，那会让 TTS 多出不该有的停顿。
     """
     return "".join(t for t in texts if t)
+
+
+def read_wav_float(path) -> tuple[np.ndarray, int]:
+    """读 wav → (**归一化到 [-1, 1]** 的 float32 单声道样本, 采样率)。
+
+    这是 read_wav() 的安全封装：除以 32768 做归一化。凡是要做「幅度阈值」
+    「能量绝对值」「写回文件」的地方，一律用这个，别自己除。
+    """
+    data, sr = read_wav(path)
+    return data.astype(np.float32) / 32768.0, sr

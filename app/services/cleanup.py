@@ -57,6 +57,11 @@ SEGMENT_STATE_FILES = ("params.json",)   # G 批的参数指纹，随段一起�
 # 会留在 out/ 里）。**只认这几个名字，绝不碰 *.mp4**——成片在 out/ 里。
 OUT_TMP_GLOBS = ("*.concat.txt", "*.concat_tmp", "*.mp4.tmp", "*.tmp")
 
+# 段落级合成的中间产物：voice.py 注释称「hv clean --build 会收走」，
+# 但 BUILD_DIRS 里的 "audio" 指的是 build/audio 子目录，永远到不了
+# episodes/*/audio → 实测每集残留 55 个 _grp_*.wav（28M）。2026-09-09 补。
+AUDIO_TMP_GLOBS = ("_grp_*.wav",)
+
 # 硬闸：任何情况下都不删的扩展名——**图片资产**。
 # 底图是花钱生成、且跨集复用的（hw-002 的底图被 5 集引用，后期其它生产内容
 # 还要接着用）。所以这里只拦图片，不拦 .json/.md 之类的数据文件：
@@ -78,9 +83,21 @@ def scan_episode_build(ep_dir: Path, include_segments: bool = False,
     只扫描 `episodes/{id}/build/` 一层及其直接子目录；绝不触碰 `out/`（成片）
     与 `shots/`（底图）——它们在扫描范围之外，这是结构性的，不是靠判断。
     """
+    # 段落合成中间产物落在 episodes/{id}/audio/（不是 build/）→ 单独收集。
+    # 必须在 build 存在性判断**之前**算，否则无 build 的集会被提前 return 掉。
+    _audio_tmp: list[dict] = []
+    for g in AUDIO_TMP_GLOBS:
+        for p in sorted((ep_dir / "audio").glob(g)):
+            if p.is_file():
+                try:
+                    _audio_tmp.append({"path": str(p),
+                                       "size": p.stat().st_size, "tier": "tmp"})
+                except OSError:
+                    pass
+
     build = ep_dir / "build"
     if not build.is_dir():
-        return []
+        return _audio_tmp
 
     found: list[dict] = []
     seen: set[Path] = set()
@@ -106,6 +123,9 @@ def scan_episode_build(ep_dir: Path, include_segments: bool = False,
     for g in BUILD_GLOBS:
         for p in build.glob(g):
             add(p, "build")
+    found.extend(_audio_tmp)
+    seen.update(__import__("pathlib").Path(x["path"]) for x in _audio_tmp)
+
     for d in BUILD_DIRS:
         sub = build / d
         if sub.is_dir():

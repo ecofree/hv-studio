@@ -616,6 +616,26 @@ def _stage_shots_skip(ep: Episode) -> None:
         print("  [orchestrator] shots: 无 scene_plan/装配，跳过（分镜需人工创意）")
 
 
+def _check_disk_space(ep_dir, need_mb: int = 2500):
+    """渲染前磁盘预检：防止渲到一半磁盘满 → 半截成片（2026-09-09 审计）。
+
+    单集 15min 实测约 2.4G（build 1.2G + shots 678M + out 567M + audio 55M）。
+    """
+    import shutil
+    try:
+        free = shutil.disk_usage(str(ep_dir)).free / 1024 / 1024
+    except Exception:  # noqa: BLE001
+        return
+    # 分级：低于建议值只告警（低磁盘机器不该被一刀切拒绝），低于硬底才拒绝
+    if free < 800:
+        raise RuntimeError(
+            f"[produce] 磁盘空间严重不足：剩余 {free:.0f}MB（硬底 800MB）。"
+            f"请先清理（hv clean / 删除 state/_bt_* 临时目录）。")
+    if free < need_mb:
+        print(f"  [produce][告警] 磁盘剩余 {free:.0f}MB，低于建议值 "
+              f"{need_mb}MB（单集 15min 约 2.4G），有渲到一半写满的风险")
+
+
 def _episode_lock(ep_id: str):
     """episode 级生产锁：防双进程同跑一集互相覆盖（P0-3，2026-09-08 审计）。
 
@@ -726,6 +746,8 @@ def produce(
     # allow_empty：空集若即将切脚本（有 script.md 或调用方传了正文），放行让
     # stage_script 成为第一步（否则「官方入口启动官方第一步」被鸡生蛋卡死）。
     # D4：这里原本 `ep.notes = script_md`，save(ep) 会把整篇剧本写进 episode.json。
+    _check_disk_space(_episode_dir(ep_id))
+
     has_script = bool((_load_script_md(ep) or (script_md or "")).strip())
     _can_start_from_empty = (not ep.frames and not ep.shots) and has_script
     problems = validate_schema(ep, allow_empty=_can_start_from_empty)

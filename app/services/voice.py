@@ -101,6 +101,25 @@ _MANIFEST_NAME = "_tts_manifest.json"
 _FP_NOTE = None  # 惰性：进程内只提示一次 manifest 缺失（向后兼容旧 audio 目录）
 
 
+def _tts_record_cost(ep_id: str, model: str, chars: int, ok: bool) -> None:
+    """TTS 成本台账（2026-09-09 审计）：生图有 cost_ledger，TTS 侧此前**零记录**
+    —— 出了 6 遍片子花了多少钱无法回答。TTS 按字符计费，字数现成，先记量。
+    """
+    import json as _j
+    import time as _t
+    from pathlib import Path as _P
+    p = _P("state/tts_cost_ledger.json")
+    try:
+        rows = _j.loads(p.read_text(encoding="utf-8")) if p.exists() else []
+        rows.append({"ts": _t.strftime("%Y-%m-%d %H:%M:%S"), "ep": ep_id,
+                     "model": model, "chars": int(chars), "ok": bool(ok)})
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(_j.dumps(rows, ensure_ascii=False, indent=0),
+                     encoding="utf-8")
+    except Exception:  # noqa: BLE001 —— 台账坏了不能阻塞生产
+        pass
+
+
 def _tts_strategy_tag() -> str:
     """TTS 策略指纹：engine + model + 影响产出的关键配置。
 
@@ -891,6 +910,17 @@ def main():
         force=args.force,
     )
     save(ep)
+    # TTS 成本台账：按合成字符数记量（生图有 cost_ledger，TTS 此前零记录）
+    try:
+        from app.config.config import get_settings as _gs
+        _v = _gs().get_profile().voice
+        _model = (_v.qwen_model if (getattr(_v, "engine", None) == "qwen")
+                  else None) or _cosyvoice_model_from_env()
+        _tts_record_cost(ep_id, _model,
+                         sum(len(frame_tts_text(f)) for f in ep.frames), True)
+    except Exception:  # noqa: BLE001
+        pass
+
     total = sum(f.audio_duration_ms or 0 for f in ep.frames)
     print(f"完成：总时长 {total/1000:.1f}s")
     for f in ep.frames[:5]:
