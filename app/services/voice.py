@@ -721,10 +721,12 @@ _SSML_SENT_SPLIT = re.compile(r"(?<=[。！？；…])")
 #    SSML rate 0.92 会让长句撞 8s 硬顶（30 字 → 9.8s），整片也拖到 18.8min。
 #    故整体上调：base 1.05 / 感叹 1.12 / 疑问 1.05 / 组末 0.98，
 #    长句（≥25 字）额外 +0.30。组合效果 ≈ 4.3 字/秒（正常解说语速）。
-_SSML_RATE_DEFAULT = 1.05
-_SSML_RATE_EXCL = 1.12      # 感叹
-_SSML_RATE_QUES = 1.05      # 疑问
-_SSML_RATE_GROUP_TAIL = 0.98  # 组末收束（略慢，留悬念）
+# 2026-09-09 用户反馈「语速太快」→ 回落到自然解说节奏（配合帧首尾静音裁剪，
+# 停顿由标点/裁剪控制而非慢速说话）。
+_SSML_RATE_DEFAULT = 0.95
+_SSML_RATE_EXCL = 1.00      # 感叹
+_SSML_RATE_QUES = 0.95      # 疑问
+_SSML_RATE_GROUP_TAIL = 0.88  # 组末收束（略慢，留悬念）
 
 
 def _ssml_escape(t: str) -> str:
@@ -761,7 +763,7 @@ def build_group_ssml(texts: list[str]) -> str:
             # （实测 30 字 ≈ 8.1s → 209 帧 > 200）。组末句让位给收束档。
             _plain = len(re.sub(r"[，。！？；：、…—\s“”（）《》·]", "", sent))
             if _plain >= 25 and not (gi == n - 1 and si == len(sents) - 1):
-                rate = min(1.6, rate + 0.30)
+                rate = min(1.6, rate + 0.15)
             if gi == n - 1 and si == len(sents) - 1:
                 rate = _SSML_RATE_GROUP_TAIL
             # 先转义原文，再插 phoneme 标签（顺序反了会把标签一起转义掉）

@@ -9,9 +9,9 @@ def test_sentence_split_and_rates():
     from app.services.voice import build_group_ssml
     out = build_group_ssml(["平铺叙述的一句。", "感叹的一句！", "组末收束的一句。"])
     assert out.count("<speak") == 3
-    assert 'rate="1.05"' in out            # 基础
-    assert 'rate="1.12"' in out            # 感叹
-    assert 'rate="0.98"' in out            # 组末收束
+    assert 'rate="0.95"' in out            # 基础
+    assert 'rate="1.00"' in out            # 感叹
+    assert 'rate="0.88"' in out            # 组末收束
 
 
 def test_question_rate():
@@ -19,8 +19,8 @@ def test_question_rate():
     # 疑问句不在组末（组末收束 0.86 优先级更高，另有用例覆盖）
     out = build_group_ssml(["大唐开国靠的是什么？靠的是关陇军事贵族的门荫特权！",
                              "组末收束的一句。"])
-    assert 'rate="1.05"' in out
-    assert 'rate="1.12"' in out
+    assert 'rate="0.95"' in out
+    assert 'rate="1.00"' in out
 
 
 def test_phoneme_inserted_for_historical_names():
