@@ -157,7 +157,14 @@ class ProfileVoice(BaseModel):
     qwen_instruction: str | None = None
     qwen_hot_fix: dict | None = None
     qwen_rate: float | None = None
-    qwen_ssml: bool = False   # W5 路线：逐句 SSML（rate+phoneme）
+    # cosyvoice 侧模型（None → cosyvoice.DEFAULT_COSYVOICE_MODEL / env）
+    cosyvoice_model: str | None = None
+
+    # 逐句 SSML（rate 定起伏 + phoneme 定读音）——**引擎无关**：
+    # cosyvoice-v3.5 与 qwen-audio-3.0 都实测支持。原名 qwen_ssml 语义太窄
+    # （2026-09-09 切回 cosyvoice 时发现：只对 qwen 生效会让切引擎后静默
+    # 退回指令模式 → 组间漂移）。
+    tts_ssml: bool = False
 
 
 # H 批（2026-09-05）：ProfileRhythm 整段删除。

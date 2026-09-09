@@ -125,8 +125,14 @@ def stage_tts(ep: Episode, fallback: bool = True,
     #   cosyvoice 靠 polyphone 同音字替换；qwen 靠 hot_fix（需要原文）。
     #   切引擎后不重生成 → 多音字全读错。双向防护告警（None 不误报）。
     from app.services.polyphone import preprocess as _pp
+    _ssml_on = False
+    try:
+        _ssml_on = bool(get_settings().get_profile().voice.tts_ssml)
+    except Exception:  # noqa: BLE001
+        pass
     _mismatch = []
-    for f in ep.frames:
+    # SSML 开启时读音由 <phoneme> 直接钉死，narration_text 用原文即可 → 不告警
+    for f in ([] if _ssml_on else ep.frames):
         _nt = f.narration_text
         if _nt is None:
             continue

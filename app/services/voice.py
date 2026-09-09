@@ -130,14 +130,18 @@ def _tts_strategy_tag() -> str:
     try:
         from app.config.config import get_settings
         v = get_settings().get_profile().voice
-        return "|".join([
-            v.engine or DEFAULT_ENGINE,
-            v.qwen_model or "",
-            "ssml" if getattr(v, "qwen_ssml", False) else "",
-            str(v.qwen_rate or ""),
-            (v.qwen_instruction or "")[:32],
-            DASHSCOPE_VOICE_PROMPT[:32],
-        ])
+        eng = (v.engine or DEFAULT_ENGINE)
+        # 只把**当前引擎真正会用到的**配置纳入指纹：改 qwen_* 不该让 cosyvoice
+        # 的音频失效，反之亦然（否则每次动无关配置都全量重合成）。
+        if eng == ENGINE_QWEN:
+            parts = [v.qwen_model or "", str(v.qwen_rate or ""),
+                     (v.qwen_instruction or "")[:32]]
+        else:
+            parts = [v.cosyvoice_model or "", (v.instruction or "")[:32]]
+        return "|".join([eng]
+                         + parts
+                         + ["ssml" if getattr(v, "tts_ssml", False) else "",
+                            DASHSCOPE_VOICE_PROMPT[:32]])
     except Exception:  # noqa: BLE001 —— 配置读不到就退化为纯文本指纹
         return ""
 
@@ -280,10 +284,10 @@ def _voice_shaping_defaults() -> dict:
                   "volume": None, "instruction": None}
     # qwen 专属开关不在塑形语义里，单独读
     try:
-        base["qwen_ssml"] = getattr(
-            get_settings().get_profile().voice, "qwen_ssml", False)
+        base["tts_ssml"] = getattr(
+            get_settings().get_profile().voice, "tts_ssml", False)
     except Exception:  # noqa: BLE001
-        base["qwen_ssml"] = False
+        base["tts_ssml"] = False
     try:
         from app.config.config import get_settings
         v = get_settings().get_profile().voice
@@ -318,9 +322,18 @@ def _synth_cosyvoice(text: str, out_mp3: Path, voice_prompt: str | None = None,
     """
     from app.services.cosyvoice import synthesize_dashscope_whole, get_voice_id
     d = _voice_shaping_defaults()
+    _model = None
+    try:
+        from app.config.config import get_settings
+        _model = get_settings().get_profile().voice.cosyvoice_model or None
+    except Exception:  # noqa: BLE001
+        _model = None
     _, _ = synthesize_dashscope_whole(
         text, out_mp3,
         voice_prompt=voice_prompt or DASHSCOPE_VOICE_PROMPT,
+        model=_model,
+        # SSML 探测：text 以 <speak 开头 → 开启（与 qwen 路径同一判据）
+        enable_ssml=text.lstrip().startswith("<speak"),
         response_format="mp3",
         overwrite=True,
         pitch_rate=d["pitch_rate"] if pitch_rate is None else pitch_rate,
@@ -528,8 +541,8 @@ def synthesize(
                     f.audio_duration_ms = _audio_duration_ms(w)
             return
 
-        if engine == ENGINE_QWEN and _voice_shaping_defaults().get("qwen_ssml", False):
-            gtext = build_group_ssml(texts)      # W5 路线：逐句 rate+phoneme
+        if _voice_shaping_defaults().get("tts_ssml", False):
+            gtext = build_group_ssml(texts)      # 逐句 rate + phoneme（引擎无关）
         else:
             gtext = _tts_group.group_text(texts)
         # 段落 wav 是中间产物，落在 audio/ 下（hv clean --build 会收走）

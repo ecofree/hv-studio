@@ -363,7 +363,7 @@ class DashScopeCosyVoiceSynthesizer:
 
     用法：
         from app.services.cosyvoice import DashScopeCosyVoiceSynthesizer
-        svc = DashScopeCosyVoiceSynthesizer(voice=voice_id)  # voice_id 来自 design_voice()
+        svc = DashScopeCosyVoiceSynthesizer(voice=voice_id, enable_ssml=enable_ssml)  # voice_id 来自 design_voice()
         wav, dur_ms = svc.synthesize("整段旁白", out_wav=Path(...))
     """
 
@@ -373,7 +373,8 @@ class DashScopeCosyVoiceSynthesizer:
                  pitch_rate: float | None = None,
                  speech_rate: float | None = None,
                  volume: int | None = None,
-                 instruction: str | None = None):
+                 instruction: str | None = None,
+                 enable_ssml: bool = False):
         """
         response_format: "mp3" 或 "wav"（决定输出封装）。
         sample_rate: CosyVoice 原生 24000。管线后期统一转目标采样率即可。
@@ -400,6 +401,7 @@ class DashScopeCosyVoiceSynthesizer:
         self.speech_rate = speech_rate
         self.volume = volume
         self.instruction = instruction
+        self.enable_ssml = bool(enable_ssml)
         # workspace 配置（北京专属域名合成必需）
         self.workspace = _env_get(DASHSCOPE_ENV_WS) or None
 
@@ -454,6 +456,9 @@ class DashScopeCosyVoiceSynthesizer:
             params["volume"] = int(self.volume)
         if self.instruction:
             params["instruction"] = str(self.instruction)
+        if self.enable_ssml:
+            # SSML：text 里带 <speak> 标签，需显式开启（cosyvoice-v3.5 实测支持）
+            params["enable_ssml"] = True
         return SpeechSynthesizer(**params)
 
     # ------------------------------------------------------------------
@@ -590,6 +595,7 @@ def synthesize_dashscope_whole(
     speech_rate: float | None = None,
     volume: int | None = None,
     instruction: str | None = None,
+    enable_ssml: bool = False,
 ) -> tuple[Path, int]:
     """
     用 DashScope CosyVoice v3.5 整段合成旁白（plus + 缓存男声）。

@@ -87,17 +87,26 @@ def test_default_model_is_plus():
     assert _cosyvoice_model_from_env() == "cosyvoice-v3.5-plus"
 
 
-def test_instruction_is_configured_and_content_agnostic():
-    """指令必须已配置，且不能点名具体词（它作用于每一组）。"""
+def test_instruction_policy_matches_ssml_mode():
+    """指令策略必须与 SSML 模式匹配（2026-09-09 修正的测试漂移）。
+
+    · 开 SSML（W5 路线）：instruction 必须为空 —— 实测两者叠加会打架
+      （W4「指令+SSML」的响度std 34.7 反而低于纯 SSML 的 39.2，且断句怪）
+    · 关 SSML：instruction 必须配置，且是**内容无关**的通用风格描述
+      （不能写「读到某某词时放慢」—— 它会作用于每一组，组间会漂移）
+    """
     from app.config.config import get_settings
-    ins = (get_settings().get_profile().voice.instruction or "").strip()
-    assert ins, "instruction 未配置 → 出片又是平的"
-    for q in ("「", "」", "“", "”"):
-        assert q not in ins, (
-            f"instruction 里出现了引号 {q}：点名具体词的指令只适用于某一段，"
-            "但它会作用于每一组")
-
-
+    v = get_settings().get_profile().voice
+    ssml = bool(getattr(v, "tts_ssml", False))
+    if ssml:
+        assert not (v.instruction or "").strip(), (
+            "SSML 已开启，instruction 必须留空（实测两者叠加会打架）")
+    else:
+        ins = (v.instruction or "").strip()
+        assert ins, "未开 SSML 时必须配置 instruction，否则出片是平的"
+        for q in ("「", "」", "“", "”"):
+            assert q not in ins, (
+                f"instruction 点名了具体词（{q}）：它作用于每一组，会造成组间漂移")
 def test_voice_prompt_is_not_news_anchor():
     """旧 prompt 里的「语速平稳」「新闻播报」＝直接指示产出播报腔。"""
     from app.services.cosyvoice import DEFAULT_VOICE_PROMPT as P

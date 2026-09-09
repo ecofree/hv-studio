@@ -48,7 +48,10 @@ profiles:
       # 2026-09-08 切到 qwen：免费额度大（3.6万次）、设计音色+instruction+
       # hot_fix 官方多音字修复都支持；A/B 实测响度std 41.0（cosyvoice 指令版
       # 13.65、SSML 26.58），PER 0.6%，组间 F0 极差 29Hz（一致）。
-      engine: qwen
+      # 2026-09-09 切回 cosyvoice-v3.5-flash：qwen 免费额度已耗尽。
+      # flash 档 ¥0.8/万字符（单集 15min 约 ¥0.29）；SSML 路线在 cosyvoice
+      # v3.5 上同样实测可用，故 W5 的确定性起伏得以保留。
+      engine: cosyvoice
       speaker: zm_yunxi
       speed: 1.0
       pitch: 0.0
@@ -66,13 +69,18 @@ profiles:
       # （"现状"旧音色 4.57，用户评为"平"）。
       # ⚠️ 必须是**内容无关**的通用情绪指令：这条会作用于每一组，
       #    不能写「读到某某词时放慢」这种只适用于某一段的描述。
-      instruction: "用低沉压抑、充满张力的语气朗读，节奏快慢对比明显，情绪层层推进，在转折处停顿并压低声音。"
+      # W5 结论：instruction 是整段提示 → 模型自由发挥 → 组间漂移。
+      # 起伏改用 SSML 逐句 rate（确定性）。留空；实验时可临时填回。
+      instruction: null
 
       # ---- qwen-audio-3.0-tts ----
       # 官方示例指令（纪录片解说场景原话），W1 实测效果最佳
       qwen_model: qwen-audio-3.0-tts-flash
-      qwen_ssml: true   # W5 路线：逐句 SSML（rate+phoneme），不用 pitch/instruction
-      qwen_rate: 1.05
+      cosyvoice_model: cosyvoice-v3.5-flash
+      # 逐句 SSML（rate 定起伏 + phoneme 定读音），引擎无关，开即生效。
+      # ⚠️ 开着 SSML 时不要同时配 instruction：实测两者叠加会打架（W4 更差）。
+      tts_ssml: true
+      qwen_rate: null
       qwen_instruction: "沉稳的中年男性，语速缓慢，音色低沉有磁性，适合朗读历史纪录片解说。"
       qwen_hot_fix:
         replace:
