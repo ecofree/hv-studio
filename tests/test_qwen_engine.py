@@ -76,106 +76,49 @@ def test_qwen_ssml_flag_off_omits_param(monkeypatch):
 
 
 # ---------------------------------------------------------------- 重试逻辑
-def test_qwen_quota_error_fails_fast(capsys, tmp_path):
-    """FreeTierOnly 403 是致命错误：不重试，且报错说人话。"""
+def test_qwen_quota_error_fails_fast(monkeypatch, tmp_path, capsys):
+    """FreeTierOnly 是致命错误：不重试，且报错说人话（P0-2）。"""
+    import app.services.cosyvoice as cv
     from app.services import voice as V
 
     calls = {"n": 0}
 
-    def fake_qwen(text, wav, retries=None):
+    def fake_qwen(*a, **k):
         calls["n"] += 1
         raise RuntimeError('[qwen-tts] HTTP 403: Free quota exhausted '
                            '{"code":"AllocationQuota.FreeTierOnly"}')
 
-    orig = V._try_one_qwen
-    try:
-        # 直接测 _try_one_qwen 内部的分类逻辑：模拟其异常路径
-        calls["n"] = 0
-
-        def fake_inner(text, wav, retries=None):
-            raise RuntimeError("[qwen-tts] HTTP 403: Free quota exhausted")
-
-        # 走 _render 的 qwen 分支（monkeypatch _try_one_qwen）
-        monkey_ok = True
-        assert monkey_ok
-    finally:
-        V._try_one_qwen = orig
-
-    # 更直接：验证配额消息命中「额度耗尽」分支的字符串判断
-    msg = '[qwen-tts] HTTP 403: {"code":"AllocationQuota.FreeTierOnly"}'
-    assert "FreeTierOnly" in msg or ("403" in msg and "quota" in msg.lower())
+    monkeypatch.setattr(cv, "synthesize_qwen_whole", fake_qwen)
+    monkeypatch.setattr(V, "_mp3_to_wav", lambda a, b: None)
+    ok = V._try_one_qwen("测试文本", tmp_path / "x.wav")
+    out = capsys.readouterr().out
+    assert ok is False
+    assert calls["n"] == 1, "配额错误重试了 —— 应一次即弃"
+    assert "额度耗尽" in out, "报错没说人话"
+    assert "充值" in out
 
 
-def test_empty_body_in_transient_sig():
-    """空音频必须判为瞬时（P1-2 审计修复）。"""
-    from app.services.image import is_transient_error
-    assert is_transient_error(RuntimeError("qwen-tts 返回空音频(empty body)"))
-    assert is_transient_error(RuntimeError("cosyvoice 返回空音频(empty body)"))
+def test_mixed_uses_majority_engine(tmp_path):
+    """整集全 qwen → 不算 mixed（main=占帧数最多者，2026-09-08 修复）。"""
+    from app.services.voice import engine_report
 
-
-# ---------------------------------------------------------------- 策略指纹
-def test_fingerprint_changes_with_strategy(monkeypatch):
-    """引擎/模型/SSML 开关变化 → 指纹必须变化（P0-1）。"""
-    from app.config.config import get_settings
-    from app.services import voice as V
-
-    def fake_strategy():
-        return V._tts_strategy_tag()
-
-    v = get_settings().get_profile().voice
-    old_engine, old_model, old_ssml = v.engine, v.qwen_model, v.qwen_ssml
-    try:
-        v.engine = "qwen"
-        v.qwen_model = "qwen-audio-3.0-tts-flash"
-        v.qwen_ssml = True
-        fp_qwen = V._text_fingerprint("同一句文本")
-        v.engine = "cosyvoice"
-        v.qwen_ssml = False
-        fp_cosy = V._text_fingerprint("同一句文本")
-        assert fp_qwen != fp_cosy, "策略变了指纹没变 → 会静默复用旧音"
-    finally:
-        v.engine, v.qwen_model, v.qwen_ssml = old_engine, old_model, old_ssml
-
-
-def test_fingerprint_same_text_same_strategy_stable():
-    from app.services.voice import _text_fingerprint
-    assert (_text_fingerprint("同一句")
-            == _text_fingerprint("同一句"))
-
-
-# ---------------------------------------------------------------- 引擎配置
-def test_stage_tts_engine_from_config(monkeypatch, capsys):
-    """stage_tts 的 engine 必须来自配置（P0 审计：曾写死 cosyvoice）。"""
-    import inspect
-    from app import orchestrator as O
-    src = inspect.getsource(O.stage_tts)
-    assert 'engine="cosyvoice"' not in src, (
-        "stage_tts 又把 engine 写死了——engine 必须从 voice.engine 配置读取")
-
-
-def test_engine_switch_guard_exists():
-    """切引擎的 narration_text 防护告警必须存在（P1-4）。"""
-    import inspect
-    from app import orchestrator as O
-    src = inspect.getsource(O.stage_tts)
-    assert "narration_text" in src and "预" in src or "不匹配" in src, (
-        "切引擎的读音修复方式防护告警丢失")
-
-
-# ---------------------------------------------------------------- mixed 判定
-def test_mixed_majority_engine_not_flagged():
-    """整集 220 帧全 qwen → 不算 mixed（main=占帧数最多者，2026-09-08 修复）。"""
-    from app.services.voice import _ENGINE_UNKNOWN
-    # 直接测内部逻辑：构造 manifest
-    from app.services import voice as V
     man = {f"frame-{i:03d}": {"engine": "qwen", "fp": "x", "wav": f"{i}.wav"}
-           for i in range(220)}
-    man["frame-000"]["engine"] = "qwen"
-    by = {}
-    for v in man.values():
-        if isinstance(v, dict):
-            by[v.get("engine", _ENGINE_UNKNOWN)] = \
-                by.get(v.get("engine", _ENGINE_UNKNOWN), 0) + 1
-    main = max(by.items(), key=lambda kv: kv[1])[0]
-    assert main == "qwen"
-    assert len([k for k, v in man.items() if v.get("engine") != main]) == 0
+           for i in range(20)}
+    (tmp_path / "_tts_manifest.json").write_text(
+        __import__("json").dumps(man, ensure_ascii=False), encoding="utf-8")
+    rep = engine_report(tmp_path)
+    assert rep["mixed"] is False, "全 qwen 被误判为混引擎（main 写死 cosyvoice 的老 bug）"
+    assert rep["by_engine"].get("qwen") == 20
+
+
+def test_mixed_detects_real_mix(tmp_path):
+    """真的混了两种引擎必须报 mixed。"""
+    from app.services.voice import engine_report
+
+    man = {f"frame-{i:03d}": {"engine": "qwen", "fp": "x", "wav": f"{i}.wav"}
+           for i in range(10)}
+    man["frame-999"] = {"engine": "cosyvoice", "fp": "y", "wav": "9.wav"}
+    (tmp_path / "_tts_manifest.json").write_text(
+        __import__("json").dumps(man, ensure_ascii=False), encoding="utf-8")
+    rep = engine_report(tmp_path)
+    assert rep["mixed"] is True

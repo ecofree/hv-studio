@@ -47,9 +47,15 @@ DEFAULT_ENGINE = ENGINE_DASHSCOPE
 _ENGINE_UNKNOWN = "unknown"
 
 # DashScope 用沉稳纪录片男声（声音设计 voice_prompt）
+# 2026-09-09 与 cosyvoice.DEFAULT_VOICE_PROMPT 同步为戏剧化描述（P1-1）。
+# ⚠️ 两处必须一致（tests/test_tts_defaults.py 有同步断言）：get_voice_id 的
+#    缓存键是 (prefix, target_model) 不含 prompt —— 不一致且 .cache 清空后
+#    音色会用错误 prompt 重建（播报腔回归）。
 DASHSCOPE_VOICE_PROMPT = (
-    "一位沉稳的中年男声播音员，声音低沉浑厚、富有磁性，语速平稳，吐字清晰，"
-    "适合历史纪录片旁白或新闻播报。"
+    "成熟的中年男声，嗓音低沉浑厚、带胸腔共鸣、富有磁性。叙述节奏起伏明显："
+    "平铺时舒缓低沉，紧张时语速收紧、语气压低，关键处会刻意放慢并加重，"
+    "句末有自然的收束与停顿。情绪饱满、有戏剧张力与压迫感，"
+    "适合悬念感强的历史解说，避免一字一顿的播音腔和新闻播报腔。"
 )
 
 # edge-tts 中文男声（回退用）

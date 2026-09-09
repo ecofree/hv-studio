@@ -119,6 +119,20 @@ def build_episode_dict(ep_id: str, img_abs: str, wav_abs: str, dur_ms: int) -> d
 
 
 @pytest.fixture(autouse=True)
+def _pin_tts_engine_for_tests(monkeypatch):
+    """测试固定走 cosyvoice 引擎（生产配置可能已切到 qwen）。
+
+    2026-09-09 二轮审计回归：config.yaml 的 engine 改成 qwen 后，凡是直接调
+    produce() 的用例都会真去打 qwen（额度/网络）→ 12 例失败。测试桩（打桩
+    _try_one_cosyvoice / synthesize_dashscope_whole）只在 cosyvoice 路径上，
+    所以这里把引擎钉回 cosyvoice；需要测 qwen 的用例用 monkeypatch 显式改。
+    """
+    from app.config.config import get_settings
+    v = get_settings().get_profile().voice
+    monkeypatch.setattr(v, "engine", "cosyvoice")
+
+
+@pytest.fixture(autouse=True)
 def _isolate_cost_ledger(tmp_path, monkeypatch):
     """把生图台账从 state/ 重定向到临时目录。
 

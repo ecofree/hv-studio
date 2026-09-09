@@ -75,45 +75,6 @@ profiles:
       qwen_rate: 1.05
       qwen_instruction: "沉稳的中年男性，语速缓慢，音色低沉有磁性，适合朗读历史纪录片解说。"
       qwen_hot_fix:
-        pronunciation:
-          - 尉迟: yu4 chi2
-          - 长孙: zhang3 sun1
-          - 可汗: ke4 han2
-          - 单于: chan2 yu2
-          - 冒顿: mo4 du2
-          - 月氏: yue4 zhi1
-          - 龟兹: qiu1 ci2
-          - 大宛: da4 yuan1
-          - 康居: kang1 qu2
-          - 乌孙: wu1 sun1
-          - 身毒: juan1 du2
-          - 阏氏: yan1 zhi1
-          - 吐蕃: tu3 bo1
-          - 回鹘: hui2 hu2
-          - 高句丽: gao1 gou1 li2
-          - 吐谷浑: tu3 yu4 hun2
-          - 柔然: rou2 ran2
-          - 突厥: tu1 jue2
-          - 鲜卑: xian1 bei1
-          - 契丹: qi4 dan1
-          - 休屠: xiu1 chu2
-          - 昆邪: hun2 ye2
-          - 先零: xian1 lian2
-          - 郦食其: li4 yi4 ji1
-          - 伍子胥: wu3 zi3 xu1
-          - 范雎: fan4 ju1
-          - 乐毅: yue4 yi4
-          - 曹参: cao2 can1
-          - 华佗: hua4 tuo2
-          - 李悝: li3 kui1
-          - 呼韩邪: hu1 han2 ye2
-          - 扁鹊: bian3 que4
-          - 马邑: ma3 yi4
-          - 焉耆: yan1 qi2
-          - 氐族: di1 zu2
-          - 羌族: qiang1 zu2
-          - 羯族: jie2 zu2
-          - 骑都尉: ji4 du1 wei4
         replace:
           - 万石: 万担
           - 晋阳令刘文静: 晋阳县令刘文静

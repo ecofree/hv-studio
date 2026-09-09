@@ -184,3 +184,18 @@ def test_cli_help_renders_without_percent_crash():
     assert "ValueError" not in out, "帮助文案里有未转义的 %"
     assert "Traceback" not in out
     assert "--tts-granularity" in out
+
+def test_both_voice_prompts_in_sync():
+    """voice.DASHSCOPE_VOICE_PROMPT 与 cosyvoice.DEFAULT_VOICE_PROMPT 必须一致。
+
+    P1-1（2026-09-09 二轮审计）：上轮只改了 cosyvoice 侧，voice 侧仍是旧播报腔。
+    get_voice_id 的缓存键是 (prefix, target_model) 不含 prompt —— 两边不一致且
+    .cache 被清空时，音色会用错误的 prompt 重建（播报腔回归）。
+    """
+    from app.services.cosyvoice import DEFAULT_VOICE_PROMPT as A
+    from app.services.voice import DASHSCOPE_VOICE_PROMPT as B
+    assert A == B, (
+        "两处音色描述不一致：cosyvoice.DEFAULT_VOICE_PROMPT 与 "
+        "voice.DASHSCOPE_VOICE_PROMPT 必须同步，否则 .cache 清空后音色回退。")
+    for bad in ("语速平稳",):
+        assert bad not in B, f"voice 侧仍是旧播报腔（含「{bad}」）"

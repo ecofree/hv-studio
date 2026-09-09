@@ -51,6 +51,7 @@ _TRANSIENT_SIG = (
     "500", "502", "503", "504", "bad gateway", "service unavailable",
     "gateway time", "internal server error", "server error",
     "timeout", "timed out", "temporarily unavailable", "try again",
+    "empty body", "空音频",
     "connection reset", "connection aborted", "connection refused",
     "remote end closed", "remotedisconnected", "broken pipe",
     "read operation timed out", "max retries exceeded",

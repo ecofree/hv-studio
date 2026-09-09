@@ -83,13 +83,13 @@ def stage_tts(ep: Episode, fallback: bool = True,
     """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
 
     granularity：
-      "paragraph"（**默认**，2026-09-08 起流畅度优先）按段落合成长音频再切回逐帧。
-      "frame" 逐帧合成。
+      "frame"（**默认**，2026-09-07 起）逐帧合成。
+      "paragraph" 按段落合成长音频再切回逐帧。
 
-      ⚠️ 默认的两次变更记录：2026-09-07 曾为修「晋阳令刘文静」断词改成逐帧
-      （断词 ≥45 字必错）；2026-09-08 出片证明流畅度是 100% 帧的问题、
-      断词是 0.5% 帧的问题，改回段落级，断词由 qwen_hot_fix.replace
-      （晋阳令刘文静→晋阳县令刘文静）兜底。只有逐帧（≈11 字上下文）
+      ⚠️ 为什么默认改成 frame（保守选择，2026-09-07 实测）：段落级在长上下文
+      下会把「晋阳令刘文静」断成「晋阳 / 令刘文静」，且 ≥45 字必错，
+      而段落级中位长度正是 65 字 —— 结构性错误，不是偶发。插空格 / 逗号 /
+      破折号都救不回来，模型会忽略这些韵律提示。只有逐帧（≈11 字上下文）
       实测断对，与用户听感一致。
       代价：每帧多约 300ms 首尾静音（全片约 +8%），但那是**纯静音**，
       不动语音本身；用户明确表示宁可多这 20 多秒。
@@ -110,26 +110,6 @@ def stage_tts(ep: Episode, fallback: bool = True,
     from pathlib import Path
     from app.managers.episode import episode_path
     from app.services.voice import synthesize, DEFAULT_ENGINE as DEFAULT_VOICE_ENGINE
-    from app.services.polyphone import preprocess as _pp
-
-    # P1-4（2026-09-08 审计）：narration_text 的读音修复方式与引擎绑定——
-    #   cosyvoice 靠 polyphone 同音字替换；qwen 靠 hot_fix（需要原文）。
-    #   切引擎后不重生成 → 多音字全读错。这里做双向防护告警。
-    _engine_now = (get_settings().get_profile().voice.engine
-                   or DEFAULT_VOICE_ENGINE)
-    _mismatch = [
-        f.id for f in ep.frames
-        if (f.narration_text or f.text) and
-        _pp(f.text, log_hits=False) != (f.narration_text or "")
-        and ((_engine_now == "cosyvoice" and f.narration_text == f.text)
-             or (_engine_now == "qwen" and f.narration_text != f.text))
-    ]
-    if _mismatch:
-        print(f"  [tts][告警] 引擎 {_engine_now} 与 narration_text 的读音修复"
-              f"方式不匹配（{len(_mismatch)} 帧，如 {_mismatch[:3]}）。"
-              f"cosyvoice 需要同音字替换版、qwen 需要原文版——"
-              f"请用 --stage script 重生成（⚠️ 会重切帧，scene_plan 需重建），"
-              f"或手工按引擎调整 narration_text。")
 
     if not ep.frames:
         raise RuntimeError(f"episode {ep.id} 无 frames，先跑 script stage")
@@ -140,6 +120,24 @@ def stage_tts(ep: Episode, fallback: bool = True,
     from app.config.config import get_settings
     _eng = (get_settings().get_profile().voice.engine
             or DEFAULT_VOICE_ENGINE)
+
+    # P1-4（审计）：narration_text 的读音修复方式与引擎绑定——
+    #   cosyvoice 靠 polyphone 同音字替换；qwen 靠 hot_fix（需要原文）。
+    #   切引擎后不重生成 → 多音字全读错。双向防护告警（None 不误报）。
+    from app.services.polyphone import preprocess as _pp
+    _mismatch = []
+    for f in ep.frames:
+        _nt = f.narration_text
+        if _nt is None:
+            continue
+        if (_nt == f.text) != (_eng == "qwen") and \
+                _pp(f.text, log_hits=False) != f.text:
+            _mismatch.append(f.id)
+    if _mismatch:
+        print(f"  [tts][告警] 引擎 {_eng} 与 narration_text 的读音修复方式不匹配"
+              f"（{len(_mismatch)} 帧，如 {_mismatch[:3]}）。"
+              f"cosyvoice 需要同音字替换版、qwen 需要原文版——"
+              f"请用 --stage script 重生成（⚠️ 会重切帧，scene_plan 需重建）。")
     rep = synthesize(ep.frames, engine=_eng, out_dir=audio_dir,
                      fallback_to_edge=fallback,
                      granularity=granularity,
@@ -156,7 +154,10 @@ def stage_tts(ep: Episode, fallback: bool = True,
     # 音色一致性体检：降级帧与非 cosyvoice 帧都会在这里显形（manifest 打标的消费方）
     if rep.get("mixed"):
         deg = rep.get("degraded", [])
-        print(f"  [orchestrator][告警] 音频目录存在非主引擎（{main}）音色的帧 "
+        _by = rep.get("by_engine") or {}
+        _main = (max(_by.items(), key=lambda kv: kv[1])[0] if _by
+                 else "cosyvoice")
+        print(f"  [orchestrator][告警] 音频目录存在非主引擎（{_main}）音色的帧 "
               f"{len(deg)}/{rep.get('total', 0)}：{deg[:10]}"
               f"{' …' if len(deg) > 10 else ''}")
         print(f"  [orchestrator][告警] 成片会中途换人声；建议跑 "
@@ -529,19 +530,6 @@ def reshot(ep_id: str, keys: list[str], do_verify: bool = True) -> dict:
     if not keys:
         raise RuntimeError("reshot 需要至少一个 --key（底图 key，如 LGT01）")
 
-    with _episode_lock(ep_id):
-        return _produce_impl(ep_id, stages=stages, script_md=script_md,
-                             tts_fallback=tts_fallback,
-                             merge_short=merge_short,
-                             tts_granularity=tts_granularity,
-                             tts_group_chars=tts_group_chars,
-                             tts_workers=tts_workers)
-
-
-def _produce_impl(ep_id: str, *, stages=None, script_md=None,
-                  tts_fallback=True, merge_short=False,
-                  tts_granularity=None, tts_group_chars=None,
-                  tts_workers=None):
     ep = load(ep_id)
     spec = _read_image_prompts(ep_id)
     unknown = [k for k in keys if k not in spec]
@@ -631,10 +619,12 @@ def _stage_shots_skip(ep: Episode) -> None:
 def _episode_lock(ep_id: str):
     """episode 级生产锁：防双进程同跑一集互相覆盖（P0-3，2026-09-08 审计）。
 
-    规则：锁文件存在且 PID 存活 → 拒绝并报错；PID 已死 → 视为陈旧锁，接管。
-    with 退出时自动释放。"""
+    规则：锁存在且 PID 存活 → 拒绝；PID 已死 → 陈旧锁接管。
+    ⚠️ Windows 特化（2026-09-09 二轮）：os.kill(pid, 0) 对**存在但无权限**的
+    进程会抛 PermissionError（OSError 子类）—— 不能一律判「已死」，否则锁
+    形同虚设。无 psutil 时用 OpenProcess 探测；探测失败保守视为存活。
+    """
     import os
-    import time as _t
     from pathlib import Path as _P
 
     lock = _P(_episode_dir(ep_id)) / ".produce.lock"
@@ -645,11 +635,24 @@ def _episode_lock(ep_id: str):
             import psutil
             return psutil.pid_exists(pid)
         except Exception:  # noqa: BLE001
+            pass
+        if os.name == "nt":
             try:
-                os.kill(pid, 0)
-                return True
-            except OSError:
+                import ctypes
+                h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
+                if h:
+                    ctypes.windll.kernel32.CloseHandle(h)
+                    return True
                 return False
+            except Exception:  # noqa: BLE001
+                return True          # 探测失败 → 保守视为存活
+        try:
+            os.kill(pid, 0)
+            return True
+        except PermissionError:
+            return True              # 存在但无权限 → 存活
+        except OSError:
+            return False
 
     if lock.exists():
         try:
@@ -659,8 +662,9 @@ def _episode_lock(ep_id: str):
         if old_pid and old_pid != os.getpid() and _pid_alive(old_pid):
             raise RuntimeError(
                 f"[produce] 集 {ep_id} 正在被另一个进程生产（PID {old_pid}，"
-                f"锁 {lock}）。若是残留锁，确认进程已死后删除该文件。")
-        print(f"  [produce] 发现陈旧锁（PID {old_pid} 已不存在），接管")
+                f"锁 {lock}）。确认该进程已死后删除锁文件再跑。")
+        if old_pid:
+            print(f"  [produce] 发现陈旧锁（PID {old_pid} 已不存在），接管")
 
     lock.write_text(str(os.getpid()), encoding="utf-8")
 
@@ -678,6 +682,19 @@ def _episode_lock(ep_id: str):
     return _Lock()
 
 
+def _with_episode_lock(fn):
+    """produce 的 episode 锁装饰器（不改动函数体，降低回归风险）。"""
+    import functools
+
+    @functools.wraps(fn)
+    def wrapper(ep_id, *a, **kw):
+        with _episode_lock(ep_id):
+            return fn(ep_id, *a, **kw)
+
+    return wrapper
+
+
+@_with_episode_lock
 def produce(
     ep_id: str,
     stages: list[str] | None = None,
