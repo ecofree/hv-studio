@@ -742,11 +742,31 @@ def _apply_phonemes(sent: str) -> str:
     return sent
 
 
+def _ssml_text_replace(text: str) -> str:
+    """SSML 组装前应用 config 的**短语级**文本替换（qwen_hot_fix.replace）。
+
+    这些替换在 qwen 路径由 hot_fix 做，cosyvoice SSML 路径也必须做——
+    否则切引擎后「晋阳令刘文静」会被 TTS 断成「晋阳 / 令刘文静」
+    （2026-09-09 用户实听反馈，ASR 定位确认）。
+    """
+    try:
+        from app.config.config import get_settings
+        hf = get_settings().get_profile().voice.qwen_hot_fix or {}
+        for pair in hf.get("replace", []):
+            for k, v in pair.items():
+                text = text.replace(k, v)
+    except Exception:  # noqa: BLE001
+        pass
+    return text
+
+
 def build_group_ssml(texts: list[str]) -> str:
-    """一组帧的文本 → SSML（逐句 <speak rate> + <phoneme>）。
+    """一组帧的文本 → SSML（逐句 <speak rate> + <phoneme> + replace 替换）。
 
     策略（确定性，无随机）：
-      · 基础语速 0.92；感叹句 0.96；疑问句 0.90；组末句 0.86（收束留悬念）
+      · 基础语速 0.95；感叹 1.00；疑问 0.95；组末 0.88（收束留悬念）
+      · 长句 ≥25 字自动提速
+      · 先做短语级文本替换（晋阳令→晋阳县令），再插 phoneme 标签
       · 句子按 。！？；… 切分，一句一个 <speak>（可并列、不可嵌套）
     """
     parts: list[str] = []
@@ -767,7 +787,8 @@ def build_group_ssml(texts: list[str]) -> str:
             if gi == n - 1 and si == len(sents) - 1:
                 rate = _SSML_RATE_GROUP_TAIL
             # 先转义原文，再插 phoneme 标签（顺序反了会把标签一起转义掉）
-            body = _apply_phonemes(_ssml_escape(sent.strip()))
+            body = _apply_phonemes(_ssml_escape(
+                _ssml_text_replace(sent.strip())))
             parts.append(f'<speak rate="{rate:.2f}">{body}</speak>')
     return "".join(parts)
 
