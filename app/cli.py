@@ -137,6 +137,42 @@ def cmd_relay(args):
         print(f"picked: {c.name}  base={c.base_url}")
 
 
+def cmd_backup(args):
+    """底图冷备：shots/ 是花钱生成且跨集复用的资产（2026-09-09 审计第三轮）。"""
+    from app.services.hv_ops import backup_all, backup_shots, _human
+    if args.all:
+        rows = backup_all(dry_run=args.dry_run)
+        tot = sum(r.get("bytes", 0) for r in rows)
+        for r in rows:
+            print(f"  {r.get('ep','?'):<20} 复制 {r.get('copied',0):>3} "
+                  f"跳过 {r.get('skipped',0) if isinstance(r.get('skipped'), int) else 0}"
+                  f"  {r.get('human','0B')}"
+                  f"{'（dry-run）' if args.dry_run else ''}")
+        print(f"  合计 {_human(tot)}")
+    else:
+        r = backup_shots(args.episode, dry_run=args.dry_run)
+        print(f"  {r}")
+
+
+def cmd_gc(args):
+    """清理 state/ 下超过 N 天的测试临时目录（_bt_* / .tmp/bt-*）。"""
+    from app.services.hv_ops import gc_state
+    r = gc_state(older_than_days=args.older_than, dry_run=args.dry_run)
+    print(f"  删除 {r['removed']} 个目录（保留近期 {r['skipped_recent']} 个），"
+          f"释放 {r['human']}{'（dry-run）' if args.dry_run else ''}")
+
+
+def cmd_smoke(args):
+    """端到端冒烟：3 帧迷你样本跑通全链路（TTS/生图全打桩，零成本）。"""
+    from app.services.hv_ops import run_smoke
+    r = run_smoke(keep=args.keep)
+    flag = "OK" if r.get("ok") else "FAILED"
+    print(f"  smoke {flag}: frames={r.get('frames')} shots={r.get('shots')} "
+          f"成片={r.get('human')} {r.get('final','')}")
+    if not r.get("ok"):
+        raise SystemExit(f"冒烟失败：{r}")
+
+
 def cmd_clean(args):
     """build/ 中间产物清理（P1-8）。默认 dry-run，--apply 才真删。
 
@@ -422,6 +458,24 @@ def main():
     p.set_defaults(func=cmd_config)
 
     # api
+    # backup：底图冷备
+    p = sub.add_parser("backup", help="底图（shots/）冷备到本地")
+    p.add_argument("episode", nargs="?", default=None)
+    p.add_argument("--all", action="store_true", help="所有集")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_backup)
+
+    # gc：state/ 临时目录清理
+    p = sub.add_parser("gc", help="清理 state/ 测试临时目录（默认 dry-run）")
+    p.add_argument("--older-than", type=int, default=7, help="天数，默认 7")
+    p.add_argument("--dry-run", action="store_true")
+    p.set_defaults(func=cmd_gc)
+
+    # smoke：端到端冒烟
+    p = sub.add_parser("smoke", help="端到端冒烟（全 mock，零成本）")
+    p.add_argument("--keep", action="store_true", help="保留样本便于排查")
+    p.set_defaults(func=cmd_smoke)
+
     p = sub.add_parser("api", help="启动 FastAPI")
     p.add_argument("--host", default="127.0.0.1")
     p.add_argument("--port", type=int, default=8000)

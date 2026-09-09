@@ -7,4 +7,5 @@ filterwarnings = [
 ]
 markers = [
     "NEEDS_FFMPEG: 用例需要本机 ffmpeg/ffprobe；缺件应 skip 而不是 red",
+    "slow: 端到端/耗时用例（如 hv smoke 全链路）",
 ]
