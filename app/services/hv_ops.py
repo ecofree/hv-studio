@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import json
 import shutil
 import time
 from pathlib import Path
@@ -227,3 +228,78 @@ def run_smoke(keep: bool = False, engine: str = "mock") -> dict:
             sj = paths.episodes_dir() / f"{ep_id}.json"
             if sj.exists():
                 sj.unlink(missing_ok=True)
+
+
+def _state_path(batch_id: str) -> Path:
+    return paths.state_dir() / f"batch_{batch_id}.json"
+
+
+def load_episodes(src: Path) -> list[str]:
+    """从文件读集 id 列表（一行一个，# 开头为注释，空行跳过）。"""
+    out = []
+    for line in src.read_text(encoding="utf-8").splitlines():
+        s = line.strip()
+        if s and not s.startswith("#"):
+            out.append(s)
+    return out
+
+
+def run_batch(episodes: list[str], *, batch_id: str | None = None,
+              stop_on_error: bool = False, resume: bool = False,
+              stages: list[str] | None = None) -> dict:
+    """串行生产多集，写状态文件，支持断点续跑。"""
+    from app.orchestrator import produce
+
+    bid = batch_id or time.strftime("%Y%m%d-%H%M%S")
+    sp = _state_path(bid)
+    sp.parent.mkdir(parents=True, exist_ok=True)
+
+    done: list[str] = []
+    failed: list[dict] = []
+
+    # 断点续跑：读旧状态跳过已完成
+    skipped: list[str] = []
+    if resume and sp.exists():
+        try:
+            old = json.loads(sp.read_text(encoding="utf-8"))
+            done = list(old.get("done", []))
+            failed = list(old.get("failed", []))
+        except Exception:  # noqa: BLE001
+            pass
+
+    pending = [e for e in episodes if e not in done]
+
+    def _save():
+        sp.write_text(json.dumps({
+            "batch_id": bid, "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "total": len(episodes), "done": done,
+            "failed": failed, "pending": [e for e in episodes
+                                          if e not in done],
+        }, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    _save()
+    print(f"[batch] {bid}: 共 {len(episodes)} 集，"
+          f"待跑 {len(pending)} 集，续跑跳过 {len(skipped)} 集")
+
+    for i, eid in enumerate(pending, 1):
+        print(f"\n[batch] ({i}/{len(pending)}) {eid} …")
+        t0 = time.time()
+        try:
+            produce(eid, stages=stages)
+            done.append(eid)
+            print(f"[batch] {eid} 完成（{time.time()-t0:.0f}s）")
+        except Exception as ex:  # noqa: BLE001 —— 失败隔离的核心
+            failed.append({"ep": eid, "error": f"{type(ex).__name__}: {ex}"})
+            print(f"[batch] {eid} 失败：{type(ex).__name__}: {ex}")
+            if stop_on_error:
+                print(f"[batch] --stop-on-error，中止")
+                break
+        _save()                 # 每集落盘，中断也能续跑
+
+    print(f"\n[batch] 结束：完成 {len(done)}，失败 {len(failed)}")
+    if failed:
+        for f in failed:
+            print(f"  ✗ {f['ep']}: {f['error'][:100]}")
+    print(f"[batch] 状态文件：{sp}")
+    print(f"[batch] 续跑：hv batch --file <同一文件> --resume --batch-id {bid}")
+    return {"batch_id": bid, "done": done, "failed": failed, "state": str(sp)}

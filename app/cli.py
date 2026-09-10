@@ -162,6 +162,18 @@ def cmd_gc(args):
           f"释放 {r['human']}{'（dry-run）' if args.dry_run else ''}")
 
 
+def cmd_batch(args):
+    """批量生产多集：串行 + 失败隔离 + 状态文件（断点续跑）。"""
+    from pathlib import Path as _P
+    from app.services.hv_ops import run_batch, load_episodes
+    eps = load_episodes(_P(args.file))
+    if not eps:
+        raise SystemExit(f"error: {args.file} 里没读到集 id")
+    run_batch(eps, batch_id=args.batch_id, stop_on_error=args.stop_on_error,
+              resume=args.resume,
+              stages=args.stage.split(",") if args.stage else None)
+
+
 def cmd_smoke(args):
     """端到端冒烟：3 帧迷你样本跑通全链路（TTS/生图全打桩，零成本）。"""
     from app.services.hv_ops import run_smoke
@@ -472,6 +484,19 @@ def main():
     p.set_defaults(func=cmd_gc)
 
     # smoke：端到端冒烟
+    p = sub.add_parser("batch", help="批量生产多集（失败隔离+断点续跑）")
+    p.add_argument("--file", required=True,
+                   help="集 id 列表文件（一行一个，# 注释）")
+    p.add_argument("--batch-id", default=None,
+                   help="批次 id；不填则用时间戳（续跑时要指定）")
+    p.add_argument("--resume", action="store_true",
+                   help="读状态文件，跳过已完成的集")
+    p.add_argument("--stop-on-error", action="store_true",
+                   help="首集失败即停（默认继续跑后面的集）")
+    p.add_argument("--stage", default=None,
+                   help="只跑指定 stage，逗号分隔，如 tts,compose,verify")
+    p.set_defaults(func=cmd_batch)
+
     p = sub.add_parser("smoke", help="端到端冒烟（全 mock，零成本）")
     p.add_argument("--keep", action="store_true", help="保留样本便于排查")
     p.set_defaults(func=cmd_smoke)

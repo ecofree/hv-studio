@@ -90,3 +90,50 @@ def test_smoke_runs_full_chain(tmp_episodes):
     assert r.get("ok"), f"冒烟失败：{r}"
     assert r["frames"] >= 1 and r["shots"] >= 1
     assert r["bytes"] > 10000
+
+def test_batch_skips_done_and_isolates_failure(monkeypatch, tmp_path):
+    """批量：失败隔离 + 状态文件记录 done/failed（第四轮 P0-3）。"""
+    from app.services import hv_ops
+
+    calls = []
+
+    def fake_produce(eid, stages=None):
+        calls.append(eid)
+        if eid == "ep-bad":
+            raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.orchestrator.produce", fake_produce)
+    monkeypatch.setattr(hv_ops.paths, "state_dir", lambda: tmp_path)
+
+    r = hv_ops.run_batch(["ep-a", "ep-bad", "ep-c"], batch_id="t1")
+    assert calls == ["ep-a", "ep-bad", "ep-c"], "失败后没继续跑后面的集"
+    assert r["done"] == ["ep-a", "ep-c"]
+    assert len(r["failed"]) == 1 and r["failed"][0]["ep"] == "ep-bad"
+
+    # 状态文件落盘，续跑跳过已完成
+    sp = tmp_path / "batch_t1.json"
+    assert sp.exists()
+    calls.clear()
+    r2 = hv_ops.run_batch(["ep-a", "ep-bad", "ep-c"], batch_id="t1",
+                          resume=True)
+    assert calls == ["ep-bad"], "续跑没跳过已完成的集"
+
+
+def test_batch_stop_on_error(monkeypatch, tmp_path):
+    from app.services import hv_ops
+
+    def fake_produce(eid, stages=None):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("app.orchestrator.produce", fake_produce)
+    monkeypatch.setattr(hv_ops.paths, "state_dir", lambda: tmp_path)
+    r = hv_ops.run_batch(["ep-a", "ep-b"], batch_id="t2",
+                         stop_on_error=True)
+    assert r["done"] == [] and len(r["failed"]) == 1, "--stop-on-error 没生效"
+
+
+def test_load_episodes_skips_comments(tmp_path):
+    from app.services.hv_ops import load_episodes
+    f = tmp_path / "eps.txt"
+    f.write_text("# 注释\nep-a\n\nep-b\n", encoding="utf-8")
+    assert load_episodes(f) == ["ep-a", "ep-b"]
