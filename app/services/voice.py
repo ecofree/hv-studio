@@ -556,11 +556,13 @@ def synthesize(
         # 完全不跑（2026-09-09 用户实听发现「晋阳令刘文静」断词就是漏网之鱼）。
         # 新版：①每次必跑 ②失败先试「去 SSML 纯文本」③打印差异词让你加 replace
         from app.services import asr_check as _ac
-        _good, _why = _ac.check(gwav, gtext)
+        # ⚠️ 期望文本必须是「TTS 实际念出的内容」，不是 SSML 源码
+        _spoken = _group_spoken_text(texts)
+        _good, _why = _ac.check(gwav, _spoken)
         if not _good:
             _hyp = _ac.transcribe(gwav) or ""
             _hard = _ac.suspicious(_hyp)
-            _diff = _asr_diff_words(gtext, _hyp)
+            _diff = _asr_diff_words(_spoken, _hyp)
             # 策略一：去掉 SSML 用纯文本重合成（phoneme/replace 有时反而帮倒忙）
             print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
                   f"→ 尝试去 SSML 纯文本重合成")
@@ -568,15 +570,15 @@ def synthesize(
             ok2, _ = _render(_plain_text, gwav,
                              f"grp{idxs[0]:05d}(无SSML)", instruction=INSTRUCTION_OFF)
             if ok2:
-                _good2, _why2 = _ac.check(gwav, gtext)
+                _good2, _why2 = _ac.check(gwav, _spoken)
                 if _good2:
                     print(f"  [voice] 段落 {idxs[0]} 纯文本重合成通过：{_why2}")
                 else:
                     _hyp2 = _ac.transcribe(gwav) or ""
-                    _diff2 = _asr_diff_words(gtext, _hyp2)
+                    _diff2 = _asr_diff_words(_spoken, _hyp2)
                     # 取 PER 更低的版本
-                    _p1 = _ac.per(gtext, _hyp)
-                    _p2 = _ac.per(gtext, _hyp2)
+                    _p1 = _ac.per(_spoken, _hyp)
+                    _p2 = _ac.per(_spoken, _hyp2)
                     if _p2 < _p1:
                         print(f"  [voice] 段落 {idxs[0]} 纯文本 PER {_p2:.1%} "
                               f"< SSML PER {_p1:.1%}，保留纯文本版")
@@ -607,7 +609,7 @@ def synthesize(
                     if not ok:
                         raise RuntimeError(
                             f"[voice] 段落 {idxs[0]} 回检后重合成失败")
-                    _good2, _why2 = _ac.check(gwav, gtext)
+                    _good2, _why2 = _ac.check(gwav, _spoken)
                     print(f"  [voice] 段落 {idxs[0]} 重合成后：{_why2}")
 
         data, sr = _tts_group.read_wav(gwav)
@@ -786,6 +788,22 @@ def _ssml_text_replace(text: str) -> str:
     except Exception:  # noqa: BLE001
         pass
     return text
+
+
+def _group_spoken_text(texts: list[str]) -> str:
+    """一组文本 TTS **实际会念出来**的内容（SSML 标签不算，replace 要算）。
+
+    ⚠️ 2026-09-10 P0：回检曾直接把 build_group_ssml() 的输出（含
+    <speak>/<phoneme> 标签）当期望文本喂给 ASR —— 标签占 ~70% 字符，
+    音频完全正确也算出 PER 15.8%（阈值 8%）→ 每组误判失败 → 无谓重合成
+    （TTS 成本 ×3）+ 55 组刷屏告警。
+    正确的期望文本 = 纯文本 + 已应用的短语替换（晋阳令→晋阳县令）。
+    """
+    from app.services import tts_group as _tts_group
+    joined = _tts_group.group_text(texts)
+    if _voice_shaping_defaults().get("tts_ssml", False):
+        return _ssml_text_replace(joined)
+    return joined
 
 
 def _asr_diff_words(expected: str, hyp: str) -> list[str]:
@@ -999,6 +1017,17 @@ def main():
     )
     save(ep)
     # TTS 成本台账：按合成字符数记量（生图有 cost_ledger，TTS 此前零记录）
+    try:
+        from app.config.config import get_settings as _gs
+        _v = _gs().get_profile().voice
+        _model = (_v.qwen_model if (getattr(_v, "engine", None) == "qwen")
+                  else None) or _cosyvoice_model_from_env()
+        _tts_record_cost(ep_id, _model,
+                         sum(len(frame_tts_text(f)) for f in ep.frames), True)
+    except Exception:  # noqa: BLE001
+        pass
+
+    # TTS 成本台账：按合成字符数记量（批量时才知道跑了多少钱）
     try:
         from app.config.config import get_settings as _gs
         _v = _gs().get_profile().voice

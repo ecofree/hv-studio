@@ -37,8 +37,8 @@ def _env(name: str, default: str) -> str:
         from app.config.config import env_get
         return env_get(name, default)
     except Exception:  # noqa: BLE001
-        import os
-        return os.environ.get(name, default)
+        import os as _os
+        return _os.environ.get(name, default)
 
 
 def enabled() -> bool:
@@ -66,7 +66,10 @@ def _to_16k_wav(data: np.ndarray, sr: int) -> Path:
         n = int(round(len(data) * 16000 / sr))
         data = np.interp(np.linspace(0, len(data) - 1, n), np.arange(len(data)), data)
         sr = 16000
-    p = Path(tempfile.gettempdir()) / "hv_asr_16k.wav"
+    # ⚠️ 2026-09-10 P0：原为固定文件名，paragraph 档 4 线程并发
+    #    会互相覆盖 → 听写串台。改为 pid+uuid 唯一命名。
+    p = (Path(tempfile.gettempdir())
+         / f"hv_asr_16k_{os.getpid()}_{uuid.uuid4().hex[:8]}.wav")
     with wave.open(str(p), "wb") as w:
         w.setnchannels(1)
         w.setframerate(sr)
