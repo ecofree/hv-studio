@@ -1,9 +1,13 @@
 """Regressions for the independent audit's reproducible failure modes."""
+
+import pytest
+
+pytestmark = pytest.mark.production
+
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 import threading
-import pytest
 from app.services import production_v2 as P
 from app.services.provenance import atomic_json, fingerprint, file_sha256
 from app.services.narration_pipeline import read

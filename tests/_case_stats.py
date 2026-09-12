@@ -1,19 +1,12 @@
 # -*- coding: utf-8 -*-
-"""用例定义统计——给「用例悄悄消失」守卫共用（conftest 与测试文件都 import 它）。
-
-放独立模块（下划线开头，pytest 不收集）而不是塞进 conftest，
-因为 conftest 是 pytest 专用、不能被普通测试文件 import。
-"""
+"""Find duplicate test declarations without relying on parametrized case counts."""
 from __future__ import annotations
 
 import ast
 from pathlib import Path
 
-TESTS_DIR = Path(__file__).resolve().parent
 
 
-def iter_test_files() -> list[Path]:
-    return sorted(TESTS_DIR.glob("test_*.py"))
 
 
 def defined_cases(path: Path) -> dict[str, list[int]]:
@@ -30,8 +23,3 @@ def defined_cases(path: Path) -> dict[str, list[int]]:
                         and sub.name.startswith("test_")):
                     found.setdefault(f"{node.name}::{sub.name}", []).append(sub.lineno)
     return found
-
-
-def count_defined_cases() -> int:
-    """全 tests/ 目录 AST 能数到的用例定义总数（含被同名覆盖的重复定义）。"""
-    return sum(len(v) for f in iter_test_files() for v in defined_cases(f).values())

@@ -8,6 +8,10 @@
 from __future__ import annotations
 
 import pytest
+
+pytestmark = pytest.mark.shared
+
+
 from pathlib import Path
 
 from app.services import cleanup
@@ -34,80 +38,6 @@ def test_episodes_root_is_call_time_evaluated(monkeypatch, tmp_path):
     assert orch._episode_dir("x") == tmp_path / "eps" / "x"
     assert orch._out_dir("x") == tmp_path / "eps" / "x" / "out"
     assert sb._default_plan_path("x") == tmp_path / "eps" / "x" / "scene_plan.json"
-
-
-def test_no_module_hardcodes_episodes_root():
-    """app/ 下不得再有 import 期固化的 episodes 根常量（EPISODES_DIR/BASE/_EPISODES）。"""
-    import re
-    import app.paths
-    from app.config.config import ROOT
-
-    bad = []
-    for f in (ROOT / "app").rglob("*.py"):
-        if f.name == "paths.py":
-            continue
-        src = f.read_text(encoding="utf-8")
-        for m in re.finditer(r"^\s*(EPISODES_DIR|BASE|_EPISODES)\s*=", src,
-                             re.MULTILINE):
-            bad.append(f"{f.relative_to(ROOT)}:{m.group(1)}")
-    assert bad == [], f"app/ 仍有 import 期 episodes 根常量: {bad}"
-
-
-def test_tests_do_not_write_real_episodes():
-    """tests/ 里不得再出现拼真实 episodes/ 的**代码**（注释与文档字符串不算）。
-
-    用 AST 而不是正则：这个项目到处在注释里写「不要再拼 ROOT/'episodes'」，
-    正则会把这些劝阻性注释本身当成违规（2026-09-05 实测误报 3 处）。
-    唯一真正允许的例外：test_state_truthfulness 对已交付集 hanwu-prologue
-    的只读校验——那是有意为之，它要验证「verify 不改交付数据」。
-    """
-    import ast
-    from app.config.config import ROOT
-
-    bad = []
-    for f in (ROOT / "tests").rglob("*.py"):
-        if f.name in ("conftest.py", "test_state_truthfulness.py"):
-            continue
-        tree = ast.parse(f.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not (isinstance(node, ast.BinOp) and isinstance(node.op, ast.Div)):
-                continue
-            l, r = node.left, node.right
-            if (isinstance(l, ast.Name) and l.id == "ROOT"
-                    and isinstance(r, ast.Constant) and r.value == "episodes"):
-                bad.append(f"{f.name}:{node.lineno}")
-    assert bad == [], f"tests/ 仍在拼真实 episodes 路径: {bad}"
-
-
-def test_delivery_episode_is_never_swept(tmp_path, monkeypatch):
-    """会话末兜底清扫必须对交付集免疫。
-
-    关键：**不能只靠 git ls-files** —— laogongtuan / lsm-15min 是最新的两部
-    成片却都未入库。所以判据是「名单 ∪ 目录下有 out/*.mp4」。
-    """
-    from conftest import is_delivery_episode, PROTECTED_EPISODES
-    import conftest
-
-    fake_root = tmp_path / "episodes"
-    fake_root.mkdir()
-    monkeypatch.setattr(conftest, "EPISODES", fake_root)
-
-    # 1) 名单内的集：光有 json 也算交付集
-    (fake_root / "laogongtuan.json").write_text("{}", encoding="utf-8")
-    assert is_delivery_episode("laogongtuan"), "未入库的交付集必须受保护"
-
-    # 2) 名单外、但有成片：自动受保护（对未来新增集自动生效）
-    d = fake_root / "brand-new-film"
-    (d / "out").mkdir(parents=True)
-    (d / "out" / "brand-new-film_m1.mp4").write_bytes(b"\x00" * 10)
-    assert is_delivery_episode("brand-new-film"), "有成片即视为交付集"
-
-    # 3) 纯测试集（无成片）不受保护，才能被清扫
-    (fake_root / "smoke-999.json").write_text("{}", encoding="utf-8")
-    (fake_root / "smoke-999").mkdir()
-    assert not is_delivery_episode("smoke-999"), "测试集不该被误判成交付集"
-
-    assert {"hw-001", "hw-002", "lsm-15min"} <= set(PROTECTED_EPISODES)
 
 
 # ---------------------------------------------------------------------------

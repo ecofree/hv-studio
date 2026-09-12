@@ -1,6 +1,10 @@
+
+import pytest
+
+pytestmark = pytest.mark.production
+
 import json
 from pathlib import Path
-import pytest
 from app.services import subtitle_alignment as A, asr_check
 from app.services.provenance import atomic_json,file_sha256,fingerprint
 

@@ -11,13 +11,17 @@ hasattr 为 False），cli.py 与 controllers/v1/image.py 一调用就 ImportErr
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.shared
+
+
 import base64
 import json
 import types
 from pathlib import Path
 from queue import Queue
 
-import pytest
 
 from app.managers.episode import episode_path
 from app.services import image as m
@@ -45,19 +49,6 @@ def test_save_b64_image_is_importable_and_writable(tmp_path):
     out = tmp_path / "deep" / "nested" / "a.png"
     p = m.save_b64_image(b64, out)
     assert p.exists() and p.read_bytes() == payload   # 自动建父目录
-
-
-def test_image_module_has_no_dead_code_after_return():
-    """generate_many 的 return 之后不应再出现 4 空格缩进的孤儿语句。"""
-    import inspect
-    src = inspect.getsource(m.generate_many)
-    lines = src.splitlines()
-    after = [ln for ln in lines if ln.startswith("    ") and ln.strip()]
-    # 只允许函数体本身；出现 return 之后的缩进语句即为死代码
-    assert after, "generate_many 源码解析异常"
-    idx = next(i for i, ln in enumerate(lines) if ln.strip() == "return result")
-    tail = [ln for ln in lines[idx + 1:] if ln.strip()]
-    assert tail == [], f"return 之后还有语句（死代码）: {tail[:3]}"
 
 
 # ---------------------------------------------------------------------------

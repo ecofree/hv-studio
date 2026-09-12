@@ -1,4 +1,9 @@
 """Offline supplier/model routing, concurrency and cache regression coverage."""
+
+import pytest
+
+pytestmark = pytest.mark.production
+
 import base64
 import io
 import json
@@ -8,7 +13,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
-import pytest
 import yaml
 from PIL import Image
 

@@ -6,9 +6,13 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import json
 
-import pytest
 
 from app.managers.episode import episode_path
 from app.services import shot_builder as SB

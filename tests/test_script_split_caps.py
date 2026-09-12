@@ -19,6 +19,9 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
+
 from app.models import Episode
 from app.services import script as S
 from app.services.script import split_script

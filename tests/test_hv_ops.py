@@ -7,10 +7,13 @@ episodes/ 路径**。需要落盘 episode 的一律用 conftest 的 `tmp_episode
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.shared
+
+
 import os
 import time
-
-import pytest
 
 
 # --------------------------------------------------------------------------- ①

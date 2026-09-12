@@ -12,10 +12,13 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.shared
+
+
 import json
 from datetime import datetime
-
-import pytest
 
 
 def _health_with_quota():

@@ -2,10 +2,14 @@
 """第三轮（新领域）修复的回归测试。"""
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import wave
 
 import numpy as np
-import pytest
 
 
 # ---------- A. read_wav 标度契约 ----------

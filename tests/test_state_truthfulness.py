@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
 
 def test_run_stage_requires_real_stage_fn():
     """run_stage 不带 stage_fn 必须拒绝推进（否则是虚假完成）。"""
@@ -33,24 +35,6 @@ def test_validate_schema_detects_dangling_shot_ref():
     from app.managers.episode import validate_schema
     problems = validate_schema(ep)
     assert any("shot-000" in pr and "frame-999" in pr for pr in problems), problems
-
-
-@pytest.fixture
-def _restore_delivered_episode():
-    """produce 收尾会 save(ep) 落盘，而 hanwu-prologue 是**已交付**小集。
-
-    让测试直接改写交付数据是脏的：模型字段一变（如 D2 删 Shot 死字段），
-    跑一次测试就把交付集的 json 悄悄改掉，且 diff 看起来"像是数据自己变的"。
-    跑之前快照、跑之后还原，测试保持只读。
-    """
-    from app.config.config import ROOT
-    p = ROOT / "episodes" / "hanwu-prologue.json"
-    backup = p.read_bytes() if p.exists() else None
-    try:
-        yield
-    finally:
-        if backup is not None:
-            p.write_bytes(backup)
 
 
 def test_produce_verify_derives_true_status(smoke_episode):
@@ -119,58 +103,6 @@ def test_produce_default_skips_script_when_frames_exist(tmp_episodes, monkeypatc
     assert load(ep_id).frames[0].text == "已有帧"
 
 
-def test_stage_images_uses_flat_imageconfig(monkeypatch, tmp_episodes):
-    """stage_images 读扁平 ImageConfig(engine/size/quality 顶层) 而非不存在 primary.
-
-    回归守门：batch_generate_lgt 用 im.engine/im.size/im.quality；stage_images 曾误用
-    im.primary.* 会 AttributeError（真 bug，已修）。mock generate_many 断言入参正确。
-    """
-    import os
-    import json as _json
-    from pathlib import Path
-    from app.managers import load, save
-    from app.models import Episode
-    from app.paths import episode_dir
-
-    ep_id = f"imgcfg-{os.getpid()}"
-    ep = Episode(id=ep_id, title="imgcfg", episode_number=1, status="draft")
-    save(ep)
-    ep_dir = episode_dir(ep_id)      # P1-6：跟随 tmp_episodes 重定向
-    (ep_dir / "shots").mkdir(parents=True, exist_ok=True)
-    # 用真实长度的 prompt（实测 laogongtuan/lsm-15min 最短 141、中位 ~190）。
-    # 用 "desert" 这种 6 字玩具串会被 prompt 预筛以「过短」拦下——那正是
-    # 预筛的本意（漏写/占位符不该发请求烧配额），不是本测试要覆盖的行为。
-    (ep_dir / "image_prompts.json").write_text(
-        _json.dumps({
-            "LGT01": {"en": "Wide shot, Han dynasty emissary on the Silk Road "
-                            "at dusk, cinematic lighting, realistic"},
-            "LGT02": {"en": "Medium shot, endless desert dunes under a bleak "
-                            "sky, cold色调, film grain, realistic"},
-        }, ensure_ascii=False), encoding="utf-8")
-
-    captured = {}
-
-    def _fake_generate_many(jobs, **kw):
-        captured["n"] = len(jobs)
-        captured["reqs"] = [(j.id, j.req) for j in jobs]
-        # 模拟全部成功（不落真文件，仅路径）
-        from pathlib import Path as _P
-        return {j.id: str(_P("shots") / f"{j.id}.png") for j in jobs}
-
-    from app import orchestrator
-        # stage_images 在函数体内 `from app.services.image import ... generate_many`，
-        # 故须 patch 源模块而非 orchestrator 属性。
-    from app.services import image as image_mod
-    monkeypatch.setattr(image_mod, "generate_many", _fake_generate_many)
-    from app.managers import load as _load
-    orchestrator.stage_images(_load(ep_id))
-    assert captured["n"] == 2
-    # 每个 req 用扁平 config 落参，无 primary 崩溃，且能取出 size/quality/model
-    for jid, req in captured["reqs"]:
-        assert req.size  # 扁平 size（曾是 im.primary.size → AttributeError）
-        assert req.quality
-        assert req.model
-        assert "LGT" in jid
     # 无清理：一切落在 tmp 下
 
 

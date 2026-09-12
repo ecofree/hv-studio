@@ -10,6 +10,9 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
+
 from app.models import Episode, Frame, MotionSpec, Shot, ShotType
 from app.services.timing_assert import (
     MAX_FRAMES, MIN_FRAMES, TimingError, assert_timing_or_raise, shot_report,

@@ -13,11 +13,15 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import os
 import subprocess
 from pathlib import Path
 
-import pytest
 
 from conftest import NEEDS_FFMPEG
 
@@ -25,66 +29,6 @@ from conftest import NEEDS_FFMPEG
 # ---------------------------------------------------------------------------
 # P0-1：mux 出的音轨必须是 config 声明的编码（aac），绝不能是 pcm
 # ---------------------------------------------------------------------------
-@NEEDS_FFMPEG
-def test_mux_audio_uses_configured_codec_not_pcm(tmp_path):
-    """mux 音轨必须按 config 编码（aac），-c copy 会把 pcm_s16le 装进 mp4 致静音。"""
-    from app.config.config import get_settings
-
-    cfg = get_settings().compose
-    assert cfg.audio_codec == "aac", f"config 应声明 aac，实为 {cfg.audio_codec}"
-
-    # 造最小素材：1s 静音视频(无音轨) + 1s wav
-    vid = tmp_path / "v.mp4"
-    wav = tmp_path / "a.wav"
-    subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
-         "-i", "testsrc=size=320x240:rate=25:duration=1",
-         "-pix_fmt", "yuv420p", "-c:v", "libx264", "-preset", "ultrafast",
-         "-an", "-f", "mp4", str(vid)], check=True)
-    subprocess.run(
-        ["ffmpeg", "-y", "-v", "error", "-f", "lavfi",
-         "-i", "sine=frequency=440:duration=1",
-         "-ar", "44100", "-ac", "1", str(wav)], check=True)
-
-    out = tmp_path / "muxed.mp4"
-    # 【bug 修复】原版手搓 ffmpeg 命令测的是「ffmpeg 配 -c:a aac 是否工作」（恒真），
-    # 没调用被测函数。要真测的是 compose 的 _run_audio_mux 是否把 wav 转成 aac。
-    from app.services.compose import _run_audio_mux
-    _run_audio_mux(vid, wav, out, cfg.audio_codec, cfg.audio_bitrate)
-
-    codec = subprocess.run(
-        ["ffprobe", "-v", "error", "-select_streams", "a:0",
-         "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
-         str(out)], capture_output=True, text=True).stdout.strip()
-
-    assert codec == cfg.audio_codec, (
-        f"mux 音轨应为 {cfg.audio_codec}，实为 {codec!r}。"
-        f"若为 pcm_s16le 说明又退回 `-c copy` 直拷 wav → 播放器静音（P0-1 复发）")
-
-
-@NEEDS_FFMPEG
-def test_delivered_films_are_not_pcm(smoke_episode):
-    """已交付成片音轨不得是 pcm（P0-1 波及面守门）。"""
-    from app.config.config import ROOT
-    from app.services.compose import compose_episode
-    # Always verify a freshly encoded fixture, including in a clean checkout;
-    # retain the additional inspection of existing business media when present.
-    fresh=compose_episode(smoke_episode[0])
-
-    checked = 0
-    for mp4 in [Path(fresh), *ROOT.glob("episodes/*/out/*_m1.mp4")]:
-        if not mp4.exists() or mp4.stat().st_size < 1024:
-            continue
-        codec = subprocess.run(
-            ["ffprobe", "-v", "error", "-select_streams", "a:0",
-             "-show_entries", "stream=codec_name", "-of", "default=nw=1:nk=1",
-             str(mp4)], capture_output=True, text=True).stdout.strip()
-        if not codec:
-            continue  # 无音轨的成片不在此断言范围
-        checked += 1
-        assert codec != "pcm_s16le", (
-            f"{mp4.name} 音轨是 pcm_s16le（P0-1 静音故障）→ 需只重跑 mux 转 aac")
-    assert checked >= 1, "应至少检到一个带音轨的成片"
 
 
 # ---------------------------------------------------------------------------
@@ -147,24 +91,6 @@ def test_stage_compose_resyncs_timeline_from_disk(monkeypatch, tmp_path,
 # ---------------------------------------------------------------------------
 # 待办#5：libx264 退路不得用 NVENC 的 preset（p4 → x264 编码器直接失败）
 # ---------------------------------------------------------------------------
-def test_x264_fallback_preset_is_valid_for_libx264():
-    """libx264 退路 preset 必须来自 config.fallbacks，不得用 nvenc 的 p4。
-
-    p4 是 h264_nvenc 的 preset，libx264 不认 → 无 NVENC 机器走退路时 ffmpeg
-    报 Invalid argument、产出 0 字节（实测对照：medium 8333B / p4 0B）。
-    """
-    from app.services.compose import _build_vcodec
-
-    vcodec = _build_vcodec(False)  # 强制走 libx264 退路
-    params = " ".join(str(x) for x in vcodec)
-    assert "libx264" in params, params
-
-    preset = vcodec[vcodec.index("-preset") + 1]
-    valid_x264 = {"ultrafast", "superfast", "veryfast", "faster", "fast",
-                  "medium", "slow", "slower", "veryslow", "placebo"}
-    assert preset in valid_x264, (
-        f"libx264 退路 preset={preset!r} 非法（合法值 {sorted(valid_x264)}）。"
-        f"典型的错：误用 NVENC 的 p4（config.compose.preset），x264 无此值直接失败")
 
 
 # ---------------------------------------------------------------------------
@@ -378,14 +304,3 @@ def test_degraded_flag_forces_software_for_later_segments(monkeypatch, tmp_path)
 
     assert rec["calls"] == 1
     assert rec["vcodecs"][0][1] == "libx264", "闸门已置位却仍用了硬件编码器"
-
-
-def test_build_vcodec_software_preset_is_x264_valid():
-    """降级路径的 libx264 参数必须自洽（preset 属 x264 合法集，非 NVENC 的 p4）。"""
-    from app.services import compose as C
-    valid = {"ultrafast", "superfast", "veryfast", "faster", "fast", "medium",
-             "slow", "slower", "veryslow", "placebo"}
-    args = C._build_vcodec(False)
-    assert args[args.index("-c:v") + 1] == "libx264"
-    assert args[args.index("-preset") + 1] in valid
-

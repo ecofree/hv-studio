@@ -11,6 +11,9 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.shared
+
+
 import app.services.polyphone as P
 
 

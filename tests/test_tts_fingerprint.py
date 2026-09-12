@@ -8,21 +8,29 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import json
 import os
 import wave
 from pathlib import Path
 
-import pytest
 
 from app.models import Frame
 
 
 @pytest.fixture(autouse=True)
 def isolated_voice_asset(tmp_path,monkeypatch):
+    """This cache test supplies audio and ASR stubs; it must not load a real model."""
     from app.config.config import get_settings
     from app.services import narration_pipeline as N
-    from app.services.provenance import atomic_json
+    from app.services.provenance import atomic_json, file_sha256, fingerprint
+    from app.services import asr_check
+    monkeypatch.setattr(asr_check, 'check', lambda path, text: asr_check.QualityResult(
+        'passed', file_sha256(path), fingerprint(text), transcript=text))
     cache=tmp_path/'voice-cache.json';atomic_json(cache,dict(voice_id='cosyvoice-fixture',model='cosyvoice-v3.5-flash'))
     asset=tmp_path/'voice.json';N.import_voice(cache,asset)
     monkeypatch.setattr(get_settings().get_profile().voice,'voice_asset',str(asset))

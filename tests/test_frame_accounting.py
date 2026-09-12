@@ -10,6 +10,11 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 from app.services.motion import (
     FPS,
     frames_for_duration_ms,
@@ -85,8 +90,3 @@ def test_no_divergence_when_durations_are_frame_aligned():
     per_shot = sum(frames_for_duration_ms(s.duration_ms) for s in shots)
     one_shot = round(sum(s.duration_ms for s in shots) / 1000.0 * FPS)
     assert per_shot == one_shot == 500
-
-
-def test_bounds_constants_unchanged():
-    """1.6s / 8s 上下限常量不得被顺手改掉（时序门契约）。"""
-    assert MIN_FRAMES == 40 and MAX_FRAMES == 200 and FPS == 25

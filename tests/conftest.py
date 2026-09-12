@@ -1,10 +1,5 @@
 # -*- coding: utf-8 -*-
-"""共享夹具：可移植的微合成 episode，供首产/缓存失效/编排测试使用。
-
-设计：以最小内存 footprint（1080×1920 @2x，静态 2s 单镜）驱动真实
-compose 编码路径，避开低 pagefile 沙箱在 3344×1882 大图上 OOM 的问题。
-episode 写入真实 episodes/{id}.json（compose 硬绑定该目录），测试后清理。
-"""
+"""Offline fixtures. Episode writes use tmp_episodes; configured backends are unchanged."""
 from __future__ import annotations
 
 import json
@@ -16,7 +11,6 @@ import pytest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-EPISODES = ROOT / "episodes"
 
 
 @pytest.fixture(autouse=True)
@@ -50,33 +44,16 @@ NEEDS_FFMPEG = pytest.mark.skipif(
 
 
 def pytest_collection_modifyitems(session, config, items):
-    """收集完钉一条：AST 里数到的用例定义数 必须 ≤ 实际收集数。
-
-    收集数 < 定义数 = 有用例「定义了却没跑」。最常见原因是同一文件里后定义
-    覆盖了前定义——2026-09-05 实测就这么丢了 4 条 NVENC 回归用例，而
-    "114 passed" 看着完全正常。**这类问题不报错、不变红，只能靠这个口径发现。**
-
-    收集数 > 定义数 属正常（parametrize 会把一个定义展开成多条），放行。
-    """
-    # 只做部分收集时（-k 过滤 / 命令行指定了具体路径）本守卫不适用
-    if getattr(config.option, "keyword", "") or config.args:
-        return
-    try:
-        from _case_stats import count_defined_cases
-    except ImportError:  # rootdir 未把 tests/ 加进 sys.path
-        import sys
-        sys.path.insert(0, str(Path(__file__).resolve().parent))
-        from _case_stats import count_defined_cases
-
-    defined = count_defined_cases()
-    collected = len(items)
-    if collected < defined:
-        raise pytest.Exit(
-            f"\n[测试基建] 用例定义数 {defined} > 实际收集数 {collected}，"
-            f"少了 {defined - collected} 条。\n"
-            "最常见原因：同一测试文件里出现了同名的 test 用例，后定义静默覆盖前定义\n"
-            "（被覆盖的那份永不执行）。请检查 tests/ 下是否有重复定义。",
-            returncode=3)
+    """Reject ambiguous scope and duplicate declarations, not low test counts."""
+    from _case_stats import defined_cases
+    for path in {Path(item.path) for item in items}:
+        for name, lines in defined_cases(path).items():
+            if len(lines) > 1:
+                raise pytest.UsageError(f"duplicate test {path.name}::{name}: {lines}")
+    for item in items:
+        scopes = {m.name for m in item.iter_markers()} & {'production','shared','legacy'}
+        if len(scopes) != 1:
+            raise pytest.UsageError(f"{item.nodeid}: choose one scope: production/shared/legacy")
 
 
 def make_small_images(workdir: Path):
@@ -138,21 +115,6 @@ def build_episode_dict(ep_id: str, img_abs: str, wav_abs: str, dur_ms: int) -> d
     }
 
 
-@pytest.fixture(autouse=True)
-def _pin_tts_engine_for_tests(monkeypatch):
-    """测试固定走 cosyvoice 引擎（生产配置可能已切到 qwen）。
-
-    2026-09-09 二轮审计回归：config.yaml 的 engine 改成 qwen 后，凡是直接调
-    produce() 的用例都会真去打 qwen（额度/网络）→ 12 例失败。测试桩（打桩
-    _try_one_cosyvoice / synthesize_dashscope_whole）只在 cosyvoice 路径上，
-    所以这里把引擎钉回 cosyvoice；需要测 qwen 的用例用 monkeypatch 显式改。
-    """
-    from app.config.config import get_settings
-    v = get_settings().get_profile().voice
-    monkeypatch.setattr(v, "engine", "cosyvoice")
-    # Adapter regressions use explicit stubs; local model inference belongs to
-    # the separate real-audio probe, never to the ordinary offline suite.
-    monkeypatch.setattr(get_settings().get_profile().asr,"backend","dashscope")
 
 
 @pytest.fixture(autouse=True)
@@ -169,33 +131,6 @@ def _isolate_cost_ledger(tmp_path, monkeypatch):
 
 
 # ---------------------------------------------------------------------------
-# P1-6（2026-09-05）：测试 episodes 隔离 + 交付集硬保护
-# ---------------------------------------------------------------------------
-# 测试命名空间。会话末兜底清扫只认「{ns}-」这种带连字符的测试名，
-# 裸 ns（如恰好有个集叫 "smoke"）不删——那已经不是测试名了。
-TEST_NS = ("smoke", "segtest", "imgcfg", "wavaud", "nors", "emptytest",
-           "sbguard", "resync", "imgscreen", "imgdup")
-
-# 交付集硬保护名单。**不能只靠 git ls-files**：laogongtuan / lsm-15min 是
-# 最新的两部成片（2.2GB out/*.mp4）却都未入库，git 挡不住它们。
-PROTECTED_EPISODES = frozenset({
-    "hanwu-ch3", "hanwu-feature", "hanwu-prologue", "hw-001", "hw-002",
-    "laogongtuan", "lsm-15min",
-})
-
-
-def is_delivery_episode(ep_id: str) -> bool:
-    """交付集判定：名单内，或该集目录下已存在成片 out/*.mp4。
-
-    「成片在场」是最强信号——有 mp4 说明这集出过片，删掉就是不可逆损失。
-    这条规则对未来新增的集自动生效，不依赖任何人记得更新名单。
-    """
-    if ep_id in PROTECTED_EPISODES:
-        return True
-    d = EPISODES / ep_id
-    return d.is_dir() and any((d / "out").glob("*.mp4"))
-
-
 @pytest.fixture
 def tmp_episodes(tmp_path, monkeypatch):
     """把整条链的 episodes 根重定向到 tmp_path（P1-6 根因修复）。

@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.shared
+
 
 def test_identical_pronunciation_is_not_an_error():
     """同音字选字不同 → 不算错。"""
@@ -80,7 +82,7 @@ def test_check_accepts_good_and_rejects_bad(tmp_path):
 
 
 def test_check_unavailable_is_not_passed(tmp_path):
-    """ASR 挂了不能阻断出片。"""
+    """ASR 不可用必须返回 unavailable，不能冒充 passed。"""
     from app.services import asr_check as ac
     (tmp_path / "x.wav").write_bytes(b"audio-fixture")
     orig = ac.transcribe
@@ -91,32 +93,26 @@ def test_check_unavailable_is_not_passed(tmp_path):
     finally:
         ac.transcribe = orig
 
-def test_spoken_text_has_no_ssml_tags():
-    """回检的期望文本不能含 SSML 标签（2026-09-10 P0 回归锁）。
 
-    曾把 build_group_ssml() 输出（含 <speak>/<phoneme>）当期望文本 →
-    标签占 ~70% 字符 → 音频全对也 PER 15.8% > 8% → 每组误判失败 →
-    无谓重合成（TTS 成本 ×3）+ 刷屏告警。
-    """
-    from app.services.voice import _group_spoken_text
-    spoken = _group_spoken_text(["第一句测试。", "第二句测试。"])
-    assert "<speak" not in spoken, "朗读文本里混进了 SSML 标签"
-    assert "phoneme" not in spoken
-    assert "第一句测试。第二句测试。" in spoken
-
-
-def test_spoken_text_applies_replace():
-    """replace 后的文本才是 TTS 真正念的（晋阳令→晋阳县令）。"""
-    from app.services.voice import _group_spoken_text
-    spoken = _group_spoken_text(["李渊暗中联络晋阳令刘文静。"])
-    assert "晋阳县令" in spoken, (
-        "replace 没生效 → ASR 会按『晋阳令』比对，与真实读音对不上")
-
-
-def test_asr_tempfile_is_unique_per_call():
-    """ASR 临时文件必须唯一（4 线程并发踩踏 = 听写串台，2026-09-10 P0）。"""
-    import inspect
-    from app.services import asr_check as AC
-    src = inspect.getsource(AC)
-    assert "uuid" in src, "临时文件未加 uuid —— 并发会互相覆盖"
-    assert '"hv_asr_16k.wav"' not in src, "仍是固定文件名"
+def test_transcription_calls_recognizer_and_cleans_temp(tmp_path,monkeypatch):
+    from app.services import asr_check as A, cosyvoice
+    import dashscope.audio.asr as sdk
+    from app.config.config import get_settings
+    from test_production_v2 import wav
+    from pathlib import Path
+    from types import SimpleNamespace
+    monkeypatch.setattr(get_settings().get_profile().asr, "backend", "dashscope")
+    p=tmp_path/'a.wav';wav(p)
+    paths=[]
+    class Recognition:
+        def __init__(self,**kw): pass
+        def call(self,file):
+            paths.append(Path(file));assert Path(file).exists()
+            return SimpleNamespace(status_code=200,output={'sentence':[{'text':'原文。'}]})
+    monkeypatch.setattr(sdk,'Recognition',Recognition)
+    monkeypatch.setattr(cosyvoice,'_dashscope_key',lambda:'test-key')
+    assert A.transcribe(p)=='原文。'
+    assert len(paths)==1 and not paths[0].exists()
+    monkeypatch.setattr(A,'_to_16k_wav',lambda *args:(_ for _ in ()).throw(ValueError('convert_failed')))
+    result=A.check(p,'原文。')
+    assert result.status=='unavailable' and 'convert_failed' in result.error

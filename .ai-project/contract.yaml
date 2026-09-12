@@ -5,6 +5,9 @@ source_of_truth: app/services/episode_production.py
 runtime: requirements.core.lock.txt
 asr_runtime: requirements.asr.lock.txt
 acceptance_command: scripts/ai-project-check.ps1
+test_scope: production
+optional_component_checks: scripts/ai-project-check.ps1 -Suite shared
+optional_compatibility_checks: scripts/ai-project-check.ps1 -Suite legacy
 invariants:
   - Preserve source narration, historical images and raw audio takes.
   - Never call a paid provider without a durable remaining request budget.

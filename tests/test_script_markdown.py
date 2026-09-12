@@ -12,9 +12,13 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import re
 
-import pytest
 
 from app.models import Episode
 from app.services import script as S

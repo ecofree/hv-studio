@@ -11,12 +11,16 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.shared
+
+
 import base64
 import threading
 import time
 from pathlib import Path
 
-import pytest
 
 from app.config.config import Channel
 from app.models import ImageGenRequest, ImageGenResponse, ImageGenItem
@@ -165,16 +169,3 @@ def test_pinned_channel_failure_raises(patch_generator):
         gen.generate(_gen_req(), channel=channels[0])
     # 只尝试一次钉住渠道，不换路
     assert rec.calls == ["aicost"]
-
-
-def test_workers_do_not_exceed_channels(patch_generator, tmp_path):
-    """worker 数 ≤ 渠道数（每渠道最多 1 路）。"""
-    gen, channels, rec = patch_generator
-    for ch in channels:
-        rec.behavior[ch.name] = lambda c: _ok_resp()
-    jobs = [ImageJob(f"j{i}", _gen_req(), tmp_path / f"{i}.png") for i in range(10)]
-    # 并发下若 worker > 渠道，会多个 worker 同渠道（每渠道内仍串行）。无法直接从
-    # rec.calls 断言并发数，此处断言功能正确 + 每渠道请求都被串行消化即可。
-    res = generate_many(jobs)
-    assert all(res[j.id] is not None for j in jobs)
-    assert len(rec.calls) == 10

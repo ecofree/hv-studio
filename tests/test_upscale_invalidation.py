@@ -7,6 +7,11 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import os
 from pathlib import Path
 

@@ -9,13 +9,17 @@
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import json
 import os
 import subprocess
 import wave
 from pathlib import Path
 
-import pytest
 
 from conftest import NEEDS_FFMPEG
 

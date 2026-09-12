@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
 
 def test_sentence_split_and_rates():
     from app.services.voice import build_group_ssml

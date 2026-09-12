@@ -1,10 +1,14 @@
 """Readiness regressions through the shared entry point, using no provider network."""
+
+import pytest
+
+pytestmark = pytest.mark.production
+
 import io
 import json
 import wave
 from pathlib import Path
 from unittest.mock import patch
-import pytest
 from PIL import Image
 from app.services.provenance import atomic_json, fingerprint, file_sha256
 from app.services import narration_pipeline as N
@@ -16,6 +20,7 @@ from app.config.config import get_settings
 @pytest.fixture
 def production_episode(tmp_path, tmp_episodes, monkeypatch):
     from app.managers import save
+    monkeypatch.setattr("app.services.local_asr.preflight", lambda: None)
     ep = Episode(id="entry-audit", title="Audit", episode_number=1)
     save(ep)
     directory=tmp_episodes/ep.id; directory.mkdir(exist_ok=True)

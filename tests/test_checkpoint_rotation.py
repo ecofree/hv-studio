@@ -6,6 +6,11 @@ checkpoint 每 stage 一份、文件名带微秒时间戳 → 永不复写、只
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.shared
+
+
 from app.managers import episode as EM
 from app.models import Episode
 

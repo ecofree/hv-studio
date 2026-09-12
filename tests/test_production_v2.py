@@ -1,10 +1,14 @@
+
+import pytest
+
+pytestmark = pytest.mark.production
+
 import json
 from pathlib import Path
 from types import SimpleNamespace
 import wave
 
 import numpy as np
-import pytest
 
 from app.services.provenance import atomic_json, file_sha256, fingerprint
 from app.services import narration_pipeline as N, production_v2 as P
@@ -45,25 +49,6 @@ def test_conversion_unique_readable(tmp_path):
                 assert w.getframerate()==16000 and w.getnframes()==16000
     finally:
         a.unlink();b.unlink()
-
-
-def test_transcription_calls_recognizer_and_cleans_temp(tmp_path,monkeypatch):
-    from app.services import asr_check as A, cosyvoice
-    import dashscope.audio.asr as sdk
-    p=tmp_path/'a.wav';wav(p)
-    paths=[]
-    class Recognition:
-        def __init__(self,**kw): pass
-        def call(self,file):
-            paths.append(Path(file));assert Path(file).exists()
-            return SimpleNamespace(status_code=200,output={'sentence':[{'text':'原文。'}]})
-    monkeypatch.setattr(sdk,'Recognition',Recognition)
-    monkeypatch.setattr(cosyvoice,'_dashscope_key',lambda:'test-key')
-    assert A.transcribe(p)=='原文。'
-    assert len(paths)==1 and not paths[0].exists()
-    monkeypatch.setattr(A,'_to_16k_wav',lambda *args:(_ for _ in ()).throw(ValueError('convert_failed')))
-    result=A.check(p,'原文。')
-    assert result.status=='unavailable' and 'convert_failed' in result.error
 
 
 def test_document_preserves_source_and_delivery():

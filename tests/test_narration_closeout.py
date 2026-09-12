@@ -1,5 +1,9 @@
-from pathlib import Path
+
 import pytest
+
+pytestmark = pytest.mark.production
+
+from pathlib import Path
 from app.services import narration_pipeline as N, subtitle_alignment as A, audio_disposition as D
 from app.services.provenance import atomic_json,fingerprint,file_sha256
 from test_production_v2 import assembly,wav

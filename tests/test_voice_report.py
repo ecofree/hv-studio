@@ -8,6 +8,11 @@ B2 加了「降级 edge 就在 manifest 打标 + 成片前体检」，但没有�
 """
 from __future__ import annotations
 
+import pytest
+
+pytestmark = pytest.mark.legacy
+
+
 import json
 
 import app.services.voice as V

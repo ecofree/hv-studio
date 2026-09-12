@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
+
 from app.services import compose as C
 
 

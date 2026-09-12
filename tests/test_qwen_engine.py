@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
 
 # ---------------------------------------------------------------- HTTP 组装
 def test_qwen_request_body_assembly(monkeypatch, tmp_path):

@@ -13,8 +13,12 @@
 """
 from __future__ import annotations
 
-import numpy as np
 import pytest
+
+pytestmark = pytest.mark.legacy
+
+
+import numpy as np
 
 from app.services import tts_group as G
 from app.services import script as S

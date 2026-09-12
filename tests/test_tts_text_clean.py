@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import pytest
 
+pytestmark = pytest.mark.legacy
+
 
 # ---------------------------------------------------------------- 破折号
 @pytest.mark.parametrize("src,want", [
