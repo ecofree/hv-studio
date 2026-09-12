@@ -1,5 +1,11 @@
 # hv — 历史解说竖屏短视频流水线
 
+2026-09-12：`episode produce` 和 API `/v1/episode/{id}/produce` 默认使用音频优先的 v2 链路：script → images → tts → delivery → quality → alignment → timeline → compose → verify。旧片预览重建必须显式设置 `--pipeline legacy-preview`。`CANDIDATE` 表示可供审核的技术候选，不代表发布批准。完整操作与恢复说明见 [生产运行手册](docs/production_runbook.md)。
+
+Windows 启动器默认使用隔离的 `.venv-core`。先用 `scripts/bootstrap-core.ps1` 和 `requirements.core.lock.txt` 建立核心环境；本地 ASR 使用独立环境。所有生成额度默认 0。`--max-requests`、`--max-characters`、`--max-images` 限制实际调用与字符，失败、超时及重试均计入，整批共享一个持久账本，续跑不重置。新一轮明确授权使用新的 `--budget-id`（批量使用新的 batch-id）。默认入口会自动构造字幕及镜头时间轴；已有素材先按请求与散列复用。缺项返回 BLOCKED 和非零退出码。
+
+试听、画面审核和发布继续使用 `python -m app.cli narration review-audio / review-video / publish`；审批绑定确切候选及输入散列。历史改造和试听记录见 [生产改造记录](docs/production_upgrade_20260910.md)，该记录描述的旧入口状态以本文最新说明为准。下文旧版按帧流程的操作示例需选择 `legacy-preview`。
+
 把"解说脚本"转成 9:16 竖屏成片的 Python 流水线（KPL/HiThink 生图通道、CosyVoice 配音、
 Ken Burns 运镜、实时字幕、NVENC 合成）。仓库已 git 基线（分支 main），本地生产用。
 
@@ -139,6 +145,27 @@ python -m venv <hv-venv>
 - `test_compose_first_production`：**无旧成片的首产 compose 成功且无 .tmp 残留**
 - `test_shot_builder`：剧本→分镜合法 plan 装配 + 非法 plan 护栏拒绝
 - `test_state_truthfulness`：run_stage 需真实执行、schema 检 dangling、produce verify 导出真状态
+
+## 本地 ASR 与字幕听审
+
+当前 `ancient-realistic` 配置使用 `local-whisper`，TTS 保持 CosyVoice 3.5。
+首次在新机器执行 `powershell -File bin/setup_local_asr.ps1 -Python <Python路径>`；
+模型下载较慢时可显式增加 `-Mirror`，下载内容仍核对原发布版本的 SHA256。
+ASR 使用独立 `.venv-asr` 和 `requirements.asr.lock.txt`，识别期间不联网，
+缺模型、环境版本不符或超时不会回退到云端。正式 TTS 入口先检查本地 ASR 是否可用。
+
+`python -m app.cli narration align-draft <manifest.json> <输出目录>`
+生成字幕草稿、SRT 和 `review.html`。使用
+`python bin/serve_alignment_review.py <草稿所在目录> --port 8767`
+后打开 `http://127.0.0.1:8767/review.html`，支持点击字幕定位试听。
+该服务只监听本机，并仅提供听审页面、音频和 SRT 文件。
+
+口播文本对破折号和省略号做有版本、有位置映射的标点转换；原稿和字幕不变。
+被人工否决的音频按原始与标准化音频 SHA256 登记到 `state/audio_rejections`，
+缓存、已完成的提供商响应、候选渲染和发布都会检查。重新生成仍需要明确预算，
+不会因为音频被否决而自动调用提供商。缓存原音的本地复核生成新 QA 记录，保留旧证据。
+
+默认 alignment 阶段将独立听写和原文约束的声学对齐分开保存：前者检查读音疑点，后者提供完整原文的词边界。超长单元只在实际识别到的匹配词边界切窗，不按字数推算词时间。字幕按声学边界分组，要求原文不丢不重、0.8–4 秒、最多两行且实测描边/阴影在安全区内。机器验证只允许生成待审候选；对齐不能证明音频读对，更不能替代听审、史实和画面审核。旧 align-draft 路径仍保留人工对齐审核要求。
 
 ## 已知边界
 

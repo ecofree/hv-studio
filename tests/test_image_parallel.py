@@ -43,13 +43,11 @@ def _gen_req() -> ImageGenRequest:
 
 
 def _b64_1px() -> str:
-    # 1x1 red PNG
-    return base64.b64encode(
-        bytes.fromhex(
-            "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
-            "0000000d4944415478da63fcffff3f030005fe02fea72b4cc60000000049454e44ae426082"
-        )
-    ).decode()
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (1080,1920), "red").save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode()
 
 
 class _Recorder:
@@ -136,7 +134,8 @@ def test_already_done_job_is_skipped(patch_generator, tmp_path):
         rec.behavior[ch.name] = lambda c: _ok_resp()
     # 预写一个合格文件
     pre = tmp_path / "done.png"
-    pre.write_bytes(b"\x00" * (51 * 1024))
+    from PIL import Image
+    ImageJob("done", _gen_req(), pre).install(base64.b64decode(_b64_1px()))
     jobs = [
         ImageJob("done", _gen_req(), pre),          # 应跳过
         ImageJob("todo", _gen_req(), tmp_path / "todo.png"),

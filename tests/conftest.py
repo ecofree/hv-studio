@@ -19,6 +19,26 @@ ROOT = Path(__file__).resolve().parent.parent
 EPISODES = ROOT / "episodes"
 
 
+@pytest.fixture(autouse=True)
+def no_external_network(monkeypatch):
+    """Offline regressions must never call a billable provider, even on silence."""
+    import socket
+    original = socket.socket.connect
+    def connect(sock, address):
+        # Windows asyncio implements socketpair using one local connect. Permit
+        # only the stdlib function itself, never arbitrary localhost providers.
+        import sys
+        pair = getattr(socket, "_fallback_socketpair", None)
+        if pair is not None and sys._getframe(1).f_code is pair.__code__:
+            return original(sock, address)
+        raise RuntimeError("external network disabled in offline tests")
+    monkeypatch.setattr(socket.socket, "connect", connect)
+    from app.services import cosyvoice
+    def no_key():
+        raise RuntimeError("provider credentials disabled in offline tests")
+    monkeypatch.setattr(cosyvoice, "_dashscope_key", no_key)
+
+
 # D5：真实编解码用例需要本机有 ffmpeg/ffprobe。没装时不该报失败——那不是代码
 # 有问题，是环境缺件。给这些用例打上这个 mark，缺件时 skip 而不是 red。
 def _has_ffmpeg() -> bool:
@@ -130,6 +150,9 @@ def _pin_tts_engine_for_tests(monkeypatch):
     from app.config.config import get_settings
     v = get_settings().get_profile().voice
     monkeypatch.setattr(v, "engine", "cosyvoice")
+    # Adapter regressions use explicit stubs; local model inference belongs to
+    # the separate real-audio probe, never to the ordinary offline suite.
+    monkeypatch.setattr(get_settings().get_profile().asr,"backend","dashscope")
 
 
 @pytest.fixture(autouse=True)
@@ -209,38 +232,7 @@ def make_reuse_source(ep_root: Path, src_ep: str = "hw-002",
     return p
 
 
-@pytest.fixture(autouse=True, scope="session")
-def _clean_test_episode_residue():
-    """会话结束清扫测试自建 episode 残留（防中断跑次永久残留）。
-
-    ⚠️ 这只是**兜底**。正规路径是测试用 tmp_episodes fixture 根本不写真实
-    episodes/；本清扫只为「进程被杀 → teardown 没跑」这种残留兜底，
-    所以它带三重闸：① 只认 {ns}- 带连字符的测试名 ② 交付集一律跳过
-    ③ 逐个文件 unlink，绝不用 rmtree 通配。
-    """
-    yield
-    _namespaces = TEST_NS
-    for jf in EPISODES.glob("*.json"):
-        stem = jf.stem
-        if not any(stem.startswith(f"{ns}-") for ns in _namespaces):
-            continue
-        if is_delivery_episode(stem):
-            print(f"\n[测试基建] 跳过 {stem}：判定为交付集，任何清扫都不得触碰")
-            continue
-        try:
-            jf.unlink()
-        except Exception:
-            pass
-    for d in EPISODES.iterdir():
-        if not d.is_dir():
-            continue
-        if not any(d.name.startswith(f"{ns}-") for ns in _namespaces):
-            continue
-        if is_delivery_episode(d.name):
-            print(f"\n[测试基建] 跳过目录 {d.name}：判定为交付集")
-            continue
-        import shutil
-        shutil.rmtree(d, ignore_errors=True)
+# Tests own only their pytest temporary directories. Never sweep historical episodes.
 
 
 @pytest.fixture

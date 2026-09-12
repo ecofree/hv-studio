@@ -66,6 +66,9 @@ def stage_script(ep: Episode, md: str | None = None,
     md = _load_script_md(ep) if md is None else md
     if not md.strip():
         raise RuntimeError(f"episode {ep.id} 无脚本内容（script_path 为空或不存在）")
+    from app.services.script_document import parse_document
+    from app.services.provenance import atomic_json
+    atomic_json(_episode_dir(ep.id)/"script_document.v2.json", parse_document(md))
     # 优先 rebuild_frames（保留既有音频/shots 资产），否则 split_script
     if ep.frames and ep.shots:
         rebuild_frames(ep, md, merge_short=merge_short)
@@ -76,7 +79,7 @@ def stage_script(ep: Episode, md: str | None = None,
     print(f"  [orchestrator] script: frames={len(ep.frames)}")
 
 
-def stage_tts(ep: Episode, fallback: bool = True,
+def stage_tts(ep: Episode, fallback: bool = False,
               granularity: str = "paragraph",
               group_chars: int | None = None,
               workers: int | None = None) -> None:
@@ -277,7 +280,7 @@ def _compose_prompt(en: str, suffix: str, neg: str) -> str:
 
 
 def build_image_jobs(ep_id: str, prescreen: bool = True,
-                     only: set[str] | None = None) -> list["ImageJob"]:
+                     only: set[str] | None = None, strict: bool = False) -> list["ImageJob"]:
     """从 image_prompts.json 构建生图任务（prompt 单源）。
 
     only：只构建这些 key（用于单镜重建 reshot）。None = 全部。
@@ -294,7 +297,7 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
     被幂等机制永久跳过，事后极难发现。被拦的键会明确打印，不会静默消失。
     """
     from app.config.config import get_settings
-    from app.models import ImageGenRequest
+    from app.models import ImageGenRequest, ImageEditRequest
     from app.services.image import ImageJob
 
     spec = _read_image_prompts(ep_id)
@@ -355,13 +358,30 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
                 warned.append((key, f"成品超长已截断 {len(prompt)}"
                                     f"→{PROMPT_MAX_CHARS}"))
                 prompt = prompt[:PROMPT_MAX_CHARS]
+        request = ImageGenRequest(model=model, prompt=prompt, size=size, quality=quality, n=1)
+        references = ()
+        reference = entry.get('reference_path') if isinstance(entry, dict) else None
+        if isinstance(entry, dict) and entry.get('reference_paths'):
+            if len(entry['reference_paths']) != 1:
+                raise ValueError('this image channel supports one explicit character reference per job')
+            reference = entry['reference_paths'][0]
+        if reference:
+            import base64
+            from PIL import Image
+            path = Path(reference)
+            if not path.is_absolute(): path = _episode_dir(ep_id)/path
+            with Image.open(path) as im:
+                if min(im.size) < 64: raise ValueError('character reference is too small')
+                im.verify()
+            # Encoded bytes stay inside the provider request; never log them.
+            request = ImageEditRequest(model=model, prompt=prompt, size=size, quality=quality, n=1,
+                                       image=base64.b64encode(path.read_bytes()).decode('ascii'))
+            references = (str(path.resolve()),)
         jobs.append(ImageJob(
             id=key,
-            req=ImageGenRequest(
-                model=model, prompt=prompt,
-                size=size, quality=quality, n=1,
-            ),
+            req=request,
             out_path=shots_d / f"{key}.png",
+            reference_paths=references,
         ))
 
     if prescreen and (blocked or warned):
@@ -375,8 +395,8 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
             print(f"      … 另有 {len(blocked)-20} 条被拦截")
         # 默认只拦不炸（老集可能有历史短 prompt，不该一夜之间全跑不起来）；
         # 需要「预筛即门禁」时用 HV_PROMPT_PRESCREEN_STRICT=1。
-        if blocked and env_get("HV_PROMPT_PRESCREEN_STRICT") in (
-                "1", "true", "yes"):
+        if blocked and (strict or env_get("HV_PROMPT_PRESCREEN_STRICT") in (
+                "1", "true", "yes")):
             raise RuntimeError(
                 f"episode {ep_id} 有 {len(blocked)} 条 prompt 未通过预筛，"
                 f"已按 HV_PROMPT_PRESCREEN_STRICT 拒绝生图: {blocked[:10]}")
@@ -404,7 +424,7 @@ def stage_images(ep: Episode) -> None:
     print(f"  [orchestrator] image: {len(jobs)} 张全部就绪")
 
 
-def stage_assets(ep: Episode, tts_fallback: bool = True,
+def stage_assets(ep: Episode, tts_fallback: bool = False,
                  tts_granularity: str = "paragraph",
                  tts_group_chars: int | None = None,
                  tts_workers: int | None = None) -> None:
@@ -483,6 +503,9 @@ def stage_verify(ep: Episode) -> dict:
     if not final.exists():
         raise RuntimeError(f"episode {ep.id} 无成片 {final}（未合成或已删）")
 
+    from app.services.media_integrity import verify_media
+    integrity = verify_media(final)
+
     # 用 count_packets（容器层数包，不解码）而非 count_frames（整片解码）：
     # H.264 每包≈每帧，20min 长片用 count_frames 会整片解码数百MB，
     # 在低 pagefile 机器上被 SIGTERM/超时，verify 误判损坏。count_packets 秒回。
@@ -516,64 +539,36 @@ def stage_verify(ep: Episode) -> dict:
 
 
 def reshot(ep_id: str, keys: list[str], do_verify: bool = True) -> dict:
-    """重建指定底图 → 重新装配 shots → 重新合成（单镜重建）。
-
-    替代旧 `hv episode run X --only shot-001`（managers/pipeline，C3 已删）。
-
-    旧实现靠人脸相似度锚定（face.py / character_lock.py）保证换图后角色一致，
-    那套能力随 C3 一并删除。现在「指定重建哪一张」用最直接的手段：**删掉旧图**。
-    生图的幂等是按「shots/{KEY}.png 已存在且 >50KB」跳过，所以删文件本身就是
-    最小可用的选择机制，不必再引入一套并行的 key 过滤语义。
-    upscale 的 @2x 缓存按源图 mtime 失效，删图重生成后会自动重做，无需手工清。
-
-    步骤：删图 → 只生这几个 key → 按 scene_plan 重新装配 → 合成 →（可选）verify。
-    """
-    from app.managers import load, save
+    """Generate scoped image candidates; preserve published media and manual shot edits."""
+    import uuid
+    from app.managers import load
     from app.services.image import generate_many
-    from app.services.shot_builder import build_episode_shots
-
-    keys = [k.strip() for k in keys if k and k.strip()]
-    if not keys:
-        raise RuntimeError("reshot 需要至少一个 --key（底图 key，如 LGT01）")
-
-    ep = load(ep_id)
-    spec = _read_image_prompts(ep_id)
-    unknown = [k for k in keys if k not in spec]
-    if unknown:
-        raise RuntimeError(
-            f"episode {ep_id} image_prompts.json 中没有 {unknown}；"
-            f"可用 key 共 {len(spec)} 个")
-
-    shots_d = _episode_dir(ep_id) / "shots"
-    removed = []
-    for k in keys:
-        p = shots_d / f"{k}.png"
-        if p.exists():
-            p.unlink()
-            removed.append(k)
-    print(f"  [orchestrator] reshot: 已删除 {len(removed)}/{len(keys)} 张旧图 "
-          f"（{removed}），准备重新生成")
-
-    jobs = build_image_jobs(ep_id, only=set(keys))
-    if not jobs:
-        raise RuntimeError(f"episode {ep_id} 没有可重建的生图任务（key={keys}）")
-    res = generate_many(jobs)
-    failed = [k for k, v in res.items() if not k.endswith("__error") and v is None]
-    if failed:
-        raise RuntimeError(f"episode {ep_id} 重建生图失败: {failed}")
-
-    # 重新装配（scene_plan 驱动；帧指纹会校验 frames 未变）
-    ep2, _st = build_episode_shots(ep_id, persist=True, preview_rows=0)
-    print(f"  [orchestrator] reshot: 重新装配 {len(ep2.shots)} 镜")
-
-    stage_compose(ep2)      # 内部会按真实音频重载并回同步 ep2
-    out = {"ep_id": ep_id, "reshot_keys": keys, "removed": removed,
-           "shots": len(ep2.shots), "final_mp4": None}
-    if do_verify:
-        out["verify"] = stage_verify(ep2)
-    out["final_mp4"] = str(_out_dir(ep_id) / f"{ep_id}_m1.mp4")
-    save(ep2)
-    return out
+    from app.services.provenance import atomic_json, file_sha256
+    keys = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
+    if not keys: raise ValueError("reshot requires image keys")
+    with _episode_lock(ep_id):
+        ep = load(ep_id)
+        jobs = build_image_jobs(ep_id, only=set(keys))
+        if {j.id for j in jobs} != set(keys):
+            raise ValueError("requested images were blocked or missing; no generation performed")
+        candidate = _episode_dir(ep_id)/"candidates"/uuid.uuid4().hex
+        candidate.mkdir(parents=True)
+        before = ep.model_dump(mode="json")
+        old_paths={j.id:str(j.out_path).replace("\\","/") for j in jobs}
+        for job in jobs: job.out_path=candidate/(job.id+".png")
+        result=generate_many(jobs)
+        if any(not j.is_done() for j in jobs):
+            raise RuntimeError(f"candidate generation failed; previous revision preserved: {candidate}")
+        for shot in ep.shots.values():
+            for job in jobs:
+                if shot.image_path and Path(shot.image_path).resolve()==Path(old_paths[job.id]).resolve():
+                    shot.image_path=str(job.out_path.resolve()).replace("\\","/")
+                    shot.upscaled_path=None
+        atomic_json(candidate/"episode.json",ep.model_dump(mode="json"))
+        atomic_json(candidate/"source_revision.json",before)
+        atomic_json(candidate/"images.json",[{"key":j.id,"path":str(j.out_path),"sha256":file_sha256(j.out_path)} for j in jobs])
+        return {"ep_id":ep_id,"status":"CANDIDATE_READY","reshot_keys":keys,"removed":[],
+                "candidate_episode":str(candidate/"episode.json"),"content_review":"pending", "approved":False}
 
 
 def _load_script_md(ep: Episode) -> str:
@@ -643,69 +638,8 @@ def _check_disk_space(ep_dir, need_mb: int = 2500):
 
 
 def _episode_lock(ep_id: str):
-    """episode 级生产锁：防双进程同跑一集互相覆盖（P0-3，2026-09-08 审计）。
-
-    规则：锁存在且 PID 存活 → 拒绝；PID 已死 → 陈旧锁接管。
-    ⚠️ Windows 特化（2026-09-09 二轮）：os.kill(pid, 0) 对**存在但无权限**的
-    进程会抛 PermissionError（OSError 子类）—— 不能一律判「已死」，否则锁
-    形同虚设。无 psutil 时用 OpenProcess 探测；探测失败保守视为存活。
-    """
-    import os
-    from pathlib import Path as _P
-
-    lock = _P(_episode_dir(ep_id)) / ".produce.lock"
-    lock.parent.mkdir(parents=True, exist_ok=True)
-
-    def _pid_alive(pid: int) -> bool:
-        try:
-            import psutil
-            return psutil.pid_exists(pid)
-        except Exception:  # noqa: BLE001
-            pass
-        if os.name == "nt":
-            try:
-                import ctypes
-                h = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
-                if h:
-                    ctypes.windll.kernel32.CloseHandle(h)
-                    return True
-                return False
-            except Exception:  # noqa: BLE001
-                return True          # 探测失败 → 保守视为存活
-        try:
-            os.kill(pid, 0)
-            return True
-        except PermissionError:
-            return True              # 存在但无权限 → 存活
-        except OSError:
-            return False
-
-    if lock.exists():
-        try:
-            old_pid = int(lock.read_text(encoding="utf-8").strip() or 0)
-        except Exception:  # noqa: BLE001
-            old_pid = 0
-        if old_pid and old_pid != os.getpid() and _pid_alive(old_pid):
-            raise RuntimeError(
-                f"[produce] 集 {ep_id} 正在被另一个进程生产（PID {old_pid}，"
-                f"锁 {lock}）。确认该进程已死后删除锁文件再跑。")
-        if old_pid:
-            print(f"  [produce] 发现陈旧锁（PID {old_pid} 已不存在），接管")
-
-    lock.write_text(str(os.getpid()), encoding="utf-8")
-
-    class _Lock:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            try:
-                lock.unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001
-                pass
-            return False
-
-    return _Lock()
+    from app.services.process_lock import file_lock
+    return file_lock(_episode_dir(ep_id)/".produce.lock")
 
 
 def _with_episode_lock(fn):
@@ -721,11 +655,11 @@ def _with_episode_lock(fn):
 
 
 @_with_episode_lock
-def produce(
+def produce_legacy(
     ep_id: str,
     stages: list[str] | None = None,
     script_md: str | None = None,
-    tts_fallback: bool = True,
+    tts_fallback: bool = False,
     merge_short: bool = False,
     tts_granularity: str = "paragraph",
     tts_group_chars: int | None = None,
@@ -852,10 +786,21 @@ def produce(
     elif has_frames and not has_shots:
         ep.status = EpisodeStatus.SCRIPTED
     elif has_mp4 and not has_frames:
-        ep.status = EpisodeStatus.COMPOSED
+        ep.status = EpisodeStatus.FAILED
     else:
         ep.status = EpisodeStatus.DRAFT
     save(ep)
 
-    return {"ep_id": ep_id, "status": ep.status.name, "stages_done": done,
+    return {"ep_id": ep_id, "status": ep.status.name, "run_ok":ep.status != EpisodeStatus.FAILED,
+            "requested_stages":stages, "pipeline_version":"legacy_preview_v1", "production_ready":False, "approved":False, "content_review":"pending", "stages_done": done,
             "verify": verify, "final_mp4": str(final) if has_mp4 else None}
+
+
+def produce(ep_id, stages=None, script_md=None, *, pipeline="v2", **options):
+    """Shared production dispatch. Historical frame rendering requires explicit opt-in."""
+    if pipeline == "legacy-preview":
+        return produce_legacy(ep_id, stages=stages, script_md=script_md, **options)
+    if pipeline != "v2":
+        raise ValueError("pipeline must be v2 or legacy-preview")
+    from app.services.episode_production import run
+    return run(ep_id, stages=stages, script_md=script_md, **options)

@@ -8,6 +8,8 @@
 pydantic>=2.6
 pydantic-settings>=2.2
 PyYAML>=6.0
+psutil==7.2.2
+pypinyin==0.55.0
 python-multipart>=0.0.9
 
 # ---- HTTP / 图像中转（subrouter.ai，OpenAI 兼容） ----
@@ -19,7 +21,7 @@ pillow>=10
 numpy>=1.26
 
 # ---- TTS：DashScope CosyVoice 云端 ----
-dashscope>=1.20
+dashscope==1.27.3
 # 降级回退：edge-tts（微软在线 TTS）
 edge-tts>=6.1
 

@@ -1,23 +1,11 @@
-# -*- coding: utf-8 -*-
-"""TTS 出片前的发音回检（ASR 听写 vs 原文）。
-
-为什么要这个（2026-09-08 出片实测）：
-  CosyVoice 的 `instruction`（自然语言风格指令）能大幅提升表现力
-  （响度动态 std 从 5.65 提到 22.17），但**有个可复现的副作用**：
-  当「段落首句 + 生僻专名 + 指令」三者同时成立时，模型会在进入角色时
-  把首句念糊 —— 实测「尉迟恭在后院」→「尉迟恭**为**后院」、
-  「李世民站在案几前」→「李世**宁**站在**案机**前。**接着**跳动的蜡烛」。
-  （前面有句子时不触发，普通句段首也不触发 → 是段首效应。）
-
-  同一个文本**重复合结果完全一致**，所以这不是随机噪声，能被稳定检出。
-
-判定：去掉标点后算字符错误率 CER。实测标定：
-    好（无指令）3.3%   坏（有指令糊了）8.2%   → 阈值 6% 干净分开。
-⚠️ 绝不能因为回检失败就让出片失败 —— 校验失败只降级重合成，再失败就告警接受。
-"""
+"""ASR is a transcript check, never a listening-quality approval."""
 from __future__ import annotations
 
 import difflib
+import os
+import uuid
+from dataclasses import dataclass, asdict, field
+from app.services.provenance import file_sha256, fingerprint
 import re
 import tempfile
 import wave
@@ -78,34 +66,96 @@ def _to_16k_wav(data: np.ndarray, sr: int) -> Path:
     return p
 
 
-def transcribe(wav: Path) -> str | None:
-    """听写一段 wav。失败返回 None（调用方必须容忍）。"""
+class ASRServiceError(RuntimeError):
+    def __init__(self, status, request_id, code):
+        self.request_id=request_id
+        super().__init__(f"ASR status={status} request_id={request_id} code={code}")
+
+
+class Transcript(str):
+    request_id: str | None = None
+
+
+def transcribe(wav: Path) -> str:
+    """Recognize a derived 16k WAV; preserve errors and always remove the copy."""
+    from app.config.config import get_settings
+    backend=get_settings().get_profile().asr.backend
+    if backend == "local-whisper":
+        from app.services.local_asr import recognize
+        result,path=recognize(wav)
+        transcript=Transcript(result['text'])
+        transcript.request_id=result['request_id']
+        transcript.checker_version=result['checker_version']
+        transcript.recognition_path=str(path.resolve())
+        return transcript
+    if backend != "dashscope":
+        raise ValueError('unknown ASR backend: '+backend)
+    from app.services import tts_group as G
+    from app.services.cosyvoice import _dashscope_key
+    import dashscope
+    from dashscope.audio.asr import Recognition, RecognitionCallback
+    data, sr = G.read_wav(wav)
+    if len(data) < sr // 2:
+        raise ValueError("audio_too_short")
+    derived = _to_16k_wav(data, sr)
     try:
-        from app.services import tts_group as G
-        data, sr = G.read_wav(wav)
-        if len(data) < sr // 2:          # 短于 0.5s 不值得听
-            return None
-        from app.services.cosyvoice import _dashscope_key
-        import dashscope
-        from dashscope.audio.asr import Recognition, RecognitionCallback
-
-        class _CB(RecognitionCallback):
-            def on_open(self): pass
-            def on_close(self): pass
-            def on_event(self, r): pass
-            def on_complete(self): pass
-            def on_error(self, r): pass
-
         dashscope.api_key = _dashscope_key()
-        r = Recognition(model=_ASR_MODEL, callback=_CB(),
-                        format="wav", sample_rate=16000)
-        res = r.call(file=str(_to_16k_wav(data, sr)))
+        res = Recognition(model=_ASR_MODEL, callback=RecognitionCallback(),
+                          format="wav", sample_rate=16000).call(file=str(derived))
         if res.status_code != 200:
-            return None
-        return "".join(s.get("text", "")
-                       for s in ((res.output or {}).get("sentence") or []))
-    except Exception:  # noqa: BLE001
-        return None
+            raise ASRServiceError(res.status_code,getattr(res,"request_id",None),getattr(res,"code",None))
+        text = "".join(s.get("text", "") for s in ((res.output or {}).get("sentence") or []))
+        if not text.strip():
+            raise ValueError("empty_transcript")
+        transcript=Transcript(text)
+        transcript.request_id=getattr(res,"request_id",None)
+        return transcript
+    finally:
+        derived.unlink(missing_ok=True)
+
+
+def normalize_numbers(text: str) -> str:
+    """Canonicalize explicit numbers, retaining magnitudes and decimal points."""
+    from decimal import Decimal
+    text = (text or '').translate(str.maketrans('萬億兩陸貳參壹伍捌玖柒肆拾佰仟', '万亿两陆二三一五八九七四十百千'))
+    digits = dict(zip("零〇一二两三四五六七八九", [0,0,1,2,2,3,4,5,6,7,8,9]))
+    units = {"十":10,"百":100,"千":1000,"万":10000,"亿":100000000}
+    def integer(t):
+        if t.isascii() and t.isdigit(): return int(t)
+        if not any(c in units for c in t):
+            return int("".join(str(digits.get(c,c)) for c in t))
+        total=section=number=0
+        for c in t:
+            if c in digits or c.isdigit(): number=number*10+int(digits.get(c,c))
+            elif units[c] < 10000:
+                section+=(number or 1)*units[c]; number=0
+            else:
+                section+=number; number=0
+                if c == "亿": total=(total+section)*units[c]; section=0
+                else: total+=section*units[c]; section=0
+        return total+section+number
+    def conv(m):
+        t=m.group()
+        try:
+            if re.fullmatch(r"[0-9.]+[万亿]?",t):
+                factor=units.get(t[-1],1)
+                return format((Decimal(t[:-1] if factor!=1 else t)*factor).normalize(),'f') if '.' in t else str(int(t[:-1] if factor!=1 else t)*factor)
+            parts=re.split('[点.]',t)
+            return str(integer(parts[0])) + ('.'+''.join(str(digits.get(c,c)) for c in parts[1]) if len(parts)>1 else '')
+        except (ValueError, KeyError): return t
+    return re.sub(r"[0-9零〇一二两三四五六七八九十百千万亿]+(?:[点.][0-9零〇一二两三四五六七八九]+)?[万亿]?", conv, text or "")
+
+
+def phonetic_equivalent(reference, hypothesis):
+    """Exact full-utterance syllable+tone equality only; no threshold approval.
+
+    Arabic numerals remain canonical number tokens. This deliberately leaves
+    ambiguous number pronunciations for listening review.
+    """
+    from pypinyin import lazy_pinyin, Style
+    def key(text):
+        return lazy_pinyin(_PUNCT.sub('', text), style=Style.TONE3, neutral_tone_with_five=True)
+    return bool(reference.strip()) and key(reference) == key(hypothesis)
 
 
 def cer(ref: str, hyp: str) -> float:
@@ -135,7 +185,7 @@ def _pinyin(text: str) -> list[str]:
     数字词先剥掉：它们的读音在 ref/hyp 里表达形式不同（十一月 vs 11月），
     留着会制造大量假阳性（实测把「武德七年十一月」判成 4.7% 的错）。
     """
-    clean = _NUM_TOKEN.sub("", _PUNCT.sub("", text or ""))
+    clean = _PUNCT.sub("", normalize_numbers(text))
     try:
         from pypinyin import lazy_pinyin, Style
         return lazy_pinyin(clean, style=Style.TONE)
@@ -189,23 +239,68 @@ def suspicious(hyp: str) -> bool:
     return has_latin(hyp)
 
 
-def check(wav: Path, expected: str) -> tuple[bool, str]:
-    """回检一段音频。返回 (是否合格, 说明)。
+@dataclass
+class QualityResult:
+    status: str
+    audio_sha256: str
+    expected_sha256: str
+    checker_version: str = "asr-content-v2"
+    request_id: str | None = None
+    findings: list = field(default_factory=list)
+    error: str | None = None
+    transcript: str | None = None
+    note: str = ""
+    recognition_path: str | None = None
 
-    回检自身失败（ASR 挂了/没网）时返回 True —— 校验不能阻断出片。
-    """
-    if not enabled():
-        return True, "回检已关闭"
-    hyp = transcribe(wav)
-    if hyp is None:
-        return True, "ASR 不可用，跳过回检"
-    c = cer(expected, hyp)
-    p = per(expected, hyp)
-    if has_latin(hyp):
-        return False, f"听写出现英文串（PER {p:.1%}）：{hyp[:60]}"
-    # 判据用 PER（读音），不用 CER（字符）—— CER 会把 ASR 的同音字选字
-    # 误判成 TTS 读错，导致大量不必要的降级重合成（实测 14 组里多数是冤枉的）。
-    if p > max_per():
-        return False, (f"PER {p:.1%} > {max_per():.1%}"
-                       f"（CER {c:.1%}）：{hyp[:60]}")
-    return True, f"PER {p:.1%}（CER {c:.1%}）"
+    def __iter__(self):
+        # Compatibility for old callers, with fail-closed semantics.
+        yield self.status == "passed"
+        yield self.note or self.error or self.status
+
+    def to_dict(self): return asdict(self)
+
+    def valid_for(self, wav, expected):
+        return self.audio_sha256 == file_sha256(wav) and self.expected_sha256 == fingerprint(expected)
+
+
+def check(wav: Path, expected: str, entities=(), *, prepared_transcript=None) -> QualityResult:
+    result = QualityResult("unavailable", "", fingerprint(expected))
+    try:
+        result.audio_sha256 = file_sha256(wav)
+        if not enabled():
+            result.status = "disabled"
+            return result
+        hyp = transcribe(wav) if prepared_transcript is None else prepared_transcript
+        if not hyp:
+            raise RuntimeError("empty_or_unavailable_transcript")
+        result.transcript = hyp
+        result.request_id = getattr(hyp,"request_id",None)
+        result.checker_version = getattr(hyp,"checker_version",result.checker_version)
+        result.recognition_path = getattr(hyp,"recognition_path",None)
+        refn, hypn = normalize_numbers(expected), normalize_numbers(hyp)
+        if re.findall(r"\d+(?:\.\d+)?",refn) != re.findall(r"\d+(?:\.\d+)?",hypn):
+            result.findings.append({"kind":"number", "expected":refn, "heard":hypn})
+        for entity in entities:
+            if expected.count(entity) != hyp.count(entity):
+                result.findings.append({"kind":"entity", "text":entity, "review_required":True})
+        units = r"(?:\d+(?:\.\d+)?)\s*(公里|千米|厘米|毫米|公斤|毫升|千克|平方公里|秒|分钟|小时|年|月|日|里|米|斤|克|升|岁|人|名|万|亿|%|％)"
+        if re.findall(units,refn) != re.findall(units,hypn):
+            result.findings.append({"kind":"unit"})
+        if set(_LATIN.findall(hyp.lower())) - set(_LATIN.findall(expected.lower())):
+            result.findings.append({"kind":"unexpected_latin", "message":"听写出现意外英文"})
+        sm = difflib.SequenceMatcher(None, _PUNCT.sub('',refn), _PUNCT.sub('',hypn), autojunk=False)
+        for tag,i,j,k,l in sm.get_opcodes():
+            if tag in ("delete", "insert"):
+                result.findings.append({"kind":"omission" if tag=="delete" else "insertion", "reference_range":[i,j], "heard_range":[k,l]})
+        c,p = cer(refn,hypn), per(expected,hyp)
+        if p > max_per(): result.findings.append({"kind":"pronunciation", "per":p})
+        if phonetic_equivalent(expected, hyp):
+            # A homophone in independent ASR is not a numeric omission by TTS.
+            # This remains machine transcript QA, never a listening approval.
+            result.findings = [f for f in result.findings if f['kind'] == 'entity']
+        result.status = "failed" if result.findings else "passed"
+        result.note = f"PER {p:.1%} (CER {c:.1%}); " + ', '.join(f.get('message',f['kind']) for f in result.findings)
+    except Exception as exc:
+        result.error = f"{type(exc).__name__}: {exc}"
+        result.request_id = getattr(exc,"request_id",None)
+    return result

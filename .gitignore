@@ -9,6 +9,8 @@
 __pycache__/
 *.py[cod]
 .venv/
+.venv-asr/
+.venv-core/
 venv/
 *.egg-info/
 
@@ -17,6 +19,7 @@ episodes/*/audio/
 episodes/*/build/
 episodes/*/out/
 episodes/*/shots/
+episodes/*/production/
 episodes/hanwu_15min/*.mp4
 # 但保留 episode 模型 json
 !episodes/*.json

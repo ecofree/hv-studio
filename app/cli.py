@@ -68,13 +68,18 @@ def cmd_episode(args):
         # --no-fallback（B2-3）：cosyvoice 失败不再静默降级 edge。
         # 默认降级是为了「跑得完」，但代价是一部片子里混两种声音且无声无息；
         # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
-        res = produce(args.episode_id, stages=args.stage or None,
-                      tts_fallback=not args.no_fallback,
-                      merge_short=args.merge_short,
-                      tts_granularity=args.tts_granularity,
-                      tts_group_chars=args.tts_group_chars,
-                      tts_workers=args.tts_workers)
+        options = dict(max_requests=args.max_requests, max_characters=args.max_characters,
+                       max_images=args.max_images, timeline=args.timeline, timeout=args.timeout, budget_id=args.budget_id)
+        if args.pipeline == "legacy-preview":
+            options = dict(tts_fallback=args.allow_edge_fallback and not args.no_fallback,
+                           merge_short=args.merge_short, tts_granularity=args.tts_granularity,
+                           tts_group_chars=args.tts_group_chars, tts_workers=args.tts_workers)
+        elif args.allow_edge_fallback:
+            raise SystemExit("v2 production never changes the voice engine")
+        res = produce(args.episode_id, stages=args.stage or None, pipeline=args.pipeline, **options)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
+        if res.get("run_ok") is False or res.get("status") in ("FAILED","BLOCKED"):
+            raise SystemExit(1)
     elif args.action == "audit-wav":
         # 孤儿 wav 清理（opt-in）：默认只列，--apply 才删。
         # --all 扫全部集（此时 episode_id 参数忽略）。
@@ -169,9 +174,12 @@ def cmd_batch(args):
     eps = load_episodes(_P(args.file))
     if not eps:
         raise SystemExit(f"error: {args.file} 里没读到集 id")
-    run_batch(eps, batch_id=args.batch_id, stop_on_error=args.stop_on_error,
+    result = run_batch(eps, batch_id=args.batch_id, stop_on_error=args.stop_on_error,
               resume=args.resume,
-              stages=args.stage.split(",") if args.stage else None)
+              stages=args.stage.split(",") if args.stage else None,
+              production_options=dict(max_requests=args.max_requests, max_characters=args.max_characters,
+                                      max_images=args.max_images))
+    if result["failed"]: raise SystemExit(1)
 
 
 def cmd_smoke(args):
@@ -416,6 +424,14 @@ def main():
     p.add_argument("--no-fallback", action="store_true",
                    help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
                         "音色；交付集建议加）")
+    p.add_argument("--pipeline", choices=["v2", "legacy-preview"], default="v2")
+    p.add_argument("--allow-edge-fallback", action="store_true", help="仅旧预览允许显式换人声")
+    p.add_argument("--max-requests", type=int, default=0, help="本轮最多新增 TTS 请求，默认 0")
+    p.add_argument("--max-characters", type=int, default=0)
+    p.add_argument("--max-images", type=int, default=0, help="实际图片调用上限，包含失败、重试，默认 0")
+    p.add_argument("--budget-id", default=None, help="显式新授权的预算标识；续跑复用同一标识")
+    p.add_argument("--timeline", default=None, help="v2 样本时间轴 JSON")
+    p.add_argument("--timeout", type=int, default=300)
     p.add_argument("--plan", default=None,
                    help="[shots] scene_plan.json 路径（默认 episodes/{id}/scene_plan.json）")
     p.add_argument("--dry-run", action="store_true",
@@ -496,6 +512,9 @@ def main():
     p.add_argument("--stage", default=None,
                    help="只跑指定 stage，逗号分隔，如 tts,compose,verify")
     p.set_defaults(func=cmd_batch)
+    p.add_argument("--max-requests", type=int, default=0, help="整批实际 TTS 调用总上限，续跑不重置")
+    p.add_argument("--max-characters", type=int, default=0)
+    p.add_argument("--max-images", type=int, default=0, help="整批实际图片调用总上限，包含失败和重试")
 
     p = sub.add_parser("smoke", help="端到端冒烟（全 mock，零成本）")
     p.add_argument("--keep", action="store_true", help="保留样本便于排查")
@@ -512,6 +531,8 @@ def main():
     p.add_argument("--port", type=int, default=8501)
     p.set_defaults(func=cmd_webui)
 
+    from app.narration_cli import add_cli
+    add_cli(sub)
     args = ap.parse_args()
     args.func(args)
 

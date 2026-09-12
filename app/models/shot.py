@@ -28,6 +28,8 @@ class MotionSpec(BaseModel):
     Ken Burns 运镜参数。所有坐标归一化到 [0, 1]（以输入图为参考）。
     实际像素由 app/services/motion.py 基于 upscale 后尺寸算。
     """
+    geometry_version: str = "legacy_pixel_crop_v1"
+    max_zoom: float = 1.6
     type: str = "drift"                  # drift | pan | push | pull | static
     intensity: float = 0.08              # 推/拉/移的强度
     start_xy: tuple[float, float] | None = None  # (x, y) 起点

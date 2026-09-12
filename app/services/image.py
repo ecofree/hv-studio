@@ -309,6 +309,7 @@ class ImageJob:
     id: str
     req: "ImageGenRequest"
     out_path: str | Path
+    reference_paths: tuple[str, ...] = ()
 
     # worker 内部用
     _channel_idx: int | None = field(default=None, repr=False)
@@ -320,11 +321,69 @@ class ImageJob:
     def out(self) -> Path:
         return Path(self.out_path)
 
+    def request_fingerprint(self):
+        from app.services.provenance import fingerprint, file_sha256
+        return fingerprint({"version": "image-cache-v2", "request": self.req.model_dump(mode="json"),
+                            "references": {str(Path(p).resolve()): file_sha256(p) for p in self.reference_paths}})
+
+    @property
+    def receipt_path(self):
+        return self.out.with_suffix(self.out.suffix + ".request.json")
+
+    def validate_output(self, path):
+        from PIL import Image
+        from app.models.relay import predict_actual_dims
+        with Image.open(path) as im:
+            im.verify()
+        with Image.open(path) as im:
+            im.load()
+            actual = im.size
+        requested = tuple(map(int, self.req.size.split("x")))
+        expected = predict_actual_dims(self.req.size)
+        # The configured relay may return its documented area-capped dimensions.
+        if not any(all(abs(a / b - 1) <= .03 for a, b in zip(actual, dims))
+                   for dims in (requested, expected)):
+            raise ValueError(f"Image dimensions {actual} do not match request {self.req.size}")
+        return actual
+
+    def install(self, raw, request_fingerprint=None):
+        import shutil
+        import uuid
+        from app.services.provenance import file_sha256, atomic_json
+        from app.services.process_lock import file_lock
+        expected = request_fingerprint or self.request_fingerprint()
+        target = self.out.parent / ".candidates" / (self.out.stem + "-" + uuid.uuid4().hex)
+        target.mkdir(parents=True)
+        candidate = target / self.out.name
+        with candidate.open("wb") as stream:
+            stream.write(raw); stream.flush(); os.fsync(stream.fileno())
+        dims = self.validate_output(candidate)
+        with file_lock(self.out.with_suffix(self.out.suffix + ".lock")):
+            if self.request_fingerprint() != expected:
+                raise ValueError("Image request changed during generation")
+            receipt = {"request_fingerprint": expected,
+                       "output_sha256": file_sha256(candidate), "dimensions": list(dims),
+                       "candidate_path": str(candidate.resolve())}
+            if self.out.exists():
+                shutil.copy2(self.out, target / ("previous" + self.out.suffix))
+            if self.receipt_path.exists():
+                shutil.copy2(self.receipt_path, target / "previous.request.json")
+            pending = target / ("install" + self.out.suffix)
+            shutil.copy2(candidate, pending)
+            os.replace(pending, self.out)
+            atomic_json(self.receipt_path, receipt)
+
     def is_done(self, min_bytes: int = 50 * 1024) -> bool:
-        """out_path 已存在且 > min_bytes → 幂等跳过。"""
+        """Reuse only a decoded output bound to this complete request and its bytes."""
+        import json
+        from app.services.provenance import file_sha256
         try:
-            return self.out.exists() and self.out.stat().st_size > min_bytes
-        except OSError:
+            receipt = json.loads(self.receipt_path.read_text(encoding="utf-8"))
+            if receipt.get("request_fingerprint") != self.request_fingerprint(): return False
+            if receipt.get("output_sha256") != file_sha256(self.out): return False
+            self.validate_output(self.out)
+            return True
+        except (OSError, ValueError, SyntaxError, KeyError, TypeError):
             return False
 
 
@@ -335,6 +394,7 @@ def _generate_many_worker(
     channels: list[Channel],
     force: bool,
     prog: "_Progress | None" = None,
+    budget=None,
 ) -> None:
     """单 worker：领一个固定渠道，串行消化队列任务。
 
@@ -352,7 +412,17 @@ def _generate_many_worker(
         except Empty:
             return
         ok = False
+        lease = None
         try:
+            from app.services.process_lock import file_lock
+            candidate_lease = file_lock(job.out.with_suffix(job.out.suffix + ".generation.lock"))
+            try:
+                candidate_lease.__enter__()
+                lease = candidate_lease
+            except RuntimeError as exc:
+                result[job.id] = None
+                result[f"{job.id}__error"] = str(exc)
+                continue
             # 幂等：已存在合格文件直接跳过（不占渠道）
             if not force and job.is_done():
                 result[job.id] = str(job.out)
@@ -369,10 +439,17 @@ def _generate_many_worker(
                 attempt = 0
                 while True:
                     attempt += 1
-                    job._attempts += 1
                     try:
                         _throttle()
-                        resp = gen.generate(job.req, channel=ch)
+                        request_fp = job.request_fingerprint()
+                        reservation = budget.reserve('image', request_fp) if budget else None
+                        job._attempts += 1
+                        try:
+                            resp = gen.edit(job.req, channel=ch) if isinstance(job.req, ImageEditRequest) else gen.generate(job.req, channel=ch)
+                        except BaseException:
+                            if reservation: budget.finish(reservation, False)
+                            raise
+                        if reservation: budget.finish(reservation, True)
                         # 取首个 base64 / url
                         item = resp.data[0] if resp.data else None
                         if item is None:
@@ -386,10 +463,9 @@ def _generate_many_worker(
                             raw = _download(item.url, ch.name)
                         if not raw:
                             raise ImageError(f"[{ch.name}] 无图像数据")
-                        job.out.parent.mkdir(parents=True, exist_ok=True)
-                        job.out.write_bytes(raw)
-                        result[job.id] = str(job.out)
                         record_cost(job=job, channel=ch.name, n_bytes=len(raw))
+                        job.install(raw, request_fp)
+                        result[job.id] = str(job.out)
                         ok = True
                         break
                     except Exception as e:
@@ -405,12 +481,14 @@ def _generate_many_worker(
                             time.sleep(_backoff(attempt))
                             continue
                         break  # 换下一路
-                if ok:
+                from app.services.provider_budget import BudgetExceeded
+                if ok or (job._last_err and 'BudgetExceeded' in job._last_err):
                     break
             if not ok:
                 result[job.id] = None
                 result[f"{job.id}__error"] = job._last_err or "未知错误"
         finally:
+            if lease is not None: lease.__exit__(None, None, None)
             if prog is not None:
                 prog.tick(ok=bool(result.get(job.id)))
             jobq.task_done()
@@ -488,6 +566,7 @@ def generate_many(
     force: bool = False,
     workers: int | None = None,
     progress: bool = True,
+    budget=None,
 ) -> dict:
     """多任务并行生图（三路 worker）。返回 {job.id: 落盘路径 或 None}。
 
@@ -502,6 +581,10 @@ def generate_many(
     """
     if not jobs:
         return {}
+    if len({j.id for j in jobs}) != len(jobs) or len({str(j.out.resolve()).casefold() for j in jobs}) != len(jobs):
+        raise ValueError("duplicate image job IDs or output paths")
+    if not force and all(j.is_done() for j in jobs):
+        return {j.id: str(j.out) for j in jobs}
     gen = get_image()
     channels: list[Channel] = gen.relay.all()
     if not channels:
@@ -522,7 +605,7 @@ def generate_many(
     threads = [
         threading.Thread(
             target=_generate_many_worker,
-            args=(gen, jobq, result, channels, force, prog),
+            args=(gen, jobq, result, channels, force, prog, budget),
             daemon=True,
         )
         for _ in range(n_worker)

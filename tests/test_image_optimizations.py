@@ -108,8 +108,11 @@ class _FakeGen:
 
 
 def _ok_item(n: int = 60000):
-    return types.SimpleNamespace(
-        b64_json=base64.b64encode(b"x" * n).decode(), url=None)
+    import io
+    from PIL import Image
+    buf = io.BytesIO()
+    Image.new("RGB", (1080,1920), "red").save(buf, format="PNG")
+    return types.SimpleNamespace(b64_json=base64.b64encode(buf.getvalue()).decode(), url=None)
 
 
 def _channels(*names):
@@ -131,7 +134,7 @@ def _run_worker(monkeypatch, channels, script, jobs, force=False):
 def _job(tmp_path, key="LGT01"):
     return m.ImageJob(
         id=key,
-        req=types.SimpleNamespace(model="gpt-image-2", size="1080x1920",
+        req=__import__("app.models", fromlist=["ImageGenRequest"]).ImageGenRequest(model="gpt-image-2", size="1080x1920",
                                   quality="low", n=1, prompt="p"),
         out_path=tmp_path / f"{key}.png",
     )
@@ -235,8 +238,10 @@ def test_all_channels_fail_records_error(monkeypatch, tmp_path):
 def test_idempotent_skip_does_not_call_channel(tmp_path):
     """已存在 >50KB → 跳过且不占渠道（这条老行为不能被重试改动破坏）。"""
     out = tmp_path / "LGT01.png"
-    out.write_bytes(b"x" * (60 * 1024))
-    job = m.ImageJob(id="LGT01", req=types.SimpleNamespace(), out_path=out)
+    from PIL import Image
+    Image.new("RGB",(300,500)).save(out)
+    job = m.ImageJob(id="LGT01", req=__import__("app.models", fromlist=["ImageGenRequest"]).ImageGenRequest(model="gpt-image-2", prompt="test"), out_path=out)
+    job.install(base64.b64decode(_ok_item().b64_json))
     gen = _FakeGen([_ok_item()])
     q = Queue()
     q.put(job)

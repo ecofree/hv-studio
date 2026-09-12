@@ -14,6 +14,8 @@ M2：RealESRGAN_x2plus（tile=512，6GB 显存上限）
 接口保持 upscale(src, dst) -> dst，便于 M1→M2 无缝切换。
 """
 from __future__ import annotations
+from app.services.provenance import file_sha256, atomic_json
+import json
 
 import os
 
@@ -84,14 +86,13 @@ def upscale(src: str | Path, dst: str | Path | None = None) -> Path:
                     if _d.size == (sw * 2, sh * 2):
                         dst_mt = dst_p.stat().st_mtime_ns
                         src_mt = src_p.stat().st_mtime_ns
-                        if dst_mt >= src_mt:
-                            return dst_p
+                        identity=dst_p.with_suffix(dst_p.suffix+".source.json")
+                        if identity.exists():
+                            record=json.loads(identity.read_text(encoding="utf-8"))
+                            if record.get("source_sha256")==file_sha256(src_p) and record.get("output_sha256")==file_sha256(dst_p):
+                                return dst_p
             except Exception:
                 pass  # 坏缓存 → 落到下面重新生成
-            try:
-                dst_p.unlink()
-            except Exception:
-                pass
 
         with Image.open(src_p) as im:
             w, h = im.size
@@ -114,6 +115,8 @@ def upscale(src: str | Path, dst: str | Path | None = None) -> Path:
                 pass
             raise
         os.replace(tmp_p, dst_p)
+        atomic_json(dst_p.with_suffix(dst_p.suffix+".source.json"),
+                    {"source_sha256":file_sha256(src_p),"output_sha256":file_sha256(dst_p),"engine":engine})
         return dst_p
     elif engine == "realesrgan":
         raise NotImplementedError(

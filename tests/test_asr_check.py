@@ -64,6 +64,7 @@ def test_check_accepts_good_and_rejects_bad(tmp_path):
     from app.services import asr_check as ac
 
     ref = "尉迟恭在后院擦拭着马槊上的油泥，磨刀石上的白水，泛着刺鼻的铁锈味。"
+    (tmp_path / "x.wav").write_bytes(b"audio-fixture")
     orig = ac.transcribe
     try:
         # 英文串是**不依赖阈值**的硬信号（破折号被念成 No. 那一类）
@@ -78,14 +79,15 @@ def test_check_accepts_good_and_rejects_bad(tmp_path):
         ac.transcribe = orig
 
 
-def test_check_never_blocks_when_asr_unavailable(tmp_path):
+def test_check_unavailable_is_not_passed(tmp_path):
     """ASR 挂了不能阻断出片。"""
     from app.services import asr_check as ac
+    (tmp_path / "x.wav").write_bytes(b"audio-fixture")
     orig = ac.transcribe
     try:
         ac.transcribe = lambda w: None
         ok, why = ac.check(tmp_path / "x.wav", "随便一句原文。")
-        assert ok and "跳过" in why
+        assert not ok and "unavailable" in why
     finally:
         ac.transcribe = orig
 

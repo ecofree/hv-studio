@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import shutil
 import time
+from app.services.provenance import fingerprint, file_sha256, atomic_json
 from pathlib import Path
 
 from app import paths  # 调用期求值：测试用 tmp_episodes 夹具重定向 episodes_dir()
@@ -244,11 +245,12 @@ def load_episodes(src: Path) -> list[str]:
     return out
 
 
-def run_batch(episodes: list[str], *, batch_id: str | None = None,
+def _run_batch(episodes: list[str], *, batch_id: str | None = None,
               stop_on_error: bool = False, resume: bool = False,
-              stages: list[str] | None = None) -> dict:
+              stages: list[str] | None = None, production_options: dict | None = None) -> dict:
     """串行生产多集，写状态文件，支持断点续跑。"""
     from app.orchestrator import produce
+    from app.services.production_identity import input_identity as identity, artifact_receipt, artifacts_current
 
     bid = batch_id or time.strftime("%Y%m%d-%H%M%S")
     sp = _state_path(bid)
@@ -257,25 +259,40 @@ def run_batch(episodes: list[str], *, batch_id: str | None = None,
     done: list[str] = []
     failed: list[dict] = []
 
+    def input_identity(eid):
+        return identity(eid, stages, production_options)
+    identities = {}
+    artifacts = {}
+    history = []
     # 断点续跑：读旧状态跳过已完成
     skipped: list[str] = []
     if resume and sp.exists():
         try:
             old = json.loads(sp.read_text(encoding="utf-8"))
-            done = list(old.get("done", []))
-            failed = list(old.get("failed", []))
+            identities = old.get("identities",{})
+            artifacts = old.get("artifacts", {})
+            done = [e for e in old.get("done",[]) if e in episodes and
+                    artifacts_current(artifacts.get(e)) and identities.get(e)==input_identity(e)]
+            history = old.get("history",[]) + old.get("failed",[])
+            skipped = list(done)
         except Exception:  # noqa: BLE001
             pass
 
     pending = [e for e in episodes if e not in done]
+    call_options = dict(production_options or {})
+    if production_options:
+        from app.services.provider_budget import for_run
+        # The same ledger is passed to every episode and every image worker.
+        call_options['budget'] = for_run(sp.parent, ['batch', bid], production_options)
 
     def _save():
-        sp.write_text(json.dumps({
+        atomic_json(sp, {
+            "stages":stages, "identities":identities, "artifacts":artifacts, "history":history,
             "batch_id": bid, "ts": time.strftime("%Y-%m-%d %H:%M:%S"),
             "total": len(episodes), "done": done,
             "failed": failed, "pending": [e for e in episodes
                                           if e not in done],
-        }, ensure_ascii=False, indent=2), encoding="utf-8")
+        })
 
     _save()
     print(f"[batch] {bid}: 共 {len(episodes)} 集，"
@@ -285,12 +302,21 @@ def run_batch(episodes: list[str], *, batch_id: str | None = None,
         print(f"\n[batch] ({i}/{len(pending)}) {eid} …")
         t0 = time.time()
         try:
-            produce(eid, stages=stages)
+            result = produce(eid, stages=stages, **call_options)
+            if str(result.get("status","")).lower() in ("failed","blocked") or result.get("blocked") or result.get("run_ok") is False:
+                raise RuntimeError(f"production returned unsuccessful result: {result.get('status')}")
+            if stages and not set(stages).issubset(result.get("stages_done", [])):
+                raise RuntimeError("requested stages did not all complete")
+            if stages is None and not result.get("final_mp4"):
+                raise RuntimeError("full production has no final candidate")
+            artifacts[eid] = artifact_receipt(result)
+            identities[eid] = input_identity(eid)
             done.append(eid)
             print(f"[batch] {eid} 完成（{time.time()-t0:.0f}s）")
         except Exception as ex:  # noqa: BLE001 —— 失败隔离的核心
             failed.append({"ep": eid, "error": f"{type(ex).__name__}: {ex}"})
             print(f"[batch] {eid} 失败：{type(ex).__name__}: {ex}")
+            _save()
             if stop_on_error:
                 print(f"[batch] --stop-on-error，中止")
                 break
@@ -303,3 +329,14 @@ def run_batch(episodes: list[str], *, batch_id: str | None = None,
     print(f"[batch] 状态文件：{sp}")
     print(f"[batch] 续跑：hv batch --file <同一文件> --resume --batch-id {bid}")
     return {"batch_id": bid, "done": done, "failed": failed, "state": str(sp)}
+
+
+def run_batch(episodes, *, batch_id=None, stop_on_error=False, resume=False, stages=None, production_options=None):
+    from app.services.process_lock import file_lock
+    import re
+    bid = batch_id or time.strftime('%Y%m%d-%H%M%S')
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', bid): raise ValueError('invalid batch id')
+    if len(set(episodes)) != len(episodes): raise ValueError('duplicate episodes in batch')
+    with file_lock(_state_path(bid).with_suffix('.batch.lock')):
+        return _run_batch(episodes, batch_id=bid, stop_on_error=stop_on_error, resume=resume,
+                          stages=stages, production_options=production_options)

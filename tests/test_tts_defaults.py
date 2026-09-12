@@ -34,7 +34,7 @@ def test_stage_assets_defaults_to_paragraph():
 def test_produce_defaults_to_paragraph():
     from app import orchestrator as O
 
-    sig = inspect.signature(O.produce)
+    sig = inspect.signature(O.produce_legacy)
     assert sig.parameters["tts_granularity"].default == "paragraph"
 
 
@@ -66,14 +66,23 @@ def test_resolve_workers_by_granularity():
     assert R(0, "frame") == 1          # 兜底：至少 1 路
 
 
-def test_voice_id_matches_model():
+def test_voice_id_matches_model(monkeypatch, tmp_path):
     """voice_id 与模型必须匹配 —— 拿 flash 的 id 去跑 plus → HTTP 418。
 
     2026-09-08 实测：测试脚本漏传 voice_id，回退取了 flash 的 id 配 plus，
     四个用例全部 418。这里钉死：不同模型必须给出不同的 voice_id，
     且 id 里带模型名（便于一眼看出是否串了）。
     """
-    from app.services.cosyvoice import get_voice_id
+    from app.services.cosyvoice import get_voice_id, DEFAULT_VOICE_PROMPT
+    from app.services import cosyvoice as cv
+    from app.services.provenance import atomic_json
+    from app.config.config import get_settings
+    monkeypatch.setattr(get_settings().get_profile().voice,"voice_asset",None)
+    monkeypatch.setattr(cv,"ROOT",tmp_path)
+    monkeypatch.setattr(cv,"_dashscope_key",lambda:"test-key")
+    for model in ("cosyvoice-v3.5-plus","cosyvoice-v3.5-flash"):
+        atomic_json(tmp_path/".cache"/f"voice_design_{cv._VOICE_PREFIX}_{model}.json",
+                    {"model":model,"voice_id":model+"-test","voice_prompt":DEFAULT_VOICE_PROMPT})
 
     v_plus = get_voice_id("cosyvoice-v3.5-plus")
     v_flash = get_voice_id("cosyvoice-v3.5-flash")
@@ -125,7 +134,7 @@ def test_orchestrator_threads_workers():
 
     for fn, key in ((O.stage_tts, "workers"),
                     (O.stage_assets, "tts_workers"),
-                    (O.produce, "tts_workers")):
+                    (O.produce_legacy, "tts_workers")):
         p = inspect.signature(fn).parameters.get(key)
         assert p is not None, f"{fn.__name__} 缺 {key} 参数"
         assert p.default is None

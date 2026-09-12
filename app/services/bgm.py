@@ -91,17 +91,18 @@ def mix_voice_with_bgm(
     #   [bgm][voice] amix=inputs=2:duration=first:dropout_transition=0 → [mix]
     fade_out_start = max(0, total_sec - fade_out_sec)
     filter_complex = (
-        f"[1:a]aloop=loop=-1:size=2e9,atrim=0:{total_sec:.3f},"
+        f"[1:a]atrim=0:{total_sec:.6f},"
         f"afade=t=in:st=0:d={bgm_fade_in_sec},"
         f"afade=t=out:st={fade_out_start:.3f}:d={fade_out_sec},"
         f"volume={volume}[bgm];"
         f"[0:a]aresample={sample_rate}[voice];"
-        f"[bgm][voice]amix=inputs=2:duration=first:dropout_transition=0[mix]"
+        f"[voice][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0,"
+        f"alimiter=limit=0.95:level=0:latency=1[mix]"
     )
     cmd = [
         "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
         "-i", str(voice),
-        "-i", str(bgm),
+        "-stream_loop", "-1", "-i", str(bgm),
         "-filter_complex", filter_complex,
         "-map", "[mix]",
         "-ac", str(channels),

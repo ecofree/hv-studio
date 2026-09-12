@@ -80,7 +80,7 @@ def _compose_vcodec_args() -> list[str]:
     if getattr(c, "fallbacks", None):
         _crf = c.fallbacks[0].get("crf", 20)
     return ["-c:v", "libx264", "-profile:v", "high", "-level", "4.1",
-            "-preset", getattr(c, "preset", "medium"), "-crf", str(_crf)]
+            "-preset", (c.fallbacks[0].get("preset", "medium") if getattr(c,"fallbacks",None) else "medium"), "-crf", str(_crf)]
 
 
 # ---------------------------------------------------------------------------
@@ -105,6 +105,11 @@ def resolve_motion(spec) -> tuple[float, float, tuple[float, float], tuple[float
     start_zoom 作为「机位基准」乘进各运动曲线：
       start_zoom=1.0（默认）时与历史行为逐位一致，hw-001 基线不受影响。
     """
+    if spec and getattr(spec,"geometry_version","legacy_pixel_crop_v1") == "fit_cover_v2":
+        z0,z1 = spec.start_zoom,spec.end_zoom
+        if not (1 <= z0 <= spec.max_zoom and 1 <= z1 <= spec.max_zoom):
+            raise ValueError("zoom trajectory exceeds declared bounds")
+        return z0,z1,tuple(spec.start_xy or (0.5,0.5)),tuple(spec.end_xy or (0.5,0.5))
     t = (spec.type if spec else "drift") or "drift"
     k = spec.intensity if spec else 0.08
 
@@ -127,13 +132,14 @@ def resolve_motion(spec) -> tuple[float, float, tuple[float, float], tuple[float
     return z_base, z_base * (1.0 + k * 0.6), tuple(s_xy), tuple(e_xy)
 
 
-def frame_box(iw: int, ih: int, z: float, px: float, py: float) -> tuple[int, int, int, int]:
+def frame_box(iw: int, ih: int, z: float, px: float, py: float, geometry_version: str = "legacy_pixel_crop_v1") -> tuple[int, int, int, int]:
     """
     单帧裁切窗 (x0, y0, x1, y1)。z 为相对缩放，px/py 归一化位置。
     结果会被夹在图像范围内。
     """
-    cw = W / max(0.01, z)
-    ch = H / max(0.01, z)
+    scale = min(iw / W, ih / H) if geometry_version == "fit_cover_v2" else 1.0
+    cw = W * scale / max(0.01, z)
+    ch = H * scale / max(0.01, z)
     x = (iw - cw) * min(1.0, max(0.0, px))
     y = (ih - ch) * min(1.0, max(0.0, py))
     x0 = int(round(min(max(0.0, x), max(0.0, iw - cw))))
@@ -166,7 +172,8 @@ def plan_frames(iw: int, ih: int, dur_s: float, spec, fps: int = FPS):
     for n in range(n_frames):
         p = ease(easing, n / max(1, n_frames - 1))
         boxes.append(frame_box(iw, ih, z0 + (z1 - z0) * p,
-                               px0 + (px1 - px0) * p, py0 + (py1 - py0) * p))
+                               px0 + (px1 - px0) * p, py0 + (py1 - py0) * p,
+                               getattr(spec,"geometry_version","legacy_pixel_crop_v1")))
     return boxes
 
 

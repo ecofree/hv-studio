@@ -19,7 +19,17 @@ router = APIRouter()
 @router.get("/{episode_id}")
 def get_episode(episode_id: str):
     ep = load(episode_id)
-    return ep.model_dump(mode="json")
+    from app.services.production_status import get_status
+    result = ep.model_dump(mode='json'); production = get_status(episode_id)
+    result.update(legacy_status=result['status'], production=production)
+    if production['status'] != 'NOT_STARTED': result['status'] = production['status']
+    return result
+
+
+@router.get('/{episode_id}/production')
+def get_production(episode_id: str):
+    from app.services.production_status import get_status
+    return get_status(episode_id)
 
 
 @router.post("/{episode_id}/init")
@@ -45,6 +55,9 @@ def init_episode(episode_id: str, _tok=Depends(require_token)):
 def produce_episode(episode_id: str,
                     stage: list[str] | None = Query(default=None),
                     script_md: str | None = Query(default=None),
+                    pipeline: str = "v2", max_requests: int = 0,
+                    max_characters: int = 0, max_images: int = 0,
+                    timeline: str | None = None, budget_id: str | None = None,
                     _tok=Depends(require_token)):
     """真实生产链（默认 script→tts→compose→verify 适用项）。状态由产物真值导出。
 
@@ -53,10 +66,28 @@ def produce_episode(episode_id: str,
     """
     from app.orchestrator import produce
     try:
-        res = produce(episode_id, stages=stage, script_md=script_md)
+        options = {} if pipeline == "legacy-preview" else dict(max_requests=max_requests,
+            max_characters=max_characters, max_images=max_images, timeline=timeline, budget_id=budget_id)
+        res = produce(episode_id, stages=stage, script_md=script_md, pipeline=pipeline, **options)
     except Exception as e:
         raise HTTPException(400, str(e))
+    if res.get("run_ok") is False:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=409, content=res)
     return res
+
+
+@router.post('/{episode_id}/quality-review')
+def review_quality(episode_id: str, unit_id: str, reviewer: str, finding: str, decision: str, _tok=Depends(require_token)):
+    from app.orchestrator import _episode_dir
+    from app.services.narration_pipeline import read
+    from app.services.production_quality import record_disposition
+    try:
+        state = read(_episode_dir(episode_id)/'production/v2/run.json')
+        path = record_disposition(state['quality_path'], unit_id, reviewer, finding, decision)
+        return {'review_path': str(path.resolve()), 'decision': decision}
+    except (KeyError, ValueError, OSError, StopIteration) as exc:
+        raise HTTPException(409, str(exc))
 
 
 # 兼容旧客户端：/run 不再空推状态，改走真实编排（verify 只读，默认安全不触发付费）

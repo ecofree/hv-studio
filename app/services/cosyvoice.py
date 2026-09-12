@@ -19,6 +19,11 @@ CosyVoice2 语音合成服务（整段合成）。
 from __future__ import annotations
 
 import os
+import json
+import uuid
+import hashlib
+import importlib.metadata
+from app.services.provenance import atomic_json, file_sha256, fingerprint
 import subprocess
 import time
 from pathlib import Path
@@ -291,9 +296,12 @@ def design_voice(
     if cache_file.exists():
         try:
             cached = _json.loads(cache_file.read_text(encoding="utf-8"))
+            if cached.get("voice_prompt") != voice_prompt:
+                raise ValueError("Voice design cache prompt is unverified or changed; register an explicit VoiceAsset or use a new prefix after review")
+            cached.pop("preview_b64", None)
             cached["cached"] = True
             return cached
-        except Exception:  # noqa: BLE001
+        except (OSError, _json.JSONDecodeError):
             pass
 
     payload = {
@@ -333,11 +341,14 @@ def design_voice(
         "cached": False,
         "preview_b64": data.get("audio", ""),
         "model": target_model,
+        "voice_prompt": voice_prompt,
+        "preview_text": preview_text,
+        "approval_status": "pending",
     }
 
     # 落盘缓存（含 preview 信息，便于日后试听/复用）
     cache_dir.mkdir(parents=True, exist_ok=True)
-    _json.dump(out, cache_file.open("w", encoding="utf-8"), ensure_ascii=False, indent=2)
+
 
     # 若带试听文本且有 preview_b64 → 解码保存试听文件
     preview_path = None
@@ -350,6 +361,9 @@ def design_voice(
         except Exception:  # noqa: BLE001
             preview_path = None
     out["preview_path"] = str(preview_path) if preview_path else None
+    out.pop("preview_b64",None)
+    if preview_path: out["preview_sha256"]=file_sha256(preview_path)
+    atomic_json(cache_file,out)
     return out
 
 
@@ -374,7 +388,7 @@ class DashScopeCosyVoiceSynthesizer:
                  speech_rate: float | None = None,
                  volume: int | None = None,
                  instruction: str | None = None,
-                 enable_ssml: bool = False):
+                 enable_ssml: bool = False, hot_fix: dict | None = None, seed: int = 0):
         """
         response_format: "mp3" 或 "wav"（决定输出封装）。
         sample_rate: CosyVoice 原生 24000。管线后期统一转目标采样率即可。
@@ -402,6 +416,8 @@ class DashScopeCosyVoiceSynthesizer:
         self.volume = volume
         self.instruction = instruction
         self.enable_ssml = bool(enable_ssml)
+        self.hot_fix = hot_fix
+        self.seed = seed
         # workspace 配置（北京专属域名合成必需）
         self.workspace = _env_get(DASHSCOPE_ENV_WS) or None
 
@@ -456,31 +472,62 @@ class DashScopeCosyVoiceSynthesizer:
             params["volume"] = int(self.volume)
         if self.instruction:
             params["instruction"] = str(self.instruction)
+        params["seed"] = self.seed
+        if self.hot_fix:
+            params["hot_fix"] = self.hot_fix
         if self.enable_ssml:
             # SSML：text 里带 <speak> 标签，需显式开启（cosyvoice-v3.5 实测支持）
-            params["enable_ssml"] = True
+            params["additional_params"] = {"enable_ssml": True}
         return SpeechSynthesizer(**params)
 
     # ------------------------------------------------------------------
     def _speech_bytes(self, text: str, voice: str) -> bytes:
         """调用 SpeechSynthesizer.call(text) 返回二进制音频字节。"""
-        import dashscope
         synth = self._build_synthesizer(voice)
+        attempt_id = uuid.uuid4().hex
+        record = {"schema_version":"2.0", "attempt_id":attempt_id,
+                  "adapter_version":"cosyvoice-sdk-v2", "model":self.model,
+                  "voice_id":voice, "voice_asset_version":getattr(self,"voice_asset_version",None),
+                  "sdk_version":importlib.metadata.version("dashscope"),
+                  "endpoint":_resolve_synth_ws_url() or "wss://dashscope.aliyuncs.com/api-ws/v1/inference",
+                  "text":text, "instruction":self.instruction,
+                  "pitch_rate":self.pitch_rate if self.pitch_rate is not None else 1.0,
+                  "speech_rate":self.speech_rate if self.speech_rate is not None else 1.0,
+                  "volume":self.volume if self.volume is not None else 50,
+                  "hot_fix":self.hot_fix,"seed":self.seed,
+                  "format":self.response_format, "sample_rate":self.sample_rate,
+                  "transport_messages":[], "status":"started", "request_id":None}
+        log = ROOT / "state" / "tts_requests" / (attempt_id + ".json")
+        # Observe the SDK's serialized boundary, including call() mutations.
+        send_name = "_SpeechSynthesizer__send_str"
+        original = getattr(synth, send_name, None)
+        if original:
+            def observed(message):
+                payload = json.loads(message) if isinstance(message,str) else message
+                record["transport_messages"].append(payload)
+                record["request_id"] = payload.get("header",{}).get("task_id")
+                atomic_json(log, record)
+                return original(message)
+            setattr(synth,send_name,observed)
+        atomic_json(log,record)
+        self.last_request_path = log
+        started = time.monotonic()
         try:
-            audio = synth.call(text)
-        except Exception as e:  # noqa: BLE001
-            raise RuntimeError(f"[dashscope-cosyvoice] 合成异常: {e}") from e
-        if audio is None:
-            raise RuntimeError("[dashscope-cosyvoice] 返回空音频")
-        # audio 可能是 bytes 或返回对象；统一转 bytes
-        if isinstance(audio, bytes):
+            audio = synth.call(text, timeout_millis=int(self.timeout_s*1000))
+            if hasattr(audio,"read"): audio=audio.read()
+            if not isinstance(audio,bytes) or not audio:
+                raise RuntimeError("provider returned no binary audio")
+            record["status"] = "succeeded"
+            record["audio_sha256"] = hashlib.sha256(audio).hexdigest()
             return audio
-        if hasattr(audio, "read"):  # file-like
-            data = audio.read()
-            if isinstance(data, str):
-                data = data.encode()
-            return data
-        raise RuntimeError(f"[dashscope-cosyvoice] 未知返回类型: {type(audio)}")
+        except Exception as exc:
+            record["status"] = "failed"
+            # Do not serialize exception bodies, URLs with credentials, or SDK objects.
+            record["error"] = {"type":type(exc).__name__, "message":"synthesis failed; inspect provider request_id"}
+            raise
+        finally:
+            record["elapsed_seconds"] = time.monotonic()-started
+            atomic_json(log,record)
 
     # ------------------------------------------------------------------
     def synthesize(self, text: str, out_audio: Path, voice: str | None = None,
@@ -503,6 +550,15 @@ class DashScopeCosyVoiceSynthesizer:
 
         out_audio.parent.mkdir(parents=True, exist_ok=True)
         data = self._speech_bytes(text, voice)
+        take_dir = out_audio.parent / "takes" / uuid.uuid4().hex
+        take_dir.mkdir(parents=True)
+        raw = take_dir / ("raw." + self.response_format)
+        raw.write_bytes(data)
+        request_path = getattr(self,"last_request_path",None)
+        if request_path:
+            atomic_json(take_dir / "request.json", json.loads(request_path.read_text(encoding="utf-8")))
+        atomic_json(take_dir / "manifest.json", {"raw":str(raw), "sha256":file_sha256(raw),
+                    "status":"candidate", "listening_review":"pending"})
         tmp = out_audio.with_suffix(out_audio.suffix + ".part")
         tmp.write_bytes(data)
         tmp.replace(out_audio)
@@ -570,6 +626,10 @@ def get_voice_id(model: str | None = None,
     ⚠️ voice_id 与模型强绑定：拿 flash 的 voice_id 去跑 plus → HTTP 418。
        所以这里按 model 分别 design，缓存键是 (prefix, target_model)。
     """
+    from app.config.config import get_settings
+    if get_settings().get_profile().voice.voice_asset:
+        from app.services.voice_assets import resolve_voice_asset
+        return resolve_voice_asset(model or _cosyvoice_model_from_env())[1]["voice_id"]
     return design_voice(
         voice_prompt=voice_prompt,
         preview_text=_VOICE_DESIGN_PREVIEW_TEXT,
@@ -613,7 +673,7 @@ def synthesize_dashscope_whole(
     svc = DashScopeCosyVoiceSynthesizer(
         voice=voice_id, model=model, response_format=response_format,
         pitch_rate=pitch_rate, speech_rate=speech_rate,
-        volume=volume, instruction=instruction,
+        volume=volume, instruction=instruction, enable_ssml=enable_ssml,
     )
     return svc.synthesize(text, out_audio, overwrite=overwrite)
 

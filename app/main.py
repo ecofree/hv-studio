@@ -14,11 +14,8 @@ from app.managers.relay import get_relay
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # 启动时同步一次配额（不阻塞，慢也无妨）
-    try:
-        get_relay().sync_quota()
-    except Exception:
-        pass
+    # Startup is local and bounded. Provider quota checks belong to an explicit
+    # operator action, so provider downtime cannot stall health or recovery.
     # 安全提示：token 闸是 opt-in（未配 HV_API_TOKEN 即不校验）。直连 uvicorn
     # 启动时没有 cli.py 那道「非回环 host 必须有 token」的硬闸，这里补一句提醒。
     try:
@@ -33,7 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="hv — 历史解说短视频流水线",
-    description="A 股数据中枢的史官：抖音历史解说短视频生产流水线",
+    description="历史解说短视频生产流水线",
     version="0.1.0",
     lifespan=lifespan,
 )

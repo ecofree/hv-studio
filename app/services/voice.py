@@ -28,6 +28,9 @@ import subprocess
 import tempfile
 import threading
 import time
+import uuid
+import shutil
+from app.services.provenance import fingerprint, file_sha256, atomic_json
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -121,29 +124,27 @@ def _tts_record_cost(ep_id: str, model: str, chars: int, ok: bool) -> None:
 
 
 def _tts_strategy_tag() -> str:
-    """TTS 策略指纹：engine + model + 影响产出的关键配置。
-
-    P0-1（2026-09-08 审计）：旧指纹只含文本 —— 切引擎/调 rate/改 SSML 档位后，
-    旧音频会被静默复用（当日被迫手动 mv 音频目录 6 次，全是这个缺陷的人工代偿）。
-    策略变化 → 指纹变化 → 全量重合成，这才是正确语义。
-    """
-    try:
-        from app.config.config import get_settings
-        v = get_settings().get_profile().voice
-        eng = (v.engine or DEFAULT_ENGINE)
-        # 只把**当前引擎真正会用到的**配置纳入指纹：改 qwen_* 不该让 cosyvoice
-        # 的音频失效，反之亦然（否则每次动无关配置都全量重合成）。
-        if eng == ENGINE_QWEN:
-            parts = [v.qwen_model or "", str(v.qwen_rate or ""),
-                     (v.qwen_instruction or "")[:32]]
-        else:
-            parts = [v.cosyvoice_model or "", (v.instruction or "")[:32]]
-        return "|".join([eng]
-                         + parts
-                         + ["ssml" if getattr(v, "tts_ssml", False) else "",
-                            DASHSCOPE_VOICE_PROMPT[:32]])
-    except Exception:  # noqa: BLE001 —— 配置读不到就退化为纯文本指纹
-        return ""
+    from app.config.config import get_settings, ROOT
+    v = get_settings().get_profile().voice
+    values = v.model_dump(mode="json")
+    eng = v.engine or DEFAULT_ENGINE
+    values = {k:val for k,val in values.items() if (k.startswith("qwen_") == (eng==ENGINE_QWEN)) or k=="engine"}
+    from app.services import polyphone
+    dictionary = ROOT / "app/config/polyphone.yaml"
+    voices = []
+    if v.voice_asset:
+        asset_path = Path(v.voice_asset)
+        if not asset_path.is_absolute(): asset_path = ROOT / asset_path
+        voices.append({"registered_asset_sha256": file_sha256(asset_path)})
+    for p in sorted((ROOT/".cache").glob("voice_design_*.json")):
+        try:
+            cached = json.loads(p.read_text(encoding="utf-8"))
+            if cached.get("model") == v.cosyvoice_model:
+                voices.append({k:cached.get(k) for k in ("voice_id","model","voice_prompt")})
+        except (OSError, ValueError): pass
+    return fingerprint({"adapter":"legacy-v2", "voice":values, "assets":voices,
+                        "voice_prompt":DASHSCOPE_VOICE_PROMPT,
+                        "pronunciation":file_sha256(dictionary) if dictionary.exists() else None})
 
 
 def _text_fingerprint(text: str) -> str:
@@ -152,8 +153,7 @@ def _text_fingerprint(text: str) -> str:
     ⚠️ 策略（引擎/模型/rate/SSML 档位）参与指纹：策略变了 → 旧音频全部判失效。
     """
     norm = _normalize_numbers(text).strip()
-    payload = f"{_tts_strategy_tag()}|{norm}"
-    return hashlib.md5(payload.encode("utf-8")).hexdigest()[:12]
+    return fingerprint([_tts_strategy_tag(), norm])
 
 
 def _manifest_path(base: Path) -> Path:
@@ -363,13 +363,14 @@ def synthesize(
     rate: str = "+0%",
     volume: str = "+0%",
     out_dir: Path | None = None,
-    fallback_to_edge: bool = True,     # cosyvoice 失败是否降级 edge
+    fallback_to_edge: bool = False,     # cosyvoice 失败是否降级 edge
     force: bool = False,               # 强制全部重合成（忽略幂等指纹）
     # None = 按粒度自动取（见 _resolve_workers）。2026-09-07 前写死 4 且没有
     # CLI 开关 —— 默认档退回逐帧后请求数是段落档的 20 倍，4 路必定撞限流。
     workers: int | None = None,
     granularity: str = "paragraph",    # "paragraph" 按段落合成后切回帧 | "frame" 逐帧
     script_md: str | None = None,      # paragraph 模式需要（用来还原段落边界）
+    quality_mode: str = "preview",
     target_chars: int | None = None,   # paragraph 模式的单次目标字数（None=默认 400）
 ) -> None:
     """
@@ -400,6 +401,8 @@ def synthesize(
     base = out_dir or (ROOT / "episodes" / "default" / "audio")
     base.mkdir(parents=True, exist_ok=True)
 
+    if quality_mode not in ("preview", "production"):
+        raise ValueError("quality_mode must be preview or production")
     engine = engine or DEFAULT_ENGINE
     manifest = {} if force else _load_manifest(base)
     legacy_missing_manifest = not force and not (base / _MANIFEST_NAME).exists()
@@ -437,19 +440,34 @@ def synthesize(
             ok = wav.exists()
         return ok, used
 
+    def _quality(wav, text):
+        from app.services.asr_check import check
+        result = check(wav,text)
+        atomic_json(wav.with_suffix(".quality.json"), result.to_dict())
+        if result.status != "passed":
+            print(f"[voice] {wav.name}: QA={result.status}: {result.error or result.note}")
+            if quality_mode == "production":
+                raise RuntimeError(f"production audio QA {result.status}; candidate retained: {wav}")
+        return result.to_dict()
+
+    def _new_take(tag):
+        target = base / "takes" / (tag + "-" + uuid.uuid4().hex)
+        target.mkdir(parents=True)
+        return target / "audio.wav"
+
     def _synth_one(f: Frame) -> None:
         """单个 frame：幂等判断 + 合成 + 回填。线程独立（各 frame 各 wav 互不干扰）。"""
         text = frame_tts_text(f)
         if not text:
             return
-        fp = _text_fingerprint(text)
+        fp = fingerprint([_text_fingerprint(text), engine, voice, rate, volume, voice_prompt])
         wav = base / f"{f.id}.wav"
 
         # ---- 幂等短路：文本未变 + 已有成品 wav → 复用（force 时跳过） ----
         if not force and wav.exists():
             with _man_lock:
                 prev = manifest.get(f.id)
-            if prev is not None and prev.get("fp") == fp:
+            if prev is not None and prev.get("fp") == fp and prev.get("audio_sha256") == file_sha256(wav):
                 f.audio_path = str(wav).replace("\\", "/")
                 if f.audio_duration_ms is None:
                     f.audio_duration_ms = _audio_duration_ms(wav)
@@ -457,39 +475,25 @@ def synthesize(
                 # 也可能是当时降级过的 edge）—— 这才是「本片音色是否一致」的真值。
                 with _man_lock:
                     prev.setdefault("engine", _ENGINE_UNKNOWN)
+                _quality(wav, text)
                 return
             if prev is None:
-                # 无 manifest（旧目录）：无法判断文本是否变。向后兼容按存在复用，
-                # 但旁白文本若真变了这里会静默漏检 —— 靠 _FP_NOTE 提示用户跑 --force。
-                global _FP_NOTE
-                with _man_lock:
-                    if not _FP_NOTE:
-                        print("[voice] 检测到旧 audio 目录无 _tts_manifest.json，无法校验"
-                              "「文本是否已变」。如需精确幂等请跑一次 --force 建立指纹基线。")
-                        _FP_NOTE = True
-                f.audio_path = str(wav).replace("\\", "/")
-                if f.audio_duration_ms is None:
-                    f.audio_duration_ms = _audio_duration_ms(wav)
-                with _man_lock:
-                    manifest[f.id] = {"fp": fp, "wav": wav.name,
-                                      "engine": _ENGINE_UNKNOWN}
-                return
-            # 文本变了（prev.fp != fp）：删旧 wav，落到下面重新合成
-            print(f"  [voice] {f.id} 旁白文本已变(fp {prev.get('fp')}→{fp})，"
-                  f"删除旧音频 {wav.name} 重新合成")
-            try:
-                wav.unlink()
-            except Exception:
-                pass
+                raise RuntimeError(f"legacy audio has no request provenance: {wav}; use an explicit candidate run (--force) to retain and replace it")
 
         # ---- 真正合成：cosyvoice 失败可选降级 edge ----
-        ok, used = _render(text, wav, f.id)
+        candidate = _new_take(f.id)
+        ok, used = _render(text, candidate, f.id)
         if not ok:
             raise RuntimeError(f"[voice] {f.id} 合成失败(engine={engine})")
+        quality = _quality(candidate, text)
+        if wav.exists():
+            archive = _new_take(f.id + "-previous")
+            shutil.copy2(wav, archive)
+        shutil.copy2(candidate, wav)
         f.audio_path = str(wav).replace("\\", "/")
         f.audio_duration_ms = _audio_duration_ms(wav)
         with _man_lock:
-            manifest[f.id] = {"fp": fp, "wav": wav.name, "engine": used}
+            manifest[f.id] = {"fp": fp, "wav": wav.name, "engine": used, "audio_sha256":file_sha256(wav), "quality":quality, "take":str(candidate)}
             if used != engine:
                 degraded.append(f.id)
 
@@ -529,12 +533,16 @@ def synthesize(
             for i in idxs:
                 _synth_one(frames[i])
             return
-        fps = [_text_fingerprint(t) for t in texts]
+        fps = [fingerprint([_text_fingerprint(t), texts, engine, voice, rate, volume, voice_prompt]) for t in texts]
         wavs = [base / f"{f.id}.wav" for f in fs]
 
         if not force and all(w.exists() for w in wavs) and all(
-                (manifest.get(f.id) or {}).get("fp") == fp
-                for f, fp in zip(fs, fps)):
+                (manifest.get(f.id) or {}).get("fp") == fp and (manifest.get(f.id) or {}).get("audio_sha256") == file_sha256(w)
+                for f, fp, w in zip(fs, fps, wavs)):
+            previous_take=Path(manifest[fs[0].id]["take"])
+            _quality(previous_take, _group_spoken_text(texts))
+            if quality_mode=="production":
+                raise RuntimeError("legacy group alignment is unverified; use narration v2")
             for f, w in zip(fs, wavs):
                 f.audio_path = str(w).replace("\\", "/")
                 if f.audio_duration_ms is None:
@@ -546,72 +554,14 @@ def synthesize(
         else:
             gtext = _tts_group.group_text(texts)
         # 段落 wav 是中间产物，落在 audio/ 下（hv clean --build 会收走）
-        gwav = base / f"_grp_{idxs[0]:05d}.wav"
+        gwav = _new_take(f"grp-{idxs[0]:05d}")
         ok, used = _render(gtext, gwav, f"grp{idxs[0]:05d}({len(fs)}帧)")
         if not ok:
             raise RuntimeError(f"[voice] 段落 {idxs[0]} 合成失败(engine={engine})")
 
-        # ---- 发音回检（2026-09-09 改造：无条件跑 + 自动重试 + 差异定位）----
-        # 旧版只在 instruction 非空时跑且只做「去指令重试」，SSML 模式下
-        # 完全不跑（2026-09-09 用户实听发现「晋阳令刘文静」断词就是漏网之鱼）。
-        # 新版：①每次必跑 ②失败先试「去 SSML 纯文本」③打印差异词让你加 replace
-        from app.services import asr_check as _ac
-        # ⚠️ 期望文本必须是「TTS 实际念出的内容」，不是 SSML 源码
-        _spoken = _group_spoken_text(texts)
-        _good, _why = _ac.check(gwav, _spoken)
-        if not _good:
-            _hyp = _ac.transcribe(gwav) or ""
-            _hard = _ac.suspicious(_hyp)
-            _diff = _asr_diff_words(_spoken, _hyp)
-            # 策略一：去掉 SSML 用纯文本重合成（phoneme/replace 有时反而帮倒忙）
-            print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
-                  f"→ 尝试去 SSML 纯文本重合成")
-            _plain_text = _tts_group.group_text(texts)
-            ok2, _ = _render(_plain_text, gwav,
-                             f"grp{idxs[0]:05d}(无SSML)", instruction=INSTRUCTION_OFF)
-            if ok2:
-                _good2, _why2 = _ac.check(gwav, _spoken)
-                if _good2:
-                    print(f"  [voice] 段落 {idxs[0]} 纯文本重合成通过：{_why2}")
-                else:
-                    _hyp2 = _ac.transcribe(gwav) or ""
-                    _diff2 = _asr_diff_words(_spoken, _hyp2)
-                    # 取 PER 更低的版本
-                    _p1 = _ac.per(_spoken, _hyp)
-                    _p2 = _ac.per(_spoken, _hyp2)
-                    if _p2 < _p1:
-                        print(f"  [voice] 段落 {idxs[0]} 纯文本 PER {_p2:.1%} "
-                              f"< SSML PER {_p1:.1%}，保留纯文本版")
-                    else:
-                        # SSML 版更好，重合成回去
-                        print(f"  [voice] 段落 {idxs[0]} SSML PER {_p1:.1%} "
-                              f"< 纯文本 PER {_p2:.1%}，恢复 SSML 版")
-                        _render(gtext, gwav, f"grp{idxs[0]:05d}(SSML恢复)")
-                    _good, _why = (_good2, _why2) if _p2 < _p1 else (_good, _why)
-                    _diff = _diff2 if _p2 < _p1 else _diff
-            if not _good:
-                # 无法自动修复 → 打印精确差异让你加 replace
-                if _diff:
-                    print(f"  [voice][⚠️ 需人工] 段落 {idxs[0]} 差异词："
-                          f"{_diff}")
-                    print(f"  [voice][⚠️ 需人工] 处理：在 config.yaml 的 "
-                          f"qwen_hot_fix.replace 里加对应替换条目，"
-                          f"然后删该组 wav 重跑 --stage tts")
-                _hard2 = _ac.suspicious(_ac.transcribe(gwav) or "")
-                if not (_hard2 or _ac.downgrade_enabled()):
-                    print(f"  [voice][告警] 段落 {idxs[0]} 发音回检：{_why}")
-                else:
-                    print(f"  [voice] 段落 {idxs[0]} 回检不合格（{_why}）"
-                          f"→ 去掉风格指令重合成")
-                    ok, used = _render(
-                        gtext, gwav, f"grp{idxs[0]:05d}(无指令)",
-                        instruction=INSTRUCTION_OFF)
-                    if not ok:
-                        raise RuntimeError(
-                            f"[voice] 段落 {idxs[0]} 回检后重合成失败")
-                    _good2, _why2 = _ac.check(gwav, _spoken)
-                    print(f"  [voice] 段落 {idxs[0]} 重合成后：{_why2}")
-
+        quality = _quality(gwav, _group_spoken_text(texts))
+        if quality_mode == "production":
+            raise RuntimeError("legacy group slicing has unverified alignment; use narration v2 with reviewed alignment")
         data, sr = _tts_group.read_wav(gwav)
         segs = _tts_group.slice_samples(
             data, sr, [_tts_group.piece_weight(t) for t in texts])
@@ -621,12 +571,14 @@ def synthesize(
 
         gw = _report_slice_deviation(fs, texts, segs, sr, idxs[0])
         for f, seg, w in zip(fs, segs, wavs):
+            if w.exists():
+                shutil.copy2(w, _new_take(f.id + "-previous"))
             _tts_group.write_wav(w, seg, sr)
             f.audio_path = str(w).replace("\\", "/")
             f.audio_duration_ms = int(round(len(seg) / sr * 1000))
         with _man_lock:
             for f, fp in zip(fs, fps):
-                manifest[f.id] = {"fp": fp, "wav": f"{f.id}.wav", "engine": used}
+                manifest[f.id] = {"fp": fp, "wav": f"{f.id}.wav", "engine": used, "audio_sha256":file_sha256(base / f"{f.id}.wav"), "quality":quality, "take":str(gwav), "alignment":"unverified"}
             if used != engine:
                 degraded.extend(f.id for f in fs)
 
@@ -658,24 +610,7 @@ def synthesize(
             # 任一组失败 → futures 传播首个异常（保持原「失败即抛」语义）
             list(ex.map(runner, todo))
 
-    # 收口：落 manifest。文本已删的段不残留旧指纹（manifest 只保留本次 frames 覆盖的键）。
-    if not legacy_missing_manifest or force:
-        # engine 必须跟着走：这段重建若丢掉它，「本片音色是否一致」就查无实据了。
-        keep = {}
-        for f in frames:
-            t = frame_tts_text(f)
-            if not t:
-                continue
-            prev = manifest.get(f.id) or {}
-            keep[f.id] = {
-                "fp": _text_fingerprint(t),
-                "wav": f"{f.id}.wav",
-                "engine": prev.get("engine", _ENGINE_UNKNOWN),
-            }
-        _save_manifest(base, keep)
-    else:
-        # 旧目录首次运行（无 manifest）：把「本次遇到的既有成品」指纹写回，建立基线
-        _save_manifest(base, manifest)
+    _save_manifest(base, {f.id:manifest[f.id] for f in frames if f.id in manifest})
 
     # 音色一致性汇总（B2-2）：宁可吵，不可静默。降级进成片而无人知晓，
     # 是那种「发出去才发现、且无法挽回」的错误。
@@ -835,28 +770,8 @@ def build_group_ssml(texts: list[str]) -> str:
       · 先做短语级文本替换（晋阳令→晋阳县令），再插 phoneme 标签
       · 句子按 。！？；… 切分，一句一个 <speak>（可并列、不可嵌套）
     """
-    parts: list[str] = []
-    n = len(texts)
-    for gi, t in enumerate(texts):
-        sents = [x for x in _SSML_SENT_SPLIT.split(t) if x.strip()]
-        for si, sent in enumerate(sents):
-            rate = _SSML_RATE_DEFAULT
-            if sent.rstrip().endswith("！"):
-                rate = _SSML_RATE_EXCL
-            elif sent.rstrip().endswith("？"):
-                rate = _SSML_RATE_QUES
-            # 长句自动提速：0.92 档下 ≥25 字会超过单镜 8s 硬顶
-            # （实测 30 字 ≈ 8.1s → 209 帧 > 200）。组末句让位给收束档。
-            _plain = len(re.sub(r"[，。！？；：、…—\s“”（）《》·]", "", sent))
-            if _plain >= 25 and not (gi == n - 1 and si == len(sents) - 1):
-                rate = min(1.6, rate + 0.15)
-            if gi == n - 1 and si == len(sents) - 1:
-                rate = _SSML_RATE_GROUP_TAIL
-            # 先转义原文，再插 phoneme 标签（顺序反了会把标签一起转义掉）
-            body = _apply_phonemes(_ssml_escape(
-                _ssml_text_replace(sent.strip())))
-            parts.append(f'<speak rate="{rate:.2f}">{body}</speak>')
-    return "".join(parts)
+    return "".join('<speak rate="1.00">' + _apply_phonemes(_ssml_escape(
+        _ssml_text_replace(t.strip()))) + '</speak>' for t in texts if t.strip())
 
 
 def _try_one_qwen(text: str, wav: Path,
@@ -893,6 +808,11 @@ def _try_one_qwen(text: str, wav: Path,
                     overwrite=True)
                 if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
                     raise RuntimeError("qwen-tts 返回空音频(empty body)")
+                raw_dir = wav.parent / "provider" / uuid.uuid4().hex
+                raw_dir.mkdir(parents=True)
+                shutil.copy2(tmp_mp3, raw_dir / "raw.mp3")
+                for take in (Path(tmp) / "takes").glob("*"):
+                    shutil.copytree(take, raw_dir / take.name)
                 _mp3_to_wav(tmp_mp3, wav)
             if wav.exists():
                 return True
@@ -937,6 +857,11 @@ def _try_one_cosyvoice(text: str, wav: Path, voice_prompt: str | None,
                 if not tmp_mp3.exists() or tmp_mp3.stat().st_size == 0:
                     # 空产物按瞬时处理：中转偶发回 200 但 body 为空，重试通常就好
                     raise RuntimeError("cosyvoice 返回空音频(empty body)")
+                raw_dir=wav.parent / "provider" / uuid.uuid4().hex
+                raw_dir.mkdir(parents=True)
+                shutil.copy2(tmp_mp3,raw_dir / "raw.mp3")
+                for take in (Path(tmp)/"takes").glob("*"):
+                    shutil.copytree(take,raw_dir/take.name)
                 _mp3_to_wav(tmp_mp3, wav)
             if wav.exists():
                 return True
@@ -992,6 +917,7 @@ def main():
     ap.add_argument("--volume", default="+0%")
     ap.add_argument("--no-fallback", action="store_true",
                     help="cosyvoice 失败时不做 edge 降级")
+    ap.add_argument("--allow-edge-fallback", action="store_true", help="显式允许旧预览换人声")
     ap.add_argument("--force", action="store_true",
                     help="强制全部重合成（忽略幂等指纹，重建 _tts_manifest.json）")
     args = ap.parse_args()
@@ -1012,7 +938,7 @@ def main():
         rate=args.rate,
         volume=args.volume,
         out_dir=out_dir,
-        fallback_to_edge=not args.no_fallback,
+        fallback_to_edge=args.allow_edge_fallback and not args.no_fallback,
         force=args.force,
     )
     save(ep)

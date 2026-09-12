@@ -6,10 +6,11 @@ import pytest
 
 
 # ---------------------------------------------------------------- HTTP 组装
-def test_qwen_request_body_assembly(monkeypatch):
+def test_qwen_request_body_assembly(monkeypatch, tmp_path):
     """synthesize_qwen_whole 的请求体：instruction/hot_fix/rate/enable_ssml。"""
     import app.services.cosyvoice as cv
 
+    monkeypatch.setattr(cv,"_dashscope_key",lambda:"test-key")
     captured = {}
 
     class FakeResp:
@@ -30,7 +31,7 @@ def test_qwen_request_body_assembly(monkeypatch):
     import base64
     monkeypatch.setattr(cv.time, "sleep", lambda s: None) if hasattr(cv, "time") else None
 
-    out = cv.Path(cv.__file__).parent / "_tmp_qwen_test.mp3"
+    out = tmp_path / "request.mp3"
     try:
         cv.synthesize_qwen_whole(
             "测试文本", out, voice="voice-x", model="qwen-audio-3.0-tts-flash",
@@ -47,9 +48,10 @@ def test_qwen_request_body_assembly(monkeypatch):
         out.unlink(missing_ok=True)
 
 
-def test_qwen_ssml_flag_off_omits_param(monkeypatch):
+def test_qwen_ssml_flag_off_omits_param(monkeypatch, tmp_path):
     import app.services.cosyvoice as cv
 
+    monkeypatch.setattr(cv,"_dashscope_key",lambda:"test-key")
     captured = {}
 
     class FakeResp:
@@ -64,7 +66,7 @@ def test_qwen_ssml_flag_off_omits_param(monkeypatch):
         "R", (), {"content": b"x"})())
     monkeypatch.setattr(cv, "_audio_duration_ms", lambda p: 0)
 
-    out = cv.Path(cv.__file__).parent / "_tmp_qwen_test2.mp3"
+    out = tmp_path / "request2.mp3"
     try:
         cv.synthesize_qwen_whole("文本", out, voice="v",
                                  model="qwen-audio-3.0-tts-flash",
@@ -88,6 +90,7 @@ def test_qwen_quota_error_fails_fast(monkeypatch, tmp_path, capsys):
         raise RuntimeError('[qwen-tts] HTTP 403: Free quota exhausted '
                            '{"code":"AllocationQuota.FreeTierOnly"}')
 
+    monkeypatch.setattr(cv,"get_voice_id",lambda *args,**kw:"test-voice")
     monkeypatch.setattr(cv, "synthesize_qwen_whole", fake_qwen)
     monkeypatch.setattr(V, "_mp3_to_wav", lambda a, b: None)
     ok = V._try_one_qwen("测试文本", tmp_path / "x.wav")

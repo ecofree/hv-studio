@@ -1,0 +1,19 @@
+schema_version: 1
+project: hv
+scope: local historical-video candidate production
+source_of_truth: app/services/episode_production.py
+runtime: requirements.core.lock.txt
+asr_runtime: requirements.asr.lock.txt
+acceptance_command: scripts/ai-project-check.ps1
+invariants:
+  - Preserve source narration, historical images and raw audio takes.
+  - Never call a paid provider without a durable remaining request budget.
+  - Reuse only matching input identities and output hashes.
+  - Complete source coverage and measured readable subtitle layout are mandatory.
+  - Machine timing and ASR are not human listening or factual approval.
+  - Publication requires current content dispositions and hash-bound human reviews.
+delivery_states: [PREPARED, RUNNING, INTERRUPTED, BLOCKED, CANDIDATE, APPROVED]
+excluded_capabilities:
+  - Video-platform upload and external platform acceptance
+  - I2V and neural super-resolution
+exceptions: []

@@ -51,8 +51,8 @@ def split_script_text(text: str) -> list[str]:
         if not para.strip():
             continue
         # 段落内先按句末标点断
-        for sent in re.split(SENT_END, para):
-            sent = sent.strip()
+        for sent in re.split(SENT_END, re.sub(r"(?<=\d)\.(?=\d)", "\u2024", para)):
+            sent = sent.replace("\u2024", ".").strip()
             if not sent:
                 continue
             out.append(sent)
@@ -308,9 +308,10 @@ def clean_narration(raw: str) -> str:
     t = NARR_ANNOT.sub("", t)
     t = NARR_PAUSE.sub("。", t)
     t = NARR_BRACKET.sub("", t)
-    t = re.sub(r"\s+", "", t)
+    t = re.sub(r"(?<![A-Za-z0-9])\s+|\s+(?![A-Za-z0-9])", "", t)
+    t = re.sub(r"\s+", " ", t)
     t = re.sub(r"。{2,}", "。", t)
-    return t.strip("，。、；：？！ \t")
+    return t.strip()
 
 
 # ---------------------------------------------------------------------------

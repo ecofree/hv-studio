@@ -18,6 +18,7 @@
 """
 from __future__ import annotations
 
+from app.services.provenance import file_sha256, atomic_json
 import hashlib
 import json
 import os
@@ -295,8 +296,9 @@ def _draw_subtitle(img: Image.Image, text: str) -> None:
     total_h = sum(heights) + LINE_GAP * (len(lines) - 1)
     # 字幕块底边对齐 config subtitle.margin_bottom，多行字幕从底边向上生长，
     # 永远不越过底栏安全区。
-    y = _sub_bottom() - total_h
     stroke = _sub_stroke()
+    # Include outline and the four-pixel shadow in the bottom safe margin.
+    y = _sub_bottom() - total_h - stroke - 4
     for i, ln in enumerate(lines):
         w = d.textbbox((0, 0), ln, font=font)[2]
         x = (W - w) // 2
@@ -357,6 +359,19 @@ def _kill_proc(proc) -> None:
         pass
 
 
+def _start_stderr_reader(proc):
+    import threading
+    from collections import deque
+    proc._hv_errors=deque(maxlen=80)
+    def drain():
+        try:
+            for line in iter(proc.stderr.readline,b""):
+                proc._hv_errors.append(line.decode("utf-8","replace")[:1024])
+        except (OSError,ValueError): pass
+    proc._hv_reader=threading.Thread(target=drain,daemon=True)
+    proc._hv_reader.start()
+
+
 def _read_stderr(proc) -> str:
     """读取并收起 ffmpeg stderr，避免管道满导致 ffmpeg 卡死。
 
@@ -364,6 +379,9 @@ def _read_stderr(proc) -> str:
     一个 fd（C5 删掉全局 filterwarnings 后暴露：一个成片有多少段就漏多少个）。
     已关闭时再调会 return ""，不会掩盖后面的错误信息。
     """
+    if hasattr(proc,"_hv_reader"):
+        proc._hv_reader.join(timeout=5)
+        return "".join(proc._hv_errors)
     try:
             if proc.stderr:
                 try:
@@ -506,6 +524,12 @@ def _encode_video_span_once(
     pf = plan_frames or _plan_frames
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    _start_stderr_reader(proc)
+    import threading
+    watchdog=threading.Timer(timeout_sec,lambda:_kill_proc(proc)) if timeout_sec>0 else None
+    if watchdog:
+        watchdog.daemon=True
+        watchdog.start()
     expected = expected_frames(timeline_slice)
     n_total = 0
     encode_ok = False
@@ -557,6 +581,7 @@ def _encode_video_span_once(
                     f"ffmpeg stderr:\n{derr[-1200:]}")
             encode_ok = True
     finally:
+        if watchdog: watchdog.cancel()
         if proc.poll() is None:
             _kill_proc(proc)
         # 兜底：异常早退时 _read_stderr 可能没跑到，这里保证 stderr 读端收口
@@ -704,18 +729,20 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
         shots.append({
             "id": getattr(sh, "id", ""),
             "dur": getattr(sh, "duration_ms", 0),
-            "img": getattr(sh, "image_path", "") or "",
-            "up": getattr(sh, "upscaled_path", "") or "",
+            "img": file_sha256(sh.image_path) if getattr(sh,"image_path",None) and Path(sh.image_path).is_file() else None,
+            "up": file_sha256(sh.upscaled_path) if getattr(sh,"upscaled_path",None) and Path(sh.upscaled_path).is_file() else None,
             "sub": getattr(sh, "subtitle_text", "") or "",
             "grade": getattr(m, "grade", None) if m else None,
             "motion": str(m) if m else "",   # pan/zoom/ease 等整份运镜 spec
         })
     payload = {
+        "renderer_version": "legacy-render-v2",
+        "grade_values": __import__("app.services.motion",fromlist=["GRADE_MAP"]).GRADE_MAP,
         "mode": mode,                          # single / segmented
         "layout": [len(sl) for sl in segs],    # 短片与长片都写 seg-000，必须区分
         "vcodec": list(vcodec),
         "spec": [W, H, FPS, HEAD_MS, TAIL_MS],
-        "subtitle": [_sub_font_path(), _sub_font_size(), _sub_bottom(),
+        "subtitle": [file_sha256(_sub_font_path()) if Path(_sub_font_path()).is_file() else None, _sub_font_size(), _sub_bottom(),
                      _sub_stroke(), _sub_strip_punct()],
         "shots": shots,
     }
@@ -732,29 +759,14 @@ def _sync_segment_params(seg_dir: Path, timeline, vcodec, mode: str, segs) -> No
     """
     fp = _seg_params_fingerprint(timeline, vcodec, mode, segs)
     pf = seg_dir / "params.json"
-    old = None
-    if pf.exists():
-        try:
-            old = json.loads(pf.read_text(encoding="utf-8")).get("fp")
-        except Exception:  # noqa: BLE001 —— 清单坏了当「无记录」，走全量重编
-            old = None
-    if old == fp:
-        return
-    stale = sorted(seg_dir.glob("seg-*.mp4"))
-    if stale:
-        print(f"  [compose] 渲染参数已变（{old or '无记录'} → {fp}），"
-              f"作废 {len(stale)} 个旧段")
-        for p in stale:
-            try:
-                p.unlink(missing_ok=True)
-            except Exception:  # noqa: BLE001
-                pass
-    try:
-        pf.write_text(
-            json.dumps({"fp": fp, "mode": mode, "vcodec": list(vcodec)},
-                       ensure_ascii=False, indent=2), encoding="utf-8")
-    except Exception:  # noqa: BLE001 —— 清单写不进不该中断合成（只是失去指纹保护）
-        pass
+    try: old=json.loads(pf.read_text(encoding="utf-8"))
+    except (OSError,ValueError): old={}
+    segment_fps={f"seg-{i:03d}.mp4":_seg_params_fingerprint(sl,vcodec,"segment",[sl]) for i,sl in enumerate(segs)}
+    if old.get("fp")==fp and old.get("segments")==segment_fps: return
+    for p in seg_dir.glob("seg-*.mp4"):
+        if old.get("mode")!=mode or old.get("segments",{}).get(p.name)!=segment_fps.get(p.name):
+            p.unlink(missing_ok=True)
+    atomic_json(pf,{"fp":fp,"mode":mode,"vcodec":list(vcodec),"segments":segment_fps})
 
 
 def _run_audio_mux(video_src: Path, audio_src: Path, out_path: Path,
@@ -927,7 +939,9 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         if sh.image_path not in _up_cache:
             _up_cache[sh.image_path] = upscale(sh.image_path)
         upscaled[sh.id] = _up_cache[sh.image_path]
-    final = out_dir / f"{ep_id}_m1.mp4"
+    published = out_dir / f"{ep_id}_m1.mp4"
+    import uuid
+    final = out_dir / f"{ep_id}.{uuid.uuid4().hex}.candidate.mp4"
 
     # --- 编码参数（config.compose 驱动） ---
     from app.config.config import get_settings as _get_settings
@@ -1004,9 +1018,9 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
                 rendered_any = True
             seg_paths.append(p)
         # concat 无音轨视频
-        _concat_segments(seg_paths, final)
-        # 一次 mux 全片音轨（BGM 已合进 narration，此步只加音轨，不按段 fade）
-        _mux_full_audio(final, final)
+        _concat_segments(seg_paths, build / "concat.video.mp4")
+        # Never put a silent intermediate at the published path.
+        _mux_full_audio(build / "concat.video.mp4", final)
 
     # 成片已写出：读**真实**帧数，而不是预期值。
     #   此前 `n_actual = n_total_all` 把「打算编多少帧」当成「实际编了多少帧」
@@ -1020,7 +1034,11 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
             f"清理 build/ 与 out/ 后重跑 compose")
     assert_timing_or_raise(ep, video_total_frames=n_actual)
 
+    from app.services.media_integrity import verify_media
+    verify_media(final, expected_frames=n_actual)
     save(ep)
+    os.replace(final, published)
+    final = published
     print(f"成片: {final}  {final.stat().st_size/1024/1024:.1f}MB  "
           f"{total_ms/1000:.2f}s  {n_actual}帧")
     return final

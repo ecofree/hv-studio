@@ -175,6 +175,8 @@ def _normalize_asset_paths(ep: Episode) -> None:
         # 绝对路径但前缀是【另一个根】（如搬走前的 D:/hv）→ 剥掉旧根头，
         # 以相对段拼到当前 ROOT。相对路径（episodes/...）也在此收敛为绝对。
         if Path(norm).is_absolute():
+            if Path(norm).exists():
+                return Path(norm).as_posix()
             # 形如 D:/hv/episodes/... → 取旧根之后部分
             idx = norm.find("/episodes/")
             if idx >= 0:

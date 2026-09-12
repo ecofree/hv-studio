@@ -128,6 +128,7 @@ class ProfileImage(BaseModel):
 
 
 class ProfileVoice(BaseModel):
+    voice_asset: str | None = None
     """音色塑形（CosyVoice v3.5 合成参数，可选；None = 服务端默认）。"""
     engine: str
     # fallback_engine 已删（P1-3 审计）：全仓零消费者，配置在撒谎。
@@ -214,6 +215,14 @@ class ProfileBGM(BaseModel):
     fade_out_sec: int
 
 
+class ProfileASR(BaseModel):
+    backend: str = "dashscope"
+    python_executable: str = ".venv-asr/Scripts/python.exe"
+    model_dir: str = ".cache/asr/faster-whisper-small"
+    threads: int = Field(default=4, ge=1, le=16)
+    timeout_seconds: int = Field(default=180, ge=1)
+
+
 class StyleProfile(BaseModel):
     name: str
     image: ProfileImage
@@ -221,6 +230,7 @@ class StyleProfile(BaseModel):
     subtitle: ProfileSubtitle
     motion: ProfileMotion
     bgm: ProfileBGM
+    asr: ProfileASR = Field(default_factory=ProfileASR)
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +333,9 @@ class ComposeConfig(BaseModel):
     # 分段渲染（2026-09-04）：按段预渲染视频再 concat copy + 一次混音，
     # 把 21min 长片的失败域从整段降到单段，并可断点续跑。
     segment_max_sec: float = 90.0   # 单段最长秒数（在镜头边界切，不切镜中）
+    # v2 production 使用 PIL 逐帧字幕/调色，单帧成本高于 legacy compose；
+    # 单独收窄段长，确保默认 300s 的段级 watchdog 能收口。
+    v2_segment_max_sec: float = 45.0
     segment_min_frames: int = 2500  # 全片预期帧数 < 此值仍走旧单段路径（保短片行为不变）
 
 

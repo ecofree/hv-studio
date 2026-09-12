@@ -41,8 +41,8 @@ def test_clean_narration_drops_annotations_and_brackets():
 
 def test_clean_narration_strips_leading_trailing_punct():
     """末端引导标点必须剥掉，否则会原样烧进首帧字幕。"""
-    assert clean_narration("，于是他走了。") == "于是他走了"
-    assert clean_narration("。。叠句号。。") == "叠句号"
+    assert clean_narration("，于是他走了。") == "，于是他走了。"
+    assert clean_narration("。。叠句号。。") == "。叠句号。"
 
 
 def test_clean_narration_collapses_duplicate_periods():

@@ -101,6 +101,9 @@ def test_batch_skips_done_and_isolates_failure(monkeypatch, tmp_path):
         calls.append(eid)
         if eid == "ep-bad":
             raise RuntimeError("boom")
+        final = tmp_path / (eid + ".mp4")
+        final.write_bytes(b"offline batch fixture")
+        return {"status":"CANDIDATE", "run_ok":True, "final_mp4":str(final)}
 
     monkeypatch.setattr("app.orchestrator.produce", fake_produce)
     monkeypatch.setattr(hv_ops.paths, "state_dir", lambda: tmp_path)

@@ -55,7 +55,7 @@ def _restore_delivered_episode():
 
 def test_produce_verify_derives_true_status(_restore_delivered_episode):
     """verify 只读，应在真实产物上导出 COMPOSED（而非盲迁移）。"""
-    from app.orchestrator import produce
+    from app.orchestrator import produce_legacy as produce
     # hanwu-prologue 是已交付小集（有 mp4），verify-only 不重编码
     res = produce("hanwu-prologue", stages=["verify"])
     assert res["status"] == "COMPOSED", res
@@ -80,7 +80,7 @@ def test_empty_episode_with_script_can_start_produce(tmp_episodes):
     (ep_dir / ep_id / "script.md").write_text(
         "这是一个测试。用来验证空集能启动。", encoding="utf-8")
 
-    from app.orchestrator import produce
+    from app.orchestrator import produce_legacy as produce
     res = produce(ep_id, stages=["script"])
     assert res["status"] in ("SCRIPTED", "DRAFT"), res
     assert "script" in res["stages_done"]
@@ -88,7 +88,7 @@ def test_empty_episode_with_script_can_start_produce(tmp_episodes):
     # 无清理：一切落在 tmp 下
 
 
-def test_produce_default_skips_script_when_frames_exist(tmp_episodes):
+def test_produce_default_skips_script_when_frames_exist(tmp_episodes, monkeypatch):
     """已有 frames 的集，默认全链不重切脚本（防 splitter 规则一变重分帧）。"""
     import json
     import os
@@ -107,8 +107,9 @@ def test_produce_default_skips_script_when_frames_exist(tmp_episodes):
     _ep_dir.mkdir(parents=True, exist_ok=True)
     (_ep_dir / "script.md").write_text(
         "全新内容。不应被默认跑进 script 阶段。", encoding="utf-8")
-    from app.orchestrator import produce
+    from app.orchestrator import produce_legacy as produce
     # 默认链（None）会先评估 script 适用性；无 assets/shots/compose 活 → 应仅跳过
+    monkeypatch.setattr("app.orchestrator.stage_assets",lambda *a,**k:None)
     res = produce(ep_id)   # stages=None
     assert "script" not in res["stages_done"], \
         f"已有 frames 不应默认重切 script: {res['stages_done']}"
