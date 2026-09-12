@@ -16,6 +16,14 @@ from packaging.requirements import Requirement
 from packaging.utils import canonicalize_name
 
 
+def require_module_payload(entries, modules, name):
+    names = [str(entry).replace('\\','/') for entry in entries]
+    missing = [module for module in modules if module.isidentifier() and not any(
+        entry.startswith(module+'/') or entry==module+'.py' or
+        (entry.startswith(module+'.') and entry.endswith('.pyd')) for entry in names)]
+    if missing: raise RuntimeError(f'{name}: module payload missing: {missing}; metadata-only snapshot is unusable')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--output', required=True)
@@ -41,6 +49,8 @@ def main():
     for name, dist in sorted(selected.items()):
         files = [p for p in dist.files or [] if '..' not in Path(str(p)).parts and '__pycache__' not in str(p)
                  and not str(p).endswith(('.pyc', '/RECORD', '\\RECORD'))]
+        modules = (dist.read_text('top_level.txt') or '').splitlines()
+        require_module_payload(files,modules,name)
         wheels = [p for p in files if str(p).endswith('.dist-info/WHEEL')]
         if len(wheels) != 1: raise RuntimeError('installed distribution lacks wheel metadata: '+name)
         info = dist.locate_file(wheels[0]).read_text(encoding='utf-8')
@@ -49,6 +59,8 @@ def main():
         tag = next(t.strip() for t in re.findall(r'^Tag: (.+)$', info, re.MULTILINE) if t.strip() in compatible)
         path = destination/f'{name.replace("-", "_")}-{dist.version}-{tag}.whl'
         if path.exists():
+            with zipfile.ZipFile(path) as existing:
+                require_module_payload(existing.namelist(),modules,name)
             records.append(dict(name=name, version=dist.version, wheel=path.name,
                                 sha256=hashlib.sha256(path.read_bytes()).hexdigest(), origin='installed_runtime_snapshot'))
             continue

@@ -1,6 +1,7 @@
 """Executable acceptance gates. No providers, media deletion or fake approvals."""
 import argparse
 import importlib.metadata
+import importlib
 import json
 from pathlib import Path
 import shutil
@@ -28,6 +29,12 @@ def main():
         pip = subprocess.run([sys.executable, '-m', 'pip', 'check'], capture_output=True, text=True)
         checks['pip_check'] = dict(exit_code=pip.returncode, output=pip.stdout.strip())
         if pip.returncode: raise RuntimeError('core pip check failed')
+        # Distribution metadata can exist even when an offline wheel omitted its
+        # modules. Exercise the actual runtime, including the populated queue UI.
+        checks['runtime_imports'] = {}
+        for module in ('numpy','PIL.Image','dateutil','pandas','streamlit'):
+            importlib.import_module(module)
+            checks['runtime_imports'][module] = 'passed'
         if not shutil.which('ffmpeg') or not shutil.which('ffprobe'): raise RuntimeError('media tools missing')
         from app.services.compose import check_font_available
         check_font_available(); checks['media_dependencies'] = 'passed'
