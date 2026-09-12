@@ -539,7 +539,7 @@ def stage_verify(ep: Episode) -> dict:
     return {"ok": True, "frames": nf, "bytes": size}
 
 
-def reshot(ep_id: str, keys: list[str], do_verify: bool = True) -> dict:
+def reshot(ep_id: str, keys: list[str], do_verify: bool = True, *, budget_id=None, max_images=0) -> dict:
     """Generate scoped image candidates; preserve published media and manual shot edits."""
     import uuid
     from app.managers import load
@@ -552,12 +552,16 @@ def reshot(ep_id: str, keys: list[str], do_verify: bool = True) -> dict:
         jobs = build_image_jobs(ep_id, only=set(keys))
         if {j.id for j in jobs} != set(keys):
             raise ValueError("requested images were blocked or missing; no generation performed")
-        candidate = _episode_dir(ep_id)/"candidates"/uuid.uuid4().hex
-        candidate.mkdir(parents=True)
+        if not budget_id: raise ValueError('reshot requires an explicit stable budget ID')
+        from app.services.provider_budget import for_run
+        from app.services.provenance import fingerprint
+        budget = for_run(_episode_dir(ep_id)/'production', ['reshot',budget_id],dict(max_images=max_images))
+        candidate = _episode_dir(ep_id)/"candidates"/fingerprint(['reshot',budget_id,keys])
+        candidate.mkdir(parents=True, exist_ok=True)
         before = ep.model_dump(mode="json")
         old_paths={j.id:str(j.out_path).replace("\\","/") for j in jobs}
         for job in jobs: job.out_path=candidate/(job.id+".png")
-        result=generate_many(jobs)
+        result=generate_many(jobs, budget=budget)
         if any(not j.is_done() for j in jobs):
             raise RuntimeError(f"candidate generation failed; previous revision preserved: {candidate}")
         for shot in ep.shots.values():
@@ -626,16 +630,12 @@ def _check_disk_space(ep_dir, need_mb: int = 2500):
     import shutil
     try:
         free = shutil.disk_usage(str(ep_dir)).free / 1024 / 1024
-    except Exception:  # noqa: BLE001
-        return
+    except OSError as exc:
+        raise RuntimeError('cannot verify free disk space before production') from exc
     # 分级：低于建议值只告警（低磁盘机器不该被一刀切拒绝），低于硬底才拒绝
-    if free < 800:
-        raise RuntimeError(
-            f"[produce] 磁盘空间严重不足：剩余 {free:.0f}MB（硬底 800MB）。"
-            f"请先清理（hv clean / 删除 state/_bt_* 临时目录）。")
     if free < need_mb:
-        print(f"  [produce][告警] 磁盘剩余 {free:.0f}MB，低于建议值 "
-              f"{need_mb}MB（单集 15min 约 2.4G），有渲到一半写满的风险")
+        raise RuntimeError(
+            f"[produce] 磁盘空间不足：剩余 {free:.0f}MB，本任务需要至少 {need_mb}MB；未开始付费生产。")
 
 
 def _episode_lock(ep_id: str):
@@ -800,6 +800,8 @@ def produce_legacy(
 def produce(ep_id, stages=None, script_md=None, *, pipeline="v2", **options):
     """Shared production dispatch. Historical frame rendering requires explicit opt-in."""
     if pipeline == "legacy-preview":
+        if stages is None or any(s in ('assets', 'tts', 'images') for s in stages):
+            raise ValueError('paid legacy stages are retired; use v2 with an explicit durable budget')
         return produce_legacy(ep_id, stages=stages, script_md=script_md, **options)
     if pipeline != "v2":
         raise ValueError("pipeline must be v2 or legacy-preview")

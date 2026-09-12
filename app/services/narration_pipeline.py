@@ -223,9 +223,13 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                 if reused_provider:
                     effective=read(take_dir/"effective_request.json")
                 else:
-                    reservation = budget.reserve('tts', key, len(request['text'])) if budget else None
+                    # Real SDK attempts charge at the transport boundary. Injected
+                    # offline adapters retain the same ledger contract for tests.
+                    reservation = budget.reserve('tts', key, len(request['text'])) if budget and provider else None
                     try:
-                        effective=(provider or _provider)(request,raw)
+                        from app.services.provider_budget import tts_budget_scope
+                        with tts_budget_scope(budget):
+                            effective=(provider or _provider)(request,raw)
                     except BaseException:
                         if reservation: budget.finish(reservation, False)
                         raise
@@ -331,6 +335,10 @@ def record_listening_review(manifest_path, reviewer, findings, decision):
 
 def synthesize(plan_path, asset_path, *, max_requests, max_characters, force=False, provider=None, checker=None, budget=None):
     from app.services.process_lock import file_lock
+    if budget is None and provider is None:
+        from app.services.provider_budget import for_run
+        budget = for_run(Path(plan_path).parent, ['narration',file_sha256(plan_path),file_sha256(asset_path)],
+                         dict(max_requests=max_requests,max_characters=max_characters))
     with file_lock(Path(plan_path).parent/".synthesize.lock"):
         return _synthesize(plan_path,asset_path,max_requests=max_requests,max_characters=max_characters,
                            force=force,provider=provider,checker=checker,budget=budget)

@@ -59,7 +59,7 @@ def cmd_episode(args):
         if not keys:
             raise SystemExit("error: reshot 至少一个 --key（底图 key，如 LGT01）")
         res = reshot(args.episode_id, keys,
-                     do_verify=not getattr(args, "no_verify", False))
+                     do_verify=not getattr(args, "no_verify", False), budget_id=args.budget_id, max_images=args.max_images)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "produce":
         # P0-3：真实生产链（script→tts→compose→verify），状态由产物推进。
@@ -174,12 +174,30 @@ def cmd_batch(args):
     eps = load_episodes(_P(args.file))
     if not eps:
         raise SystemExit(f"error: {args.file} 里没读到集 id")
+    if args.enqueue:
+        if not args.batch_id or args.stage or args.stop_on_error or args.resume:
+            raise SystemExit('unattended queue requires --batch-id and full stages; restart the worker to resume')
+        from app.services.batch_worker import enqueue
+        path = enqueue(args.batch_id, eps, dict(max_requests=args.max_requests,
+                       max_characters=args.max_characters, max_images=args.max_images),
+                       timeout=args.job_timeout, retries=args.job_retries)
+        print(f'已入队：{path}')
+        return
     result = run_batch(eps, batch_id=args.batch_id, stop_on_error=args.stop_on_error,
               resume=args.resume,
               stages=args.stage.split(",") if args.stage else None,
               production_options=dict(max_requests=args.max_requests, max_characters=args.max_characters,
                                       max_images=args.max_images))
     if result["failed"]: raise SystemExit(1)
+
+
+def cmd_input_review(args):
+    from app.services.production_admission import check, record_approval
+    if args.reviewer or args.finding:
+        if not args.reviewer or not args.finding: raise SystemExit('reviewer and finding are both required')
+        print(record_approval(args.episode, args.reviewer, args.finding))
+    import json
+    print(json.dumps(check(args.episode), ensure_ascii=False, indent=2))
 
 
 def cmd_smoke(args):
@@ -263,14 +281,17 @@ def cmd_image(args):
     w, h = predict_actual_dims(args.size)
     print(f"请求 size={args.size}  → 预测实际 {w}x{h}")
     t0 = time.time()
-    resp = img.generate(req)
+    from app.services.image import run_probe
+    out = run_probe(req, args.budget_id, args.max_images)
     dt = time.time() - t0
-    item = resp.data[0]
-    print(f"生图 {dt:.1f}s  revised_prompt={(item.revised_prompt or '')[:80]}")
-    if item.b64_json:
-        out = args.out or f"assets/probe/cli_{int(time.time())}.png"
-        p = save_b64_image(item.b64_json, out)
-        print(f"已保存: {p}  ({Path(p).stat().st_size/1024:.0f}KB)")
+    if args.out:
+        import shutil
+        destination=Path(args.out)
+        destination.parent.mkdir(parents=True,exist_ok=True)
+        if destination.exists() and destination.resolve()!=out.resolve():
+            raise SystemExit(f'output exists; probe preserved at {out}')
+        if destination.resolve()!=out.resolve(): shutil.copy2(out,destination)
+    print(f"生图/恢复 {dt:.1f}s；已保存: {out}")
 
 
 def cmd_cost(args):
@@ -464,6 +485,8 @@ def main():
     p.add_argument("--size", default="1080x1920")
     p.add_argument("--quality", default="low")
     p.add_argument("--model", default="gpt-image-2")
+    p.add_argument("--budget-id", required=True, help="稳定预算编号；重试必须沿用")
+    p.add_argument("--max-images", type=int, default=0, help="总请求上限，含失败和重试")
     p.add_argument("--out", default=None)
     p.set_defaults(func=cmd_image)
 
@@ -501,6 +524,9 @@ def main():
 
     # smoke：端到端冒烟
     p = sub.add_parser("batch", help="批量生产多集（失败隔离+断点续跑）")
+    p.add_argument('--enqueue', action='store_true', help='进入持久无人值守队列，先审核准入再消费预算')
+    p.add_argument('--job-timeout', type=int, default=3600)
+    p.add_argument('--job-retries', type=int, default=2)
     p.add_argument("--file", required=True,
                    help="集 id 列表文件（一行一个，# 注释）")
     p.add_argument("--batch-id", default=None,
@@ -515,6 +541,12 @@ def main():
     p.add_argument("--max-requests", type=int, default=0, help="整批实际 TTS 调用总上限，续跑不重置")
     p.add_argument("--max-characters", type=int, default=0)
     p.add_argument("--max-images", type=int, default=0, help="整批实际图片调用总上限，包含失败和重试")
+
+    p = sub.add_parser('input-review', help='检查无人生产准入；显式填写审核人和结论后记录输入审核')
+    p.add_argument('episode')
+    p.add_argument('--reviewer')
+    p.add_argument('--finding')
+    p.set_defaults(func=cmd_input_review)
 
     p = sub.add_parser("smoke", help="端到端冒烟（全 mock，零成本）")
     p.add_argument("--keep", action="store_true", help="保留样本便于排查")

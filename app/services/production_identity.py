@@ -16,8 +16,8 @@ def implementation_identity():
 
 
 def input_identity(ep_id, stages, options=None):
-    directory = paths.episodes_dir() / ep_id
-    files = {paths.episodes_dir() / f"{ep_id}.json"}
+    directory = paths.episode_dir(ep_id)
+    files = {paths.episode_json(ep_id)}
     files.update((paths.state_dir()/'audio_rejections').glob('*.json'))
     for name in ("script.md", "scene_plan.json", "image_prompts.json"):
         files.add(directory / name)

@@ -124,8 +124,30 @@ class RelayManager:
         self._load()
 
     def request_slot(self, name: str):
-        """All models of one supplier share the same in-process concurrency cap."""
-        return self._slots[name]
+        """All entry points and processes share one supplier lane.
+
+        Conservative cap of one remains safe during configuration changes.
+        Different suppliers still run concurrently.
+        """
+        from contextlib import contextmanager
+        from app.services.process_lock import file_lock
+        from app.services.provenance import fingerprint
+        import time
+
+        @contextmanager
+        def acquire():
+            deadline = time.monotonic() + 900
+            while True:
+                lock = file_lock(STATE_DIR/'provider-slots'/(fingerprint(name.casefold())+'.lock'))
+                try:
+                    lock.__enter__()
+                    break
+                except RuntimeError:
+                    if time.monotonic() >= deadline: raise RuntimeError('supplier lane wait deadline exceeded')
+                    time.sleep(.05)
+            try: yield
+            finally: lock.__exit__(None, None, None)
+        return acquire()
 
     # ---- 持久化 ----
     def _load(self) -> None:
@@ -221,9 +243,8 @@ class RelayManager:
         """内部用：调用方必须已持锁。"""
         STATE_DIR.mkdir(parents=True, exist_ok=True)
         data = {name: h.to_dict() for name, h in self._channels.items()}
-        tmp = HEALTH_PATH.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(HEALTH_PATH)
+        from app.services.provenance import atomic_json
+        atomic_json(HEALTH_PATH, data)
 
 
 # ---------------------------------------------------------------------------

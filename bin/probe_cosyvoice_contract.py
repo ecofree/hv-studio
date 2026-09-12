@@ -27,7 +27,9 @@ def probe(output):
                 synth.complete_event.set()
         synth.ws=SimpleNamespace(send=send,close=lambda:None,sock=SimpleNamespace(connected=True))
     output=Path(output);output.mkdir(parents=True,exist_ok=True)
-    with patch.object(C,'ROOT',output),patch.object(C,'_env_get',lambda name:''),patch.object(C,'_resolve_synth_ws_url',lambda:None),patch.object(SpeechSynthesizer,'_SpeechSynthesizer__connect',connect):
+    from app.services.provider_budget import ProviderBudget, tts_budget_scope
+    budget=ProviderBudget(output/'probe-budget.json',tts_requests=2,characters=40)
+    with tts_budget_scope(budget),patch.object(C,'ROOT',output),patch.object(C,'_env_get',lambda name:''),patch.object(C,'_resolve_synth_ws_url',lambda:None),patch.object(SpeechSynthesizer,'_SpeechSynthesizer__connect',connect):
         for rate in (1.0,1.2):
             svc=C.DashScopeCosyVoiceSynthesizer(api_key='test-key',model='cosyvoice-v3.5-flash',
                 voice='fixture-voice',response_format='wav',speech_rate=rate,enable_ssml=False)

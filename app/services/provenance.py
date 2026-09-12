@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 import uuid
+import time
 from pathlib import Path
 
 
@@ -21,6 +22,18 @@ def file_sha256(path) -> str:
     return h.hexdigest()
 
 
+def replace_file(source, destination, timeout=2.0):
+    """Windows readers/antivirus can briefly deny replacement of an open file."""
+    deadline = time.monotonic()+timeout
+    while True:
+        try:
+            os.replace(source,destination)
+            return
+        except PermissionError as exc:
+            if os.name!='nt' or exc.winerror not in (5,32,33) or time.monotonic()>=deadline: raise
+            time.sleep(.025)
+
+
 def atomic_json(path, value) -> None:
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -30,6 +43,6 @@ def atomic_json(path, value) -> None:
             json.dump(value, stream, ensure_ascii=False, indent=2, allow_nan=False)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(tmp, path)
+        replace_file(tmp, path)
     finally:
         tmp.unlink(missing_ok=True)

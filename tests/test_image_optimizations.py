@@ -94,8 +94,10 @@ class _FakeGen:
         if isinstance(item, Exception):
             raise item
         if hasattr(item, "data"):      # 已是 response（用于造空 data 场景）
-            return item
-        return types.SimpleNamespace(data=[item])
+            from app.models import ImageGenResponse
+            return ImageGenResponse(data=item.data)
+        from app.models import ImageGenResponse, ImageGenItem
+        return ImageGenResponse(data=[ImageGenItem(b64_json=item.b64_json, url=item.url)])
 
 
 def _ok_item(n: int = 60000):
@@ -201,8 +203,8 @@ def test_transient_exhausted_then_switch(monkeypatch, tmp_path):
     assert gen.calls == ["A", "A", "B"]  # A 打满 1+1=2 次才换
 
 
-def test_empty_data_treated_as_transient(monkeypatch, tmp_path):
-    """空 data 多为上游瞬时抽风，按瞬时处理（原实现当致命 → 白换路）。"""
+def test_empty_paid_response_is_held_for_disposition(monkeypatch, tmp_path):
+    """A received response cannot authorize another paid generation."""
     monkeypatch.setattr(m, "_MAX_TRANSIENT_RETRY", 2)
     job = _job(tmp_path)
     job._channel_idx = 0
@@ -214,8 +216,9 @@ def test_empty_data_treated_as_transient(monkeypatch, tmp_path):
     q.put(job)
     res: dict = {}
     m._generate_many_worker(gen, q, res, _channels("A", "B"), False)
-    assert res[job.id] is not None
-    assert gen.calls == ["A", "A"]
+    assert res[job.id] is None
+    assert gen.calls == ["A"]
+    assert job.out.with_suffix('.png.response.json').is_file()
 
 
 def test_all_channels_fail_records_error(monkeypatch, tmp_path):

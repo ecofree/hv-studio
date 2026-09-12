@@ -11,10 +11,16 @@ def get_status(ep_id):
     from app.services.production_identity import artifacts_current
     root = _episode_dir(ep_id)/'production/v2'; state_path = root/'run.json'
     if not state_path.exists(): return dict(pipeline_version='production_v2', status='NOT_STARTED', approved=False, production_ready=False, blockers=[])
-    state = read(state_path); last = state.get('last_result', {})
+    try:
+        state = read(state_path); last = state.get('last_result', {})
+    except (OSError, ValueError, TypeError, AttributeError) as exc:
+        return dict(pipeline_version='production_v2', status='BLOCKED', approved=False, production_ready=False,
+                    delivery_ready=False, blockers=['production state unreadable: '+type(exc).__name__],
+                    delivery_pending=[], quality_pending_units=[])
     result = dict(pipeline_version='production_v2', status=last.get('status','PREPARED'), approved=False, production_ready=False,
                   stages_done=last.get('stages_done', []), active_stage=state.get('active_stage'),
                   candidate_path=None, blockers=[], delivery_pending=[], quality_pending_units=[])
+    result.update(delivery_ready=False, dimensions={}, source_current=False)
     if state.get('running'):
         try:
             alive = psutil.Process(state.get('owner_pid',-1)).create_time()==state.get('owner_created_at')
@@ -23,6 +29,7 @@ def get_status(ep_id):
     if last.get('error'): result['blockers'].append(last['error'])
     try:
         if fingerprint(_load_script_md(load(ep_id))) != state['source_sha256']: raise ValueError('source changed')
+        result['source_current'] = True
         if state.get('receipt_path'):
             receipt = read(state['receipt_path'])
             if not artifacts_current(receipt['inputs']): raise ValueError('candidate inputs changed; rebuild required')
@@ -60,6 +67,36 @@ def get_status(ep_id):
     except (OSError, ValueError, KeyError) as exc:
         if result['status'] != 'RUNNING': result['status'] = 'STALE'
         result['blockers'].append(str(exc))
+    # An outdated candidate must not hide independent review queues. These
+    # readers validate their own audio/source bindings, separately from render.
+    for dimension, key, reader, output in (
+        ('quality', 'quality_path', _quality_pending, 'quality_pending_units'),
+        ('delivery', 'manifest_path', _delivery_pending, 'delivery_pending'),
+    ):
+        if not state.get(key): continue
+        try:
+            result[output] = reader(state[key])
+            result['quality_report_path' if key=='quality_path' else key] = state[key]
+            result['dimensions'][dimension] = 'pending' if result[output] else 'passed'
+            if result[output]: result['blockers'].append(dimension+' findings await disposition')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            result['dimensions'][dimension] = 'stale_or_invalid'
+            result['blockers'].append(dimension+': '+str(exc))
+            result.update(approved=False, delivery_ready=False)
     if state.get('budget_path'):
-        budget = read(state['budget_path']); result['budget'] = dict(limits=budget['limits'], used=budget['used'])
+        try:
+            budget = read(state['budget_path']); result['budget'] = dict(limits=budget['limits'], used=budget['used'])
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            result['blockers'].append('budget ledger unreadable: '+type(exc).__name__)
+    result['blockers'] = list(dict.fromkeys(result['blockers']))
     return result
+
+
+def _quality_pending(path):
+    from app.services.production_quality import pending
+    return pending(path)
+
+
+def _delivery_pending(path):
+    from app.services.delivery import pending
+    return pending(path)

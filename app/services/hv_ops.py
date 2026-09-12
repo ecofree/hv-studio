@@ -36,7 +36,7 @@ def backup_shots(ep_id: str, dest_root: Path | None = None,
 
     幂等：目标已存在且 size+mtime 一致则跳过。
     """
-    src = paths.episodes_dir() / ep_id / "shots"
+    src = paths.episode_dir(ep_id) / "shots"
     if not src.is_dir():
         return {"ep": ep_id, "skipped": "无 shots/ 目录", "copied": 0}
 
@@ -337,6 +337,9 @@ def run_batch(episodes, *, batch_id=None, stop_on_error=False, resume=False, sta
     bid = batch_id or time.strftime('%Y%m%d-%H%M%S')
     if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', bid): raise ValueError('invalid batch id')
     if len(set(episodes)) != len(episodes): raise ValueError('duplicate episodes in batch')
+    for eid in episodes:
+        paths.episode_dir(eid)
+        paths.episode_json(eid)
     with file_lock(_state_path(bid).with_suffix('.batch.lock')):
         return _run_batch(episodes, batch_id=bid, stop_on_error=stop_on_error, resume=resume,
                           stages=stages, production_options=production_options)

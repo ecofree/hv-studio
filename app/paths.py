@@ -28,6 +28,28 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+
+
+class InvalidEpisodeId(ValueError):
+    pass
+
+
+def validate_episode_id(value: str) -> str:
+    # Unicode names remain supported; Windows separators, devices and aliases do not.
+    if (not isinstance(value, str) or not re.fullmatch(r'[\w-]{1,100}', value)
+            or value.upper() in {'CON', 'PRN', 'AUX', 'NUL', 'CLOCK$'}
+            or re.fullmatch(r'(COM|LPT)[0-9¹²³]', value, re.I)):
+        raise InvalidEpisodeId('invalid episode ID: use 1-100 letters, digits, underscores or hyphens')
+    return value
+
+
+def contained_path(root: Path, name: str) -> Path:
+    root = Path(root).resolve()
+    target = root / name
+    if not target.resolve().is_relative_to(root):
+        raise InvalidEpisodeId('episode path escapes its storage directory')
+    return target
 
 ROOT = Path(__file__).resolve().parent.parent  # D:/hv
 
@@ -39,12 +61,12 @@ def episodes_dir() -> Path:
 
 def episode_dir(ep_id: str) -> Path:
     """episodes/{ep_id} —— 单集资产目录。"""
-    return episodes_dir() / ep_id
+    return contained_path(episodes_dir(), validate_episode_id(ep_id))
 
 
 def episode_json(ep_id: str) -> Path:
     """episodes/{ep_id}.json —— 单集单一可信源。"""
-    return episodes_dir() / f"{ep_id}.json"
+    return contained_path(episodes_dir(), f"{validate_episode_id(ep_id)}.json")
 
 
 def state_dir() -> Path:

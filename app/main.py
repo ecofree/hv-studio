@@ -35,6 +35,20 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+from app.paths import InvalidEpisodeId
+from app.services.provider_budget import BudgetExceeded
+from fastapi.responses import JSONResponse
+
+
+@app.exception_handler(InvalidEpisodeId)
+async def invalid_episode_id(request, exc):
+    return JSONResponse(status_code=422, content={'detail': str(exc)})
+
+
+@app.exception_handler(BudgetExceeded)
+async def missing_budget(request, exc):
+    return JSONResponse(status_code=409, content={'detail': str(exc)})
+
 # CORS 收紧（审计 P1）：本服务含可触达付费生图的端点，默认只允许本地回环来源，
 # 不再用 allow_origins=["*"]（配合 allow_credentials=True 是危险组合）。
 # 生产部署需显式经 env HV_CORS_ORIGINS 白名单放开，并由反向代理做鉴权。

@@ -74,7 +74,7 @@ class _Recorder:
 
 
 @pytest.fixture
-def patch_generator(monkeypatch):
+def patch_generator(monkeypatch, tmp_path):
     """把 get_image 换成注入 3 个 mock 渠道 + mock _post 的 ImageGenerator。"""
     channels = [_make_channel("aicost"), _make_channel("qcyc"), _make_channel("cxk")]
     rec = _Recorder()
@@ -93,6 +93,8 @@ def patch_generator(monkeypatch):
     gen = ImageGenerator.__new__(ImageGenerator)
     gen.relay = FakeRelay()
     gen.max_attempts = 3
+    from app.services.provider_budget import ProviderBudget
+    gen.offline_budget = ProviderBudget(tmp_path/'budget.json', image_requests=30)
     gen._post = lambda ch, path, body: rec(gen, ch, path, body)
     # 替换模块单例与 get_image
     monkeypatch.setattr(image_mod, "_image", gen)
@@ -110,7 +112,7 @@ def test_every_channel_is_used(patch_generator, tmp_path):
     for ch in channels:
         rec.behavior[ch.name] = lambda c: _ok_resp()
     jobs = [ImageJob(f"j{i}", _gen_req(), tmp_path / f"{i}.png") for i in range(6)]
-    res = generate_many(jobs)
+    res = generate_many(jobs, budget=gen.offline_budget)
     assert all(res[j.id] is not None for j in jobs)
     used = set(rec.calls)
     assert used == {"aicost", "qcyc", "cxk"}, f"应三路都用, 实际 {used}"
@@ -125,7 +127,7 @@ def test_failover_when_one_channel_down(patch_generator, tmp_path):
     rec.behavior["qcyc"] = lambda c: _ok_resp()
     rec.behavior["cxk"] = lambda c: _ok_resp()
     jobs = [ImageJob(f"j{i}", _gen_req(), tmp_path / f"{i}.png") for i in range(4)]
-    res = generate_many(jobs)
+    res = generate_many(jobs, budget=gen.offline_budget)
     assert all(res[j.id] is not None for j in jobs), res
     # aicost 可能被失败尝试，但最终由 qcyc/cxk 承接
     assert "aicost" in rec.calls or len(rec.calls) >= 4
@@ -144,7 +146,7 @@ def test_already_done_job_is_skipped(patch_generator, tmp_path):
         ImageJob("done", _gen_req(), pre),          # 应跳过
         ImageJob("todo", _gen_req(), tmp_path / "todo.png"),
     ]
-    res = generate_many(jobs)
+    res = generate_many(jobs, budget=gen.offline_budget)
     assert res["done"] == str(pre)
     # 只有 todo 触发网络
     assert len(rec.calls) == 1
@@ -157,7 +159,7 @@ def test_pinned_channel_single_target(patch_generator, tmp_path):
     rec.behavior["qcyc"] = lambda c: _ok_resp()
     rec.behavior["*"] = lambda c: (_ for _ in ()).throw(RuntimeError("不该打这里"))
     req = _gen_req()
-    gen.generate(req, channel=channels[1])  # qcyc
+    gen.generate(req, channel=channels[1], budget=gen.offline_budget)
     assert rec.calls == ["qcyc"]
 
 
@@ -166,6 +168,6 @@ def test_pinned_channel_failure_raises(patch_generator):
     gen, channels, rec = patch_generator
     rec.behavior["*"] = lambda c: (_ for _ in ()).throw(RuntimeError("down"))
     with pytest.raises(RuntimeError):
-        gen.generate(_gen_req(), channel=channels[0])
+        gen.generate(_gen_req(), channel=channels[0], budget=gen.offline_budget)
     # 只尝试一次钉住渠道，不换路
     assert rec.calls == ["aicost"]

@@ -43,9 +43,12 @@ def episode_path(episode_id: str) -> Path:
 
 
 def checkpoint_path(episode_id: str, label: str, ts: datetime | None = None) -> Path:
+    from app.paths import validate_episode_id, contained_path
+    folder = contained_path(CHECKPOINT_DIR, validate_episode_id(episode_id))
+    validate_episode_id(label)
     ts = ts or datetime.now()
     ts_str = ts.strftime("%Y%m%d_%H%M%S_%f")
-    return CHECKPOINT_DIR / episode_id / f"{ts_str}_{label}.json"
+    return contained_path(folder, f"{ts_str}_{label}.json")
 
 
 CURRENT_SCHEMA = "1.0"
@@ -204,7 +207,8 @@ def rotate_checkpoints(episode_id: str, keep: int | None = None) -> list[Path]:
     k = CHECKPOINT_KEEP if keep is None else keep
     if k <= 0:
         return []
-    d = CHECKPOINT_DIR / episode_id
+    from app.paths import contained_path, validate_episode_id
+    d = contained_path(CHECKPOINT_DIR, validate_episode_id(episode_id))
     if not d.exists():
         return []
     files = sorted(d.glob("*.json"))
@@ -232,7 +236,8 @@ def checkpoint(ep: Episode, label: str, keep: int | None = None) -> Path:
 
 
 def list_checkpoints(episode_id: str) -> list[Path]:
-    d = CHECKPOINT_DIR / episode_id
+    from app.paths import contained_path, validate_episode_id
+    d = contained_path(CHECKPOINT_DIR, validate_episode_id(episode_id))
     if not d.exists():
         return []
     return sorted(d.glob("*.json"))

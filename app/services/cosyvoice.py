@@ -483,6 +483,9 @@ class DashScopeCosyVoiceSynthesizer:
     # ------------------------------------------------------------------
     def _speech_bytes(self, text: str, voice: str) -> bytes:
         """调用 SpeechSynthesizer.call(text) 返回二进制音频字节。"""
+        from app.services.provider_budget import current_tts_budget
+        from app.services.provenance import fingerprint
+        budget = current_tts_budget()
         synth = self._build_synthesizer(voice)
         attempt_id = uuid.uuid4().hex
         record = {"schema_version":"2.0", "attempt_id":attempt_id,
@@ -512,6 +515,7 @@ class DashScopeCosyVoiceSynthesizer:
         atomic_json(log,record)
         self.last_request_path = log
         started = time.monotonic()
+        reservation = budget.reserve('tts', fingerprint(record), len(text))
         try:
             audio = synth.call(text, timeout_millis=int(self.timeout_s*1000))
             if hasattr(audio,"read"): audio=audio.read()
@@ -526,6 +530,7 @@ class DashScopeCosyVoiceSynthesizer:
             record["error"] = {"type":type(exc).__name__, "message":"synthesis failed; inspect provider request_id"}
             raise
         finally:
+            budget.finish(reservation, record['status']=='succeeded')
             record["elapsed_seconds"] = time.monotonic()-started
             atomic_json(log,record)
 

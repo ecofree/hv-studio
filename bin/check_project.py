@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import subprocess
 import sys
+from datetime import datetime, timezone
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -16,6 +17,8 @@ def main():
     parser.add_argument('--tests', action='store_true')
     parser.add_argument('--suite', choices=['production','shared','legacy','all'], default='production')
     parser.add_argument('--output', default='state/acceptance/latest.json')
+    parser.add_argument('--require-ready', action='store_true')
+    parser.add_argument('--allow-dirty', action='store_true')
     args = parser.parse_args()
     from app.services.provenance import atomic_json, file_sha256, fingerprint
     from app.services.local_asr import runtime_versions
@@ -47,11 +50,25 @@ def main():
                for p in (ROOT/folder).rglob('*') if p.is_file() and p.suffix in ('.py','.yaml','.ps1') and '__pycache__' not in str(p)}
     for relative in ('pyproject.toml', '.ai-project/contract.yaml'):
         sources[relative] = file_sha256(ROOT/relative)
-    result = dict(status=status, error=error, source_fingerprint=fingerprint(sources), checks=checks,
+    source_fp = fingerprint(sources)
+    revision = subprocess.run(['git','rev-parse','HEAD'], cwd=ROOT, capture_output=True,text=True)
+    dirty = subprocess.run(['git','status','--porcelain','--','app','bin','tests','scripts','.ai-project'],
+                           cwd=ROOT,capture_output=True,text=True)
+    from app.services.production_readiness import assess
+    readiness = assess(source_fp)
+    if args.require_ready and (not readiness['ready'] or (dirty.stdout.strip() and not args.allow_dirty)
+                               or not args.tests or args.suite != 'production'):
+        status, error = 'FAIL', 'unattended readiness requirements are not satisfied'
+    from app.config.config import load_env
+    result = dict(status=status, error=error, source_fingerprint=source_fp, checks=checks,
+                  revision=revision.stdout.strip(), dirty_paths=dirty.stdout.splitlines(),
+                  environment_fingerprint=fingerprint(load_env()), checked_at=datetime.now(timezone.utc).isoformat(),
+                  requested_ready=args.require_ready, readiness=readiness,
                   scope='core_runtime_and_offline_code', production_ready=False,
                   remaining_acceptance='real current candidate, content disposition and human review')
+    result['production_ready'] = bool(status=='PASS' and args.require_ready and readiness['ready'])
     atomic_json(ROOT/args.output, result)
-    print(json.dumps({k:v for k,v in result.items() if k!='checks'}, ensure_ascii=False))
+    print(json.dumps({k:result[k] for k in ('status','error','source_fingerprint','scope','production_ready')}, ensure_ascii=False))
     return 0 if status=='PASS' else 1
 
 

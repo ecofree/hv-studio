@@ -3,8 +3,10 @@ from pathlib import Path
 from app.services import narration_pipeline as N, production_v2 as P
 from app.services.provenance import atomic_json, fingerprint, file_sha256
 from app.services.voice_assets import resolve_voice_asset
+from app.services.production_storage import production_storage
 
 
+@production_storage
 def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         max_images=0, timeline=None, voice_asset=None, timeout=300, budget=None, budget_id=None):
     import os, time
@@ -110,8 +112,9 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     for job in jobs:
                         job.out_path = root / "images" / job.request_fingerprint() / job.out.name
                     missing = [j for j in jobs if not j.is_done()]
-                    if len(missing) > max_images:
-                        raise ValueError(f"image budget exceeded: {len(missing)} jobs need generation, budget {max_images}")
+                    dispatch = [j for j in missing if not j.out.with_suffix(j.out.suffix+'.response.json').exists()]
+                    if len(dispatch) > max_images:
+                        raise ValueError(f"image budget exceeded: {len(dispatch)} jobs need generation, budget {max_images}")
                     if 'tts' in requested:
                         asset_path, _ = resolve_voice_asset(path=voice_asset)
                         quote = N.generation_quote(plan_path, asset_path)
@@ -119,12 +122,13 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                             raise ValueError('TTS budget insufficient; stopped before any image generation')
                         if get_settings().get_profile().voice.engine != 'cosyvoice':
                             raise ValueError('production requires CosyVoice before paid generation')
-                        budget.check_capacity(tts_requests=quote['requests'], characters=quote['characters'], image_requests=len(missing))
-                    elif budget: budget.check_capacity(image_requests=len(missing))
+                        budget.check_capacity(tts_requests=quote['requests'], characters=quote['characters'], image_requests=len(dispatch))
+                    elif budget: budget.check_capacity(image_requests=len(dispatch))
                     if any(s in requested for s in ('tts','alignment','timeline','compose')): preflight_media()
                     generated = generate_many(jobs, budget=budget)
                     if any(not generated.get(j.id) or not j.is_done() for j in jobs):
-                        raise ValueError("image generation incomplete")
+                        reasons = [str(generated.get(j.id+'__error','invalid output')) for j in jobs if not generated.get(j.id)]
+                        raise ValueError("image generation incomplete: "+'; '.join(reasons[:3]))
                     artifacts.extend(str(j.out.resolve()) for j in jobs)
                     artifacts.extend(str(j.receipt_path.resolve()) for j in jobs)
                     state["image_assets"] = {j.id: str(j.out.resolve()) for j in jobs}

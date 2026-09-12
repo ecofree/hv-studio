@@ -4,6 +4,7 @@ Reservations are charged before dispatch and never refunded after an ambiguous
 failure or process death. A retry is a new billable attempt.
 """
 from contextlib import contextmanager
+from contextvars import ContextVar
 import time
 import uuid
 from pathlib import Path
@@ -12,6 +13,42 @@ from app.services.narration_pipeline import read
 
 
 class BudgetExceeded(RuntimeError): pass
+
+
+_image_budget = ContextVar('image_budget', default=None)
+_image_receipt = ContextVar('image_receipt', default=None)
+_tts_budget = ContextVar('tts_budget', default=None)
+
+
+@contextmanager
+def tts_budget_scope(budget):
+    token = _tts_budget.set(budget)
+    try: yield
+    finally: _tts_budget.reset(token)
+
+
+def current_tts_budget():
+    budget = _tts_budget.get()
+    if not isinstance(budget, ProviderBudget):
+        raise BudgetExceeded('TTS dispatch requires an explicit durable ProviderBudget')
+    return budget
+
+
+@contextmanager
+def image_budget_scope(budget, response_path=None, request_fp=None):
+    token = _image_budget.set(budget)
+    receipt_token = _image_receipt.set((response_path, request_fp) if response_path else None)
+    try: yield
+    finally:
+        _image_receipt.reset(receipt_token)
+        _image_budget.reset(token)
+
+
+def current_image_budget():
+    budget = _image_budget.get()
+    if not isinstance(budget, ProviderBudget):
+        raise BudgetExceeded('image dispatch requires an explicit durable ProviderBudget')
+    return budget
 
 
 @contextmanager

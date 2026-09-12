@@ -34,6 +34,9 @@ if episode_ids:
               'BLOCKED':'需要处理问题', 'STALE':'输入已变化，需要更新候选', 'CANDIDATE':'候选片待审核',
               'STAGES_COMPLETE':'本次阶段已完成'}
     st.subheader(labels.get(current['status'], current['status']))
+    if current.get('blockers'):
+        with st.expander('当前阻断与待处理事项', expanded=True):
+            for blocker in current['blockers']: st.write('• '+blocker)
     if current.get('stages_done'): st.caption('已完成：'+' → '.join(current['stages_done']))
     if current.get('candidate_path'): st.video(current['candidate_path'])
     if current.get('quality_report_path'):
@@ -74,6 +77,45 @@ if episode_ids:
     if current.get('budget'):
         st.caption('累计实际调用：'+str(current['budget']['used']))
     if st.button('刷新进度'): st.rerun()
+
+    with st.expander('无人生产输入审核'):
+        from app.services.production_admission import check as admission_check, record_approval
+        admission=admission_check(selected)
+        if admission['eligible']: st.success('当前输入已具备进入无人生产队列的条件。成片仍需审核。')
+        else:
+            for blocker in admission['blockers']: st.write('• '+blocker)
+        st.caption('仅在已核对原稿史实、分镜和图片提示词后提交；此操作不批准音频或成片。')
+        with st.form('input-review-'+selected):
+            reviewer=st.text_input('输入审核人')
+            finding=st.text_area('原稿与分镜核查结论')
+            confirmed=st.checkbox('我已核对当前原稿、分镜与图片提示词')
+            if st.form_submit_button('保存输入审核'):
+                if not confirmed or not reviewer.strip() or not finding.strip(): st.error('请完成核查并填写结论。')
+                else:
+                    try: record_approval(selected,reviewer,finding); st.success('已保存输入审核。')
+                    except (ValueError,OSError) as exc: st.error(str(exc))
+
+st.subheader('无人生产队列')
+from app.services.batch_worker import queue_dir, alive
+import time
+worker_file=queue_dir()/'worker.json'
+worker_state=read(worker_file) if worker_file.exists() else {}
+if worker_state and alive(worker_state.get('pid'),worker_state.get('created_at')) and time.time()-worker_state.get('heartbeat',0)<120:
+    st.caption('生产服务在线；已收到近期心跳。')
+else: st.warning('生产服务未运行或心跳过期。')
+queue_labels={'QUEUED':'排队中','RUNNING':'生产中','NEEDS_REVIEW':'等待审核','BLOCKED_INPUT':'输入需修复',
+              'BUDGET_EXHAUSTED':'预算已用尽','RETRY_WAIT':'等待有限重试','FAILED':'重试已停止','APPROVED':'审核通过'}
+rows=[]
+for queue_path in sorted(queue_dir().glob('*.json')):
+    if queue_path.name=='worker.json': continue
+    try:
+        queued=read(queue_path)
+        for eid,item in queued.get('episodes',{}).items():
+            rows.append({'批次':queued['spec']['batch_id'],'剧集':eid,'状态':queue_labels.get(item['status'],item['status']),
+                         '已尝试':item.get('attempts',0),'待处理':'; '.join(item.get('blockers',[])) or item.get('error','')})
+    except (ValueError,OSError,KeyError): st.error('无法读取队列记录：'+queue_path.name)
+if rows: st.dataframe(rows,hide_index=True)
+else: st.caption('暂无生产任务。')
 
 s = get_settings()
 r = get_relay()

@@ -99,7 +99,8 @@ def test_disk_precheck_raises_only_below_hard_floor(monkeypatch, tmp_path):
         O._check_disk_space(tmp_path)
 
     monkeypatch.setattr(_sh, "disk_usage", lambda p: DU(1200))
-    O._check_disk_space(tmp_path)          # 只告警，不抛
+    with pytest.raises(RuntimeError):
+        O._check_disk_space(tmp_path)
 
 
 # ---------- D. TTS 成本台账 ----------

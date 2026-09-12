@@ -73,18 +73,19 @@ def test_missing_keys_fail_closed_and_duplicate_rejected():
 
 
 @pytest.mark.parametrize("request_class", [ImageGenRequest, ImageEditRequest])
-def test_direct_request_filters_model_and_rejects_disabled(generator, monkeypatch, request_class):
+def test_direct_request_filters_model_and_rejects_disabled(generator, monkeypatch, request_class, tmp_path):
     seen = []
-    monkeypatch.setattr(generator, "_post", lambda c, p, b: seen.append(c.name) or ImageGenResponse())
+    monkeypatch.setattr(generator, "_post_unlocked", lambda c, p, b: seen.append(c.name) or ImageGenResponse())
+    budget = ProviderBudget(tmp_path/'direct-budget.json', image_requests=1)
     req = request_class(model=NEW, prompt="test")
     call = generator.edit if request_class is ImageEditRequest else generator.generate
-    call(req)
+    call(req, budget=budget)
     assert seen == ["cxk"]
     for channel in [next(c for c in configured() if c.name == "aicost"),
                     Channel(name="qcyc", api_key="test", base_url="https://mock.example",
                             model=NEW, enabled=False)]:
         with pytest.raises(m.ImageError, match="不支持"):
-            call(req, channel=channel)
+            call(req, channel=channel, budget=budget)
     assert seen == ["cxk"]
 
 
@@ -121,14 +122,15 @@ def test_variants_share_supplier_concurrency_and_run_both_suppliers(generator, m
     monkeypatch.setattr(generator, "_post_unlocked", transport)
     # Direct and batch traffic both use the same supplier slots.
     requests = [ImageGenRequest(model=model, prompt="test") for model in (FLARE, SUN)]
+    budget = ProviderBudget(tmp_path/'concurrent-budget.json', image_requests=8)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(generator.generate, r, c) for c in configured() for r in requests]
+        futures = [pool.submit(generator.generate, r, c, budget=budget) for c in configured() for r in requests]
         for f in futures:
             f.result()
     assert peak == {"cxk": 1, "aicost": 1}
     seen.clear()
     jobs = [job(tmp_path, str(i), model) for i, model in enumerate([FLARE, SUN, NEW, BASE])]
-    results = m.generate_many(jobs, workers=20, progress=False)
+    results = m.generate_many(jobs, workers=20, progress=False, budget=budget)
     assert all(results[j.id] for j in jobs)
     assert len(seen) == 4
     assert all(model != NEW or name == "cxk" for name, model in seen)

@@ -16,7 +16,11 @@ def main():
     parser.add_argument('--port',type=int,default=8000)
     parser.add_argument('--max-restarts',type=int,default=5)
     parser.add_argument('--state-dir',default='state/service')
+    parser.add_argument('--worker', action='store_true', help='supervise the durable production queue instead of API')
     args=parser.parse_args()
+    import psutil
+    if args.worker:
+        from app.services.batch_worker import queue_dir
     from app.services.process_lock import file_lock
     from app.services.provenance import atomic_json
     folder=ROOT/args.state_dir; folder.mkdir(parents=True,exist_ok=True)
@@ -25,14 +29,24 @@ def main():
     with file_lock(folder/'supervisor.lock'):
         restarts=0
         while not stop.exists():
-            with (folder/'api.log').open('ab') as log:
-                child=subprocess.Popen([sys.executable,'-m','uvicorn','app.main:app','--host','127.0.0.1',
-                                        '--port',str(args.port)],cwd=ROOT,stdout=log,stderr=log,
+            command = ([sys.executable,str(ROOT/'bin/production_worker.py'), '--supervisor-pid',str(os.getpid()),
+                        '--supervisor-created',str(psutil.Process().create_time())] if args.worker else
+                       [sys.executable,'-m','uvicorn','app.main:app','--host','127.0.0.1','--port',str(args.port)])
+            with (folder/('worker.log' if args.worker else 'api.log')).open('ab') as log:
+                child=subprocess.Popen(command,cwd=ROOT,stdout=log,stderr=log,
                                        creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
                 value=dict(supervisor_pid=os.getpid(),child_pid=child.pid,restarts=restarts,status='running',port=args.port,started_at=time.time())
                 atomic_json(record,value)
                 try:
-                    while child.poll() is None and not stop.exists(): time.sleep(.25)
+                    while child.poll() is None and not stop.exists():
+                        if args.worker:
+                            from app.services.batch_worker import queue_dir
+                            heartbeat=queue_dir()/'worker.json'
+                            if (queue_dir()/'STOP').exists(): break
+                            if time.time()-max(value['started_at'], heartbeat.stat().st_mtime if heartbeat.exists() else 0)>120:
+                                value['failure']='worker heartbeat deadline exceeded'
+                                break
+                        time.sleep(.25)
                 finally:
                     if child.poll() is None:
                         import psutil
@@ -49,7 +63,7 @@ def main():
                         except subprocess.TimeoutExpired:child.kill();child.wait()
                 value.update(exit_code=child.returncode,status='stopped' if stop.exists() else 'exited')
                 atomic_json(record,value)
-            if stop.exists(): break
+            if stop.exists() or (args.worker and (queue_dir()/'STOP').exists()): break
             if restarts>=args.max_restarts:
                 value['status']='restart_limit_reached';atomic_json(record,value);return 1
             restarts+=1

@@ -146,7 +146,7 @@ class ImageGenerator:
 
     # ---- 公共 ----
     def generate(self, req: ImageGenRequest,
-                 channel: "Channel | None" = None) -> ImageGenResponse:
+                 channel: "Channel | None" = None, *, budget=None) -> ImageGenResponse:
         """生图。
 
         channel 为 None  → 原 failover 语义（按健康度排序依次尝试）
@@ -155,6 +155,9 @@ class ImageGenerator:
         后者是三路并行的前置条件：并发 worker 若都走 failover，
         会全部命中同一个 score 最高的渠道，三路退化成单路并把它打 429。
         """
+        if budget is not None:
+            from app.services.provider_budget import image_budget_scope
+            with image_budget_scope(budget): return self.generate(req, channel)
         req.validate_for_subrouter()
         return self._call_with_failover(
             path="/v1/images/generations",
@@ -163,7 +166,10 @@ class ImageGenerator:
         )
 
     def edit(self, req: ImageEditRequest,
-             channel: "Channel | None" = None) -> ImageGenResponse:
+             channel: "Channel | None" = None, *, budget=None) -> ImageGenResponse:
+        if budget is not None:
+            from app.services.provider_budget import image_budget_scope
+            with image_budget_scope(budget): return self.edit(req, channel)
         req.validate_for_subrouter()
         return self._call_with_failover(
             path="/v1/images/edits",
@@ -180,6 +186,8 @@ class ImageGenerator:
         这是 generate_many 三路并行的依赖：worker 各自持有一个渠道，
         避免并发请求全部涌向同一个最优渠道。
         """
+        from app.services.provider_budget import current_image_budget, BudgetExceeded
+        current_image_budget()
         if channel is not None:
             if not channel.supports(body["model"]):
                 raise ImageError(f"渠道 {channel.name} 未启用或不支持模型 {body['model']}")
@@ -189,6 +197,8 @@ class ImageGenerator:
                 self.relay.record(channel.name, ok=True,
                                   latency_s=time.time() - t0)
                 return resp
+            except BudgetExceeded:
+                raise
             except Exception as e:
                 self.relay.record(channel.name, ok=False,
                                   latency_s=time.time() - t0)
@@ -210,6 +220,8 @@ class ImageGenerator:
                 dt = time.time() - t0
                 self.relay.record(ch.name, ok=True, latency_s=dt)
                 return resp
+            except BudgetExceeded:
+                raise
             except Exception as e:
                 dt = time.time() - t0
                 self.relay.record(ch.name, ok=False, latency_s=dt)
@@ -220,8 +232,22 @@ class ImageGenerator:
         )
 
     def _post(self, ch: Channel, path: str, body: dict) -> ImageGenResponse:
+        from app.services.provider_budget import current_image_budget, _image_receipt
+        from app.services.provenance import fingerprint, atomic_json
+        budget = current_image_budget()
         with self.relay.request_slot(ch.name):
-            return self._post_unlocked(ch, path, body)
+            token = budget.reserve('image', fingerprint([path, body]))
+            try:
+                response = self._post_unlocked(ch, path, body)
+                target, request_fp = _image_receipt.get() or (
+                    budget.path.parent/'responses'/(token+'.json'), fingerprint([path, body]))
+                atomic_json(target, dict(request_fingerprint=request_fp, channel=ch.name,
+                                         response=response.model_dump(mode='json')))
+            except BaseException:
+                budget.finish(token, False)
+                raise
+            budget.finish(token, True)
+            return response
 
     def _post_unlocked(self, ch: Channel, path: str, body: dict) -> ImageGenResponse:
         url = f"{ch.base_url}{path}"
@@ -448,6 +474,24 @@ def _generate_many_worker(
                 result[job.id] = None
                 result[f"{job.id}__error"] = f"无可用渠道支持模型 {job.req.model}"
                 continue
+            response_path = job.out.with_suffix(job.out.suffix + '.response.json')
+            from app.services.narration_pipeline import read
+            from app.services.provenance import atomic_json
+            from app.services.provider_budget import image_budget_scope
+            request_fp = job.request_fingerprint()
+            # A paid response survives download failures and process restarts.
+            # Never make another generation request when this receipt exists.
+            if response_path.exists():
+                try:
+                    saved = read(response_path)
+                    if saved['request_fingerprint'] != request_fp:
+                        raise ImageError('saved provider response belongs to another request; manual disposition required')
+                    _install_response(job, ImageGenResponse.model_validate(saved['response']), request_fp, saved['channel'])
+                    result[job.id] = str(job.out)
+                except Exception as exc:
+                    result[job.id] = None
+                    result[f'{job.id}__error'] = f'saved response requires recovery: {type(exc).__name__}'
+                continue
             if job._channel_idx is not None:
                 # 从 worker 钉住的渠道开始
                 start = job._channel_idx % len(order)
@@ -458,38 +502,29 @@ def _generate_many_worker(
                 attempt = 0
                 while True:
                     attempt += 1
+                    response_received = False
                     try:
                         _throttle()
                         request_fp = job.request_fingerprint()
-                        reservation = budget.reserve('image', request_fp) if budget else None
                         job._attempts += 1
-                        try:
+                        with image_budget_scope(budget, response_path, request_fp):
                             resp = gen.edit(job.req, channel=ch) if isinstance(job.req, ImageEditRequest) else gen.generate(job.req, channel=ch)
-                        except BaseException:
-                            if reservation: budget.finish(reservation, False)
-                            raise
-                        if reservation: budget.finish(reservation, True)
+                        response_received = True
+                        if not response_path.exists():
+                            atomic_json(response_path, dict(request_fingerprint=request_fp, channel=ch.name,
+                                                            response=resp.model_dump(mode='json')))
                         # 取首个 base64 / url
-                        item = resp.data[0] if resp.data else None
-                        if item is None:
-                            # 空 data 绝大多数是中转上游瞬时抽风（非 prompt 问题），
-                            # 按瞬时处理：原地退避重试，不急着烧别家渠道。
-                            raise TransientImageError(f"[{ch.name}] 空响应 data")
-                        raw = None
-                        if getattr(item, "b64_json", None):
-                            raw = base64.b64decode(item.b64_json)
-                        elif getattr(item, "url", None):
-                            raw = _download(item.url, ch.name)
-                        if not raw:
-                            raise ImageError(f"[{ch.name}] 无图像数据")
-                        record_cost(job=job, channel=ch.name, n_bytes=len(raw))
-                        job.install(raw, request_fp)
+                        _install_response(job, resp, request_fp, ch.name)
                         result[job.id] = str(job.out)
                         ok = True
                         break
                     except Exception as e:
                         job._last_err = (
                             f"{ch.name}: {type(e).__name__} {str(e)[:120]}")
+                        if response_received or response_path.exists():
+                            response_received = True
+                            job._last_err = 'saved response requires recovery: '+type(e).__name__
+                            break
                         # 瞬时故障先原地重试（不换路）；非瞬时或重试耗尽才换路
                         if (is_transient_error(e)
                                 and attempt <= _MAX_TRANSIENT_RETRY):
@@ -501,7 +536,7 @@ def _generate_many_worker(
                             continue
                         break  # 换下一路
                 from app.services.provider_budget import BudgetExceeded
-                if ok or (job._last_err and 'BudgetExceeded' in job._last_err):
+                if ok or response_received or (job._last_err and 'BudgetExceeded' in job._last_err):
                     break
             if not ok:
                 result[job.id] = None
@@ -511,6 +546,37 @@ def _generate_many_worker(
             if prog is not None:
                 prog.tick(ok=bool(result.get(job.id)))
             jobq.task_done()
+
+
+def _install_response(job, response, request_fp, channel):
+    item = response.data[0] if response.data else None
+    if item is None: raise ImageError('empty paid response; manual disposition required')
+    if item.b64_json:
+        raw = base64.b64decode(item.b64_json, validate=True)
+    elif item.url:
+        for attempt in range(3):
+            try:
+                raw = _download(item.url, channel)
+                break
+            except TransientImageError:
+                if attempt == 2: raise
+                time.sleep(min(2 ** attempt, 4))
+    else: raise ImageError('paid response has no image data')
+    job.install(raw, request_fp)
+    record_cost(job=job, channel=channel, n_bytes=len(raw))
+
+
+def run_probe(request, budget_id, max_images):
+    from app.paths import state_dir
+    from app.services.provider_budget import for_run
+    from app.services.provenance import fingerprint
+    if not budget_id or len(budget_id)>100: raise ValueError('stable probe budget ID required')
+    budget = for_run(state_dir(), ['image-probe',budget_id],dict(max_images=max_images))
+    key = fingerprint([budget_id,request.model_dump(mode='json')])
+    job = ImageJob('probe',request,state_dir()/'image-probes'/key/'image.png')
+    result = generate_many([job],budget=budget,progress=False)
+    if not result.get(job.id): raise ImageError(result.get('probe__error','image probe incomplete'))
+    return job.out
 
 
 def _download(url: str, ch_name: str) -> bytes:
@@ -604,6 +670,27 @@ def generate_many(
         raise ValueError("duplicate image job IDs or output paths")
     if not force and all(j.is_done() for j in jobs):
         return {j.id: str(j.out) for j in jobs}
+    recoverable = [j for j in jobs if j.out.with_suffix(j.out.suffix+'.response.json').exists()
+                   and (force or not j.is_done())]
+    if recoverable:
+        from app.services.process_lock import file_lock
+        from app.services.narration_pipeline import read
+        recovered = {}
+        for job in recoverable:
+            try:
+                with file_lock(job.out.with_suffix(job.out.suffix+'.generation.lock')):
+                    saved = read(job.out.with_suffix(job.out.suffix+'.response.json'))
+                    request_fp = job.request_fingerprint()
+                    if saved['request_fingerprint'] != request_fp:
+                        raise ImageError('saved response is for another request; disposition required')
+                    _install_response(job,ImageGenResponse.model_validate(saved['response']),request_fp,saved['channel'])
+                recovered[job.id] = str(job.out)
+            except Exception as exc:
+                recovered[job.id] = None
+                recovered[job.id+'__error'] = 'saved response requires recovery: '+type(exc).__name__
+        remaining = [j for j in jobs if j.id not in recovered]
+        if remaining: recovered.update(generate_many(remaining,force,workers,progress,budget))
+        return recovered
     gen = get_image()
     channels: list[Channel] = gen.relay.all()
     if not channels:
