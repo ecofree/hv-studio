@@ -98,6 +98,9 @@ def test_missing_local_model_blocks_tts_before_generation(tmp_path,tmp_episodes,
     (directory/'script.md').write_text('兵贵神速。',encoding='utf-8')
     monkeypatch.setattr(get_settings().get_profile().asr,'backend','local-whisper')
     monkeypatch.setattr(get_settings().get_profile().asr,'model_dir',str(tmp_path/'missing-model'))
+    cache=tmp_path/'voice-cache.json';atomic_json(cache,dict(voice_id='cosyvoice-fixture',model='cosyvoice-v3.5-flash'))
+    asset=tmp_path/'voice.json';N.import_voice(cache,asset)
+    monkeypatch.setattr(get_settings().get_profile().voice,'voice_asset',str(asset))
     monkeypatch.setattr(N,'synthesize',lambda *a,**kw:pytest.fail('TTS called before ASR preflight'))
     r=produce(ep.id,stages=['tts'],max_requests=1,max_characters=10)
     assert r['status']=='BLOCKED' and 'model_manifest' in r['error']

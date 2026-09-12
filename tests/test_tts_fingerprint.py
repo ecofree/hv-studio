@@ -18,6 +18,16 @@ import pytest
 from app.models import Frame
 
 
+@pytest.fixture(autouse=True)
+def isolated_voice_asset(tmp_path,monkeypatch):
+    from app.config.config import get_settings
+    from app.services import narration_pipeline as N
+    from app.services.provenance import atomic_json
+    cache=tmp_path/'voice-cache.json';atomic_json(cache,dict(voice_id='cosyvoice-fixture',model='cosyvoice-v3.5-flash'))
+    asset=tmp_path/'voice.json';N.import_voice(cache,asset)
+    monkeypatch.setattr(get_settings().get_profile().voice,'voice_asset',str(asset))
+
+
 def _mk_wav(p: Path, ms: int = 2000):
     with wave.open(str(p), "wb") as w:
         w.setnchannels(1)

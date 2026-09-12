@@ -63,12 +63,16 @@ def test_mux_audio_uses_configured_codec_not_pcm(tmp_path):
 
 
 @NEEDS_FFMPEG
-def test_delivered_films_are_not_pcm():
+def test_delivered_films_are_not_pcm(smoke_episode):
     """已交付成片音轨不得是 pcm（P0-1 波及面守门）。"""
     from app.config.config import ROOT
+    from app.services.compose import compose_episode
+    # Always verify a freshly encoded fixture, including in a clean checkout;
+    # retain the additional inspection of existing business media when present.
+    fresh=compose_episode(smoke_episode[0])
 
     checked = 0
-    for mp4 in ROOT.glob("episodes/*/out/*_m1.mp4"):
+    for mp4 in [Path(fresh), *ROOT.glob("episodes/*/out/*_m1.mp4")]:
         if not mp4.exists() or mp4.stat().st_size < 1024:
             continue
         codec = subprocess.run(

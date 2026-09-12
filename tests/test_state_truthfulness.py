@@ -53,11 +53,13 @@ def _restore_delivered_episode():
             p.write_bytes(backup)
 
 
-def test_produce_verify_derives_true_status(_restore_delivered_episode):
+def test_produce_verify_derives_true_status(smoke_episode):
     """verify 只读，应在真实产物上导出 COMPOSED（而非盲迁移）。"""
     from app.orchestrator import produce_legacy as produce
-    # hanwu-prologue 是已交付小集（有 mp4），verify-only 不重编码
-    res = produce("hanwu-prologue", stages=["verify"])
+    from app.services.compose import compose_episode
+    ep_id=smoke_episode[0]
+    compose_episode(ep_id)
+    res = produce(ep_id, stages=["verify"])
     assert res["status"] == "COMPOSED", res
     assert "verify" in res["stages_done"]
     assert res.get("final_mp4"), "verify 应返回 final_mp4 路径"

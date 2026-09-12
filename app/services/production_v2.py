@@ -293,7 +293,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     candidate_receipt = target / "candidate.json"
     if candidate_receipt.is_file():
         receipt = read(candidate_receipt)
-        if (receipt.get("inputs") == inputs and
+        if (receipt.get("inputs") == inputs and Path(receipt.get('candidate_path','')).is_file() and
                 file_sha256(receipt["candidate_path"]) == receipt.get("candidate_sha256")):
             return candidate_receipt
 

@@ -117,7 +117,7 @@ def transcribe(wav: Path) -> str:
 def normalize_numbers(text: str) -> str:
     """Canonicalize explicit numbers, retaining magnitudes and decimal points."""
     from decimal import Decimal
-    text = (text or '').translate(str.maketrans('萬億兩陸貳參壹伍捌玖柒肆拾佰仟', '万亿两陆二三一五八九七四十百千'))
+    text = (text or '').translate(str.maketrans('萬億兩', '万亿两'))
     digits = dict(zip("零〇一二两三四五六七八九", [0,0,1,2,2,3,4,5,6,7,8,9]))
     units = {"十":10,"百":100,"千":1000,"万":10000,"亿":100000000}
     def integer(t):

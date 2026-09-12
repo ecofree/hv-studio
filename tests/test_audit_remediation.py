@@ -108,6 +108,20 @@ def test_traditional_number_notation_does_not_hide_actual_numeric_errors():
     assert normalize_numbers('三十万') != normalize_numbers('三百万')
     assert phonetic_equivalent('武德年间。','五德年间。')
     assert not phonetic_equivalent('三十万人。','三百万人。')
+    assert normalize_numbers('陆军与伍员')=='陆军与伍员'
+
+
+def test_reference_changed_after_preparation_is_rejected(tmp_path):
+    import base64
+    from app.models import ImageEditRequest
+    from app.services.image import ImageJob
+    from test_production_entrypoint import png
+    ref=tmp_path/'ref.png';ref.write_bytes(png())
+    req=ImageEditRequest(model='gpt-image-2',prompt='same person',image=base64.b64encode(ref.read_bytes()).decode())
+    job=ImageJob('portrait',req,tmp_path/'out.png',(str(ref),))
+    job.request_fingerprint()
+    ref.write_bytes(png(color='blue'))
+    with pytest.raises(ValueError,match='reference changed'):job.request_fingerprint()
 
 
 def test_unknown_scene_source_is_rejected_instead_of_retimed():

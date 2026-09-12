@@ -94,7 +94,9 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
             if budget: state['budget_path'] = str(budget.path.resolve())
             for stage in requested:
                 if not verify_only:
-                    state.update(active_stage=stage, owner_pid=os.getpid(), stage_started_at=time.time(), running=True)
+                    import psutil
+                    state.update(active_stage=stage, owner_pid=os.getpid(), owner_created_at=psutil.Process().create_time(),
+                                 stage_started_at=time.time(), running=True)
                     save()
                 if stage == "script":
                     pass  # Preparation uses the source-preserving parser above, never legacy frames.

@@ -323,6 +323,13 @@ class ImageJob:
 
     def request_fingerprint(self):
         from app.services.provenance import fingerprint, file_sha256
+        if isinstance(self.req, ImageEditRequest) and self.reference_paths:
+            import hashlib
+            if len(self.reference_paths)!=1 or not self.req.image:
+                raise ValueError('image edit requires one bound reference')
+            sent = hashlib.sha256(base64.b64decode(self.req.image, validate=True)).hexdigest()
+            if sent != file_sha256(self.reference_paths[0]):
+                raise ValueError('reference changed after the image request was prepared')
         return fingerprint({"version": "image-cache-v2", "request": self.req.model_dump(mode="json"),
                             "references": {str(Path(p).resolve()): file_sha256(p) for p in self.reference_paths}})
 

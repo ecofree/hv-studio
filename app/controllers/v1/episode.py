@@ -104,4 +104,7 @@ def run_episode_stage(episode_id: str,
         res = produce(episode_id, stages=stage or ["verify"])
     except Exception as e:
         raise HTTPException(400, str(e))
+    if res.get('run_ok') is False:
+        from fastapi.responses import JSONResponse
+        return JSONResponse(status_code=409, content=res)
     return res

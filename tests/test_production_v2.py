@@ -317,3 +317,9 @@ def test_v2_render_segments_resume_from_state(tmp_path, monkeypatch):
     assert encoded[before:] == ['seg-000.mp4']
     third_state = N.read(N.read(receipt3)['render_state_path'])
     assert third_state['segments'][1]['reused'] is True
+    # Missing final media can be rebuilt from trusted segments even if its old
+    # candidate receipt survived the loss.
+    Path(N.read(receipt3)['candidate_path']).unlink()
+    before=len(encoded)
+    recovered=P.render(manifest,timeline,tmp_path/'renders',timeout=10)
+    assert Path(N.read(recovered)['candidate_path']).is_file() and len(encoded)==before

@@ -16,7 +16,10 @@ def get_status(ep_id):
                   stages_done=last.get('stages_done', []), active_stage=state.get('active_stage'),
                   candidate_path=None, blockers=[], delivery_pending=[], quality_pending_units=[])
     if state.get('running'):
-        result['status'] = 'RUNNING' if psutil.pid_exists(state.get('owner_pid', -1)) else 'INTERRUPTED'
+        try:
+            alive = psutil.Process(state.get('owner_pid',-1)).create_time()==state.get('owner_created_at')
+        except (psutil.Error, ValueError): alive=False
+        result['status'] = 'RUNNING' if alive else 'INTERRUPTED'
     if last.get('error'): result['blockers'].append(last['error'])
     try:
         if fingerprint(_load_script_md(load(ep_id))) != state['source_sha256']: raise ValueError('source changed')
