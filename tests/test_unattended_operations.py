@@ -146,6 +146,14 @@ def test_input_review_blocks_generation_and_pending_status_survives_staleness(tm
     assert result['quality_report_path']=='quality' and result['manifest_path']=='manifest'
 
 
+def test_invalid_prompt_is_an_input_blocker_not_a_worker_crash(monkeypatch):
+    from app.services import production_admission
+    monkeypatch.setattr(production_admission,'inputs',lambda _:(_ for _ in ()).throw(RuntimeError('prompt prescreen rejected input')))
+    result=production_admission.check('bad-prompt')
+    assert result['eligible'] is False
+    assert 'prescreen' in result['blockers'][0]
+
+
 def test_disk_uncertainty_and_insufficient_space_block_before_work(monkeypatch,tmp_path):
     import shutil
     from app.orchestrator import _check_disk_space

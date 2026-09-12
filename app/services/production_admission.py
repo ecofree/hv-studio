@@ -58,5 +58,5 @@ def check(ep_id):
                 from app.services.production_quality import pending
                 if pending(state['quality_path']): blockers.append('existing audio findings require disposition')
         return dict(eligible=not blockers, blockers=blockers, input_fingerprint=fingerprint(value))
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:
         return dict(eligible=False, blockers=[str(exc)], input_fingerprint=None)

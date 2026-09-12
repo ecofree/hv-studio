@@ -11,6 +11,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--once', action='store_true')
     parser.add_argument('--queue-dir')
+    parser.add_argument('--poll-seconds',type=int,default=30,choices=range(5,61),metavar='5..60')
     parser.add_argument('--execute')
     parser.add_argument('--episode')
     parser.add_argument('--token')
@@ -37,7 +38,7 @@ def main():
         while not (folder/'STOP').exists():
             run_once(folder)
             if args.once: break
-            time.sleep(2)
+            time.sleep(args.poll_seconds)
     return 0
 
 

@@ -24,9 +24,15 @@ New-Item -ItemType Directory -Path $serviceState -Force | Out-Null
 if ($StartNow) {
     if (Test-Path -LiteralPath (Join-Path $serviceState 'stop')) { throw 'Operator stop is present' }
     if (Test-Path -LiteralPath (Join-Path $workerRoot 'state\production-queue\STOP')) { throw 'Queue STOP is present' }
-    # The supervisor owns a kernel lock; duplicate starts cannot create workers.
-    $workerProcess = Start-Process -FilePath $workerPython -ArgumentList $workerArguments -WorkingDirectory $workerRoot -WindowStyle Hidden -PassThru
-    $startedPid = $workerProcess.Id
+    # Launch through Windows' process broker, outside the calling terminal's job
+    # object. pythonw has no visible console. Closing a tool session must not kill
+    # production. The supervisor's kernel lock still rejects duplicate workers.
+    $launch = Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{
+        CommandLine = '"' + $workerPython + '" ' + $workerArguments
+        CurrentDirectory = $workerRoot
+    }
+    if ($launch.ReturnValue -ne 0) { throw "Windows process broker rejected launch: $($launch.ReturnValue)" }
+    $startedPid = $launch.ProcessId
 }
 @{startup_shortcut=$shortcutPath; runtime=$workerPython; start_pid=$startedPid;
-  startup_scope='current user sign-in'; boot_without_sign_in=$false} | ConvertTo-Json
+  startup_scope='current user sign-in'; start_method='Windows process broker'; boot_without_sign_in=$false} | ConvertTo-Json
