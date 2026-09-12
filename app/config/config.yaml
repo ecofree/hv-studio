@@ -146,6 +146,25 @@ profiles:
 # ===========================================================================
 # 生图（继承自旧 models.yaml.image，重大修订）
 # ===========================================================================
+# Supplier support reported by the user on 2026-09-12; no paid model probe yet.
+# Model variants share a supplier key and its concurrency limit.
+image_channels:
+  - name: cxk
+    key_env: cxk_gpt-image-2
+    enabled: true
+    max_concurrency: 1
+    models: [gpt-image-2, gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+  - name: aicost
+    key_env: aicost_gpt-image-2
+    enabled: true
+    max_concurrency: 1
+    models: [gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+  - name: qcyc  # QC_YC: temporarily unavailable; retain credentials for recovery.
+    key_env: qcyc_gpt-image-2
+    enabled: false
+    max_concurrency: 1
+    models: [gpt-image-2]
+
 image:
   primary:
     engine: gpt-image-2

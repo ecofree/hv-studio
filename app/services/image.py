@@ -181,6 +181,8 @@ class ImageGenerator:
         避免并发请求全部涌向同一个最优渠道。
         """
         if channel is not None:
+            if not channel.supports(body["model"]):
+                raise ImageError(f"渠道 {channel.name} 未启用或不支持模型 {body['model']}")
             t0 = time.time()
             try:
                 resp = self._post(channel, path, body)
@@ -192,7 +194,9 @@ class ImageGenerator:
                                   latency_s=time.time() - t0)
                 raise
 
-        channels: list[Channel] = self.relay.all()
+        channels = [c for c in self.relay.all() if c.supports(body["model"])]
+        if not channels:
+            raise ImageError(f"无可用渠道支持模型 {body['model']}")
         # 把最健康的放最前
         health = {c.name: self.relay.health(c.name) for c in channels}
         channels.sort(key=lambda c: (health[c.name].score() if health[c.name] else 100),
@@ -216,6 +220,10 @@ class ImageGenerator:
         )
 
     def _post(self, ch: Channel, path: str, body: dict) -> ImageGenResponse:
+        with self.relay.request_slot(ch.name):
+            return self._post_unlocked(ch, path, body)
+
+    def _post_unlocked(self, ch: Channel, path: str, body: dict) -> ImageGenResponse:
         url = f"{ch.base_url}{path}"
         try:
             r = requests.post(
@@ -403,10 +411,9 @@ def _generate_many_worker(
     prog: "_Progress | None" = None,
     budget=None,
 ) -> None:
-    """单 worker：领一个固定渠道，串行消化队列任务。
+    """从队列领取任务，按模型能力筛选渠道，再轮转首选渠道。
 
-    每渠道一个 worker 是三路并行的关键：若所有 worker 都走 failover，
-    会全部命中 score 最高的同一渠道，退化成单路并把它打 429。
+    真实请求在 ImageGenerator._post 中共用供应商并发闸；不同模型不扩增配额。
 
     重试分两层（2026-09-04 新增）：
       1. 同渠道原地重试：瞬时故障（429/5xx/超时/空 data）退避后**不换路**，
@@ -436,10 +443,15 @@ def _generate_many_worker(
                 ok = True
                 continue
             # 领渠道：按 job._channel_idx 轮转首攻，失败再按序换路
-            order = list(range(len(channels)))
+            order = [i for i, c in enumerate(channels) if c.supports(job.req.model)]
+            if not order:
+                result[job.id] = None
+                result[f"{job.id}__error"] = f"无可用渠道支持模型 {job.req.model}"
+                continue
             if job._channel_idx is not None:
                 # 从 worker 钉住的渠道开始
-                order = order[job._channel_idx:] + order[:job._channel_idx]
+                start = job._channel_idx % len(order)
+                order = order[start:] + order[:start]
             ok = False
             for idx in order:
                 ch = channels[idx]
@@ -575,16 +587,16 @@ def generate_many(
     progress: bool = True,
     budget=None,
 ) -> dict:
-    """多任务并行生图（三路 worker）。返回 {job.id: 落盘路径 或 None}。
+    """多任务并行生图。返回 {job.id: 落盘路径 或 None}。
 
-    - workers 默认 = min(渠道数, 任务数)；每渠道各钉一路
-    - 已存在且 >50KB 的任务幂等跳过（不占渠道）
+    - workers 不超过可用供应商并发总额和待生成任务数
+    - 请求指纹与图像校验通过的缓存直接复用（不占渠道）
     - 单任务：同渠道瞬时故障原地重试 ≤ HV_IMAGE_TRANSIENT_RETRY 次，
       仍失败才换路；全渠道失败回填 None，已成功文件保留
     - 任一侧 429/失败只影响该任务，不堵死其他两路
     - progress=True 时起 monitor 线程，每 15s 打一次「进度/ETA」心跳
 
-    不 raise（部分失败也要把已成功的产物带回来）；调用方据 None 汇总。
+    配置/不支持模型在整批发请求前拒绝；运行中的单图失败据 None 汇总。
     """
     if not jobs:
         return {}
@@ -596,10 +608,21 @@ def generate_many(
     channels: list[Channel] = gen.relay.all()
     if not channels:
         raise ImageError("无可生图渠道")
-    n_worker = workers or max(1, min(len(channels), len(jobs)))
+    pending = [j for j in jobs if force or not j.is_done()]
+    if not pending:
+        return {j.id: str(j.out) for j in jobs}
+    unsupported = sorted({j.req.model for j in pending
+                          if not any(c.supports(j.req.model) for c in channels)})
+    if unsupported:
+        raise ImageError(f"无可用渠道支持模型: {', '.join(unsupported)}；整批未发起请求")
+    channels = [c for c in channels if any(c.supports(j.req.model) for j in pending)]
+    capacity = sum(c.max_concurrency for c in channels)
+    if workers is not None and workers < 1:
+        raise ValueError("workers must be positive")
+    n_worker = min(workers or capacity, capacity, len(pending))
     jobq: Queue = Queue()
     for i, j in enumerate(jobs):
-        j._channel_idx = i % n_worker  # 轮转分配首攻渠道
+        j._channel_idx = i  # Per-job rotation is applied after model filtering.
         jobq.put(j)
     result: dict = {}
     prog = _Progress(total=len(jobs))

@@ -80,6 +80,12 @@ class Channel(BaseModel):
     api_key: str
     base_url: str
     model: str
+    models: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    max_concurrency: int = Field(default=1, ge=1, le=16)
+
+    def supports(self, model: str) -> bool:
+        return self.enabled and model in (self.models or [self.model])
 
     @property
     def auth_header(self) -> dict[str, str]:
@@ -106,6 +112,37 @@ def discover_channels(env: dict[str, str], model: str) -> list[Channel]:
                 model=model,
             ))
     return channels
+
+
+class ChannelRoute(BaseModel):
+    """Explicit supplier capabilities; credentials remain in the existing env file."""
+    model_config = {"extra": "forbid"}
+    name: str
+    key_env: str
+    base_env: str = "gpt-image-2_API_BASE"
+    models: list[str] = Field(min_length=1)
+    enabled: bool = True
+    max_concurrency: int = Field(default=1, ge=1, le=16)
+
+
+def configured_channels(env: dict[str, str], routes: list[dict]) -> list[Channel]:
+    result = []
+    names = set()
+    for entry in routes:
+        route = ChannelRoute.model_validate(entry)
+        if route.name.casefold() in names:
+            raise ValueError(f"duplicate image channel: {route.name}")
+        names.add(route.name.casefold())
+        key = env.get(route.key_env, "")
+        if not route.enabled or not key:
+            continue
+        result.append(Channel(
+            name=route.name, api_key=key,
+            base_url=env.get(route.base_env, "https://subrouter.ai").rstrip("/"),
+            model=route.models[0], models=route.models,
+            max_concurrency=route.max_concurrency,
+        ))
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -414,7 +451,8 @@ class Settings(BaseSettings):
         profiles = {k: StyleProfile(**v) for k, v in raw.get("profiles", {}).items()}
         profile_name = raw.get("default_profile", "ancient-realistic")
 
-        channels = discover_channels(env, env_image_model)
+        channels = (configured_channels(env, raw["image_channels"])
+                    if "image_channels" in raw else discover_channels(env, env_image_model))
 
         return cls(
             image_model=env_image_model,

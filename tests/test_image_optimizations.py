@@ -116,7 +116,9 @@ def _ok_item(n: int = 60000):
 
 
 def _channels(*names):
-    return [types.SimpleNamespace(name=n) for n in names]
+    from app.config.config import Channel
+    return [Channel(name=n, api_key="test", base_url="https://mock.example",
+                    model="gpt-image-2") for n in names]
 
 
 def _run_worker(monkeypatch, channels, script, jobs, force=False):

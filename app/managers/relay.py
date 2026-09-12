@@ -115,11 +115,17 @@ class RelayManager:
         import threading
         self._lock = threading.Lock()
         settings = get_settings()
-        chs = list(channels) if channels is not None else settings.channels
+        chs = [c for c in (list(channels) if channels is not None else settings.channels)
+               if c.enabled]
         if not chs:
             raise RuntimeError("没有可用渠道，请检查 .env 中 *_gpt-image-2 密钥")
         self._channels: dict[str, ChannelHealth] = {c.name: ChannelHealth(c) for c in chs}
+        self._slots = {c.name: threading.BoundedSemaphore(c.max_concurrency) for c in chs}
         self._load()
+
+    def request_slot(self, name: str):
+        """All models of one supplier share the same in-process concurrency cap."""
+        return self._slots[name]
 
     # ---- 持久化 ----
     def _load(self) -> None:
@@ -161,6 +167,8 @@ class RelayManager:
         return {
             name: {
                 "score": h.score(),
+                "models": h.channel.models or [h.channel.model],
+                "max_concurrency": h.channel.max_concurrency,
                 "healthy": h.is_healthy,
                 "n_history": len(h.history),
                 "ok_rate": (sum(1 for x in h.history if x[0]) / len(h.history))

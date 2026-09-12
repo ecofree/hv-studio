@@ -358,7 +358,8 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
                 warned.append((key, f"成品超长已截断 {len(prompt)}"
                                     f"→{PROMPT_MAX_CHARS}"))
                 prompt = prompt[:PROMPT_MAX_CHARS]
-        request = ImageGenRequest(model=model, prompt=prompt, size=size, quality=quality, n=1)
+        job_model = entry.get('model', model) if isinstance(entry, dict) else model
+        request = ImageGenRequest(model=job_model, prompt=prompt, size=size, quality=quality, n=1)
         references = ()
         reference = entry.get('reference_path') if isinstance(entry, dict) else None
         if isinstance(entry, dict) and entry.get('reference_paths'):
@@ -374,7 +375,7 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
                 if min(im.size) < 64: raise ValueError('character reference is too small')
                 im.verify()
             # Encoded bytes stay inside the provider request; never log them.
-            request = ImageEditRequest(model=model, prompt=prompt, size=size, quality=quality, n=1,
+            request = ImageEditRequest(model=job_model, prompt=prompt, size=size, quality=quality, n=1,
                                        image=base64.b64encode(path.read_bytes()).decode('ascii'))
             references = (str(path.resolve()),)
         jobs.append(ImageJob(
