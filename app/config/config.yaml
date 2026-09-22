@@ -146,7 +146,7 @@ profiles:
 # ===========================================================================
 # 生图（继承自旧 models.yaml.image，重大修订）
 # ===========================================================================
-# Supplier support reported by the user on 2026-09-12; no paid model probe yet.
+# Supplier availability checked with bounded real requests on 2026-09-22.
 # Model variants share a supplier key and its concurrency limit.
 image_channels:
   - name: cxk
@@ -156,11 +156,12 @@ image_channels:
     models: [gpt-image-2, gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
   - name: aicost
     key_env: aicost_gpt-image-2
-    enabled: true
+    enabled: false
     max_concurrency: 1
     # 2026-09-22 bounded probes: flare and sunburst returned HTTP 503,
-    # "no available channel". Keep the original model; restore variants only
-    # after an explicitly budgeted successful probe, never by automatic retry.
+    # "no available channel". The base model returned the same 503 in the
+    # final bounded probe. Restore this supplier only after an explicitly
+    # budgeted successful probe, never by automatic retry.
     models: [gpt-image-2]
   - name: qcyc  # QC_YC: temporarily unavailable; retain credentials for recovery.
     key_env: qcyc_gpt-image-2

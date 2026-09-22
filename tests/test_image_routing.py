@@ -58,7 +58,7 @@ def job(tmp_path, name, model=FLARE):
     return m.ImageJob(name, ImageGenRequest(model=model, prompt=name), tmp_path / f"{name}.png")
 
 
-@pytest.mark.parametrize("model,names", [(BASE, {"cxk", "aicost"}), (NEW, {"cxk"}),
+@pytest.mark.parametrize("model,names", [(BASE, {"cxk"}), (NEW, {"cxk"}),
                                         (FLARE, {"cxk"}), (SUN, {"cxk"})])
 def test_configured_support_matrix(model, names):
     assert {c.name for c in configured() if c.supports(model)} == names
@@ -81,11 +81,12 @@ def test_direct_request_filters_model_and_rejects_disabled(generator, monkeypatc
     call = generator.edit if request_class is ImageEditRequest else generator.generate
     call(req, budget=budget)
     assert seen == ["cxk"]
-    for channel in [next(c for c in configured() if c.name == "aicost"),
-                    Channel(name="qcyc", api_key="test", base_url="https://mock.example",
-                            model=NEW, enabled=False)]:
+    for channel, model in [
+        (Channel(name="base-only", api_key="test", base_url="https://mock.example", model=BASE), NEW),
+        (Channel(name="aicost", api_key="test", base_url="https://mock.example", model=BASE, enabled=False), BASE),
+    ]:
         with pytest.raises(m.ImageError, match="不支持"):
-            call(req, channel=channel, budget=budget)
+            call(request_class(model=model, prompt="test"), channel=channel, budget=budget)
     assert seen == ["cxk"]
 
 
@@ -99,7 +100,13 @@ def test_unsupported_batch_spends_no_budget(generator, monkeypatch, tmp_path):
 
 
 def test_variants_share_supplier_concurrency_and_run_both_suppliers(generator, monkeypatch, tmp_path):
-    active = {"cxk": 0, "aicost": 0}
+    # Exercise generic concurrency with explicit synthetic suppliers, independently
+    # of which real suppliers are currently available in production.
+    generator.relay = relay_mod.RelayManager([
+        Channel(name="first", api_key="test", base_url="https://mock.example", model=BASE, models=[BASE, NEW, FLARE, SUN]),
+        Channel(name="second", api_key="test", base_url="https://mock.example", model=BASE),
+    ])
+    active = {"first": 0, "second": 0}
     peak = dict(active)
     seen = []
     lock = threading.Lock()
@@ -122,28 +129,32 @@ def test_variants_share_supplier_concurrency_and_run_both_suppliers(generator, m
     monkeypatch.setattr(generator, "_post_unlocked", transport)
     # Direct and batch traffic both use the same supplier slots.
     requests = [(c, ImageGenRequest(model=model, prompt="test"))
-                for c in configured()
-                for model in ((FLARE, SUN) if c.name == "cxk" else (BASE, BASE))]
+                for c in generator.relay.all()
+                for model in ((FLARE, SUN) if c.name == "first" else (BASE, BASE))]
     budget = ProviderBudget(tmp_path/'concurrent-budget.json', image_requests=8)
     with ThreadPoolExecutor(max_workers=4) as pool:
         futures = [pool.submit(generator.generate, r, c, budget=budget) for c, r in requests]
         for f in futures:
             f.result()
-    assert peak == {"cxk": 1, "aicost": 1}
+    assert peak == {"first": 1, "second": 1}
     seen.clear()
     jobs = [job(tmp_path, str(i), model) for i, model in enumerate([FLARE, SUN, NEW, BASE])]
     results = m.generate_many(jobs, workers=20, progress=False, budget=budget)
     assert all(results[j.id] for j in jobs)
     assert len(seen) == 4
-    assert all(model == BASE or name == "cxk" for name, model in seen)
+    assert all(model == BASE or name == "first" for name, model in seen)
 
 
 def test_failover_keeps_model_and_charges_actual_attempts(generator, monkeypatch, tmp_path):
+    generator.relay = relay_mod.RelayManager([
+        Channel(name=name, api_key="test", base_url="https://mock.example", model=BASE)
+        for name in ("first", "second")
+    ])
     seen = []
     resp = response()
     def transport(c, path, body):
         seen.append((c.name, body["model"]))
-        if c.name == "cxk":
+        if c.name == "first":
             raise m.ImageError("provider rejected request")
         return resp
     monkeypatch.setattr(generator, "_post_unlocked", transport)
@@ -151,7 +162,7 @@ def test_failover_keeps_model_and_charges_actual_attempts(generator, monkeypatch
     task = job(tmp_path, "fallback", BASE)
     result = m.generate_many([task], budget=budget, progress=False)
     assert result[task.id]
-    assert seen == [("cxk", BASE), ("aicost", BASE)]
+    assert seen == [("first", BASE), ("second", BASE)]
     assert len(budget.snapshot()["attempts"]) == 2
     assert task.req.model == BASE
 
