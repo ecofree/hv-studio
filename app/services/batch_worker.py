@@ -130,6 +130,10 @@ def run_once(folder=None, *, command_factory=None):
     folder=Path(folder or queue_dir());folder.mkdir(parents=True,exist_ok=True)
     with file_lock(folder/'worker.lock'):
         owner=psutil.Process()
+        if (folder/'PAUSE').exists():
+            atomic_json(folder/'worker.json',dict(pid=owner.pid,created_at=owner.create_time(),
+                        heartbeat=time.time(),status='paused'))
+            return
         done=threading.Event()
         def heartbeat():
             while not done.is_set():
@@ -139,14 +143,14 @@ def run_once(folder=None, *, command_factory=None):
         try:
             for path in sorted(folder.glob('*.json')):
                 if path.name=='worker.json': continue
-                if (folder/'STOP').exists(): break
+                if (folder/'STOP').exists() or (folder/'PAUSE').exists(): break
                 try:
                     job=read(path);validate_job(job,path)
                 except Exception as exc:
                     _record_error(folder,path,None,exc);continue
                 _resolve_error(folder,path,None)
                 for eid,row in job['episodes'].items():
-                    if (folder/'STOP').exists(): break
+                    if (folder/'STOP').exists() or (folder/'PAUSE').exists(): break
                     try:
                         validate_row(row)
                         _run_episode(folder,path,job,eid,row,owner,command_factory)
@@ -160,7 +164,8 @@ def run_once(folder=None, *, command_factory=None):
                 atomic_json(path,job)
         finally:
             done.set();ticker.join(timeout=10)
-            atomic_json(folder/'worker.json',dict(pid=owner.pid,created_at=owner.create_time(),heartbeat=time.time(),status='idle'))
+            atomic_json(folder/'worker.json',dict(pid=owner.pid,created_at=owner.create_time(),heartbeat=time.time(),
+                        status='paused' if (folder/'PAUSE').exists() else 'idle'))
 
 
 def _error_path(folder,path,eid):
@@ -178,6 +183,19 @@ def _resolve_error(folder,path,eid):
         except (ValueError,OSError):return
         if isinstance(prior,dict) and not prior.get('resolved_at'):
             prior.update(resolved_at=time.time());atomic_json(target,prior)
+
+
+def set_paused(paused,operator,reason,folder=None):
+    """Pause between episodes while keeping the supervised worker alive."""
+    if type(paused) is not bool or not operator.strip() or not reason.strip():
+        raise ValueError('explicit pause state, operator and reason required')
+    folder=Path(folder or queue_dir())
+    with file_lock(folder/'control.lock'):
+        record=dict(paused=paused,operator=operator.strip(),reason=reason.strip(),at=time.time())
+        if paused: atomic_json(folder/'PAUSE',record)
+        else: (folder/'PAUSE').unlink(missing_ok=True)
+        atomic_json(folder/'controls'/(uuid.uuid4().hex+'.json'),record)
+    return record
 
 
 def retry_episode(batch_id,eid,operator,reason,extra_attempts=1,folder=None):

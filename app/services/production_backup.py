@@ -41,6 +41,7 @@ def selected_files(episodes):
     for relative in ('state/production-queue','state/voice_assets','state/audio_rejections','state/acceptance'):
         folder=root/relative
         files.update(p for p in folder.rglob('*') if p.is_file() and p.suffix=='.json' and p.name!='worker.json')
+    files.update(p for name in ('PAUSE','STOP') if (p := root/'state/production-queue'/name).is_file())
     for relative in ('app','bin','scripts','.ai-project'):
         files.update(p for p in (root/relative).rglob('*') if p.is_file() and p.suffix in ('.py','.yaml','.yml','.ps1','.json','.toml','.md') and '__pycache__' not in p.parts)
     files.update(p for p in root.glob('requirements*.txt') if p.is_file())

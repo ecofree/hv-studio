@@ -298,12 +298,20 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             return candidate_receipt
 
     compose_cfg = get_settings().compose
+    from app.services import video_segment_cache as cache
+    from app.services.compose import _probe_nvenc
+    use_nvenc = getattr(compose_cfg, 'video_encoder', None) == 'h264_nvenc' and _probe_nvenc()
+    vcodec = _build_vcodec(use_nvenc)
+    shared = cache.context(ROOT, runtime, get_settings().get_profile().subtitle.model_dump(mode='json'),
+                           vcodec, _sub_font_path())
+    reusable = cache.reusable_records(output_dir)
     max_seconds = getattr(compose_cfg, "v2_segment_max_sec", compose_cfg.segment_max_sec)
     ranges = _segment_ranges(timeline, sr, max_seconds)
     seg_dir = target / "segments"
     seg_dir.mkdir(parents=True, exist_ok=True)
     state["segment_max_seconds"] = max_seconds
     state["expected_frames"] = expected_frames
+    state['segment_cache_schema'] = cache.SCHEMA
     previous = {s['id']: s for s in state.get('segments', [])}
     state["segments"] = [
         {
@@ -311,7 +319,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             "first_frame": rows[0][1],
             "last_frame": rows[-1][2],
             "expected_frames": sum(last - first for _, first, last in rows),
-            "input_fingerprint": fingerprint({'inputs': inputs, 'runtime':runtime, 'rows': rows}),
+            "input_fingerprint": cache.segment_fingerprint(rows, specs, timeline['subtitles'], sr, inputs, shared),
             "path": str((seg_dir / f"seg-{i:03d}.mp4").resolve()),
             "status": "pending",
         }
@@ -325,9 +333,6 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             record.update({k: old[k] for k in ('status', 'sha256', 'encoder', 'elapsed_seconds') if k in old})
     atomic_json(state_path, state)
     cues = timeline["subtitles"]
-    from app.services.compose import _probe_nvenc
-    use_nvenc = getattr(compose_cfg, 'video_encoder', None) == 'h264_nvenc' and _probe_nvenc()
-    vcodec = _build_vcodec(use_nvenc)
     state.update(encoder=vcodec, started_at=time.time(), last_error=None)
 
     try:
@@ -341,6 +346,14 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
                     and _probe_segment_frames(path) == expected):
                 record.update(status="complete", sha256=old['sha256'], reused=True,
                               elapsed_seconds=old.get('elapsed_seconds'))
+                atomic_json(state_path, state)
+                continue
+            restored = next((old for old in reusable.get(record['input_fingerprint'], [])
+                             if cache.restore(old, path, expected, _probe_segment_frames)), None)
+            if restored is not None:
+                record.update(status='complete', sha256=restored['sha256'], reused=True,
+                              reused_from=restored['path'], encoder=restored.get('encoder'),
+                              elapsed_seconds=restored.get('elapsed_seconds'))
                 atomic_json(state_path, state)
                 continue
             path.unlink(missing_ok=True)

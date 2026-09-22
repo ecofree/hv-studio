@@ -92,17 +92,21 @@ from app.config.config import Channel
 from app.services.provenance import atomic_json
 folder=Path(sys.argv[2]);relay.STATE_DIR=folder;relay.HEALTH_PATH=folder/'health.json'
 manager=relay.RelayManager([Channel(name='same-supplier',api_key='offline',base_url='https://offline.invalid',model='gpt-image-2')])
-with manager.request_slot('same-supplier'):
-    start=time.time();time.sleep(.25);end=time.time()
-atomic_json(folder/(sys.argv[3]+'.json'),dict(start=start,end=end))
+intervals=[]
+for i in range(12):
+    with manager.request_slot('same-supplier'):
+        start=time.time();time.sleep(.005);end=time.time()
+        intervals.append(dict(start=start,end=end))
+atomic_json(folder/(sys.argv[3]+'.json'),intervals)
 ''',encoding='utf-8')
     from app.paths import ROOT
-    children=[subprocess.Popen([sys.executable,str(script),str(ROOT),str(tmp_path),str(i)],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE) for i in range(2)]
+    children=[subprocess.Popen([sys.executable,str(script),str(ROOT),str(tmp_path),str(i)],stdout=subprocess.DEVNULL,stderr=subprocess.PIPE) for i in range(6)]
     for child in children:
         _,err=child.communicate(timeout=20)
-        assert child.returncode==0,err.decode(errors='replace')[:200]
-    intervals=sorted([read(tmp_path/f'{i}.json') for i in range(2)],key=lambda v:v['start'])
-    assert intervals[1]['start']>=intervals[0]['end']
+        assert child.returncode==0,err.decode(errors='replace')[:1500]
+    intervals=sorted([r for i in range(6) for r in read(tmp_path/f'{i}.json')],key=lambda v:v['start'])
+    assert len(intervals)==72
+    assert all(b['start']>=a['end'] for a,b in zip(intervals,intervals[1:]))
 
 
 def test_queue_is_durable_isolates_timeout_and_reuses_budget(tmp_path,monkeypatch,tmp_episodes):

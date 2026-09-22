@@ -16,6 +16,7 @@ def test_snapshot_restore_preserves_v2_assets_and_exhausted_budget(tmp_path,monk
     atomic_json(media.with_suffix('.png.response.json'),{'response':'received'})
     budget=ProviderBudget(paths.state_dir()/'production-queue/budgets/paid.json',image_requests=1)
     budget.reserve('image','uncertain-request')
+    pause=paths.state_dir()/'production-queue/PAUSE';pause.write_text('operator pause')
     (root/'.env').write_text('secret excluded')
     snapshot=create_snapshot(['one'],tmp_path/'archives')['snapshot']
     manifest=verify_snapshot(snapshot)
@@ -26,6 +27,7 @@ def test_snapshot_restore_preserves_v2_assets_and_exhausted_budget(tmp_path,monk
     resumed=ProviderBudget(restored/budget.path.relative_to(root),image_requests=1)
     with pytest.raises(BudgetExceeded):resumed.reserve('image','must-not-resend')
     assert read(restored/'RESTORE-INFO.json')['automatic_resume'] is False
+    assert (restored/pause.relative_to(root)).read_text()=='operator pause'
     with pytest.raises(ValueError):restore_snapshot(snapshot,restored)
     (restored/'safe.txt').write_text('keep')
     manifest['files']['../../escape.txt']={'sha256':'x','bytes':1}

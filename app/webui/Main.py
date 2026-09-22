@@ -128,6 +128,36 @@ for error_path in sorted((queue_dir()/'errors').glob('*.json')):
 if rows: st.dataframe(rows,hide_index=True)
 else: st.caption('暂无生产任务。')
 
+with st.expander('队列暂停与恢复'):
+    from app.services.batch_worker import set_paused
+    is_paused=(queue_dir()/'PAUSE').exists()
+    st.caption('已请求暂停；当前剧集完成后停止取新任务，服务保持在线。' if is_paused else '队列允许处理已获准的任务。')
+    with st.form('queue-pause-control'):
+        operator=st.text_input('操作人')
+        reason=st.text_input('暂停或恢复原因')
+        if st.form_submit_button('恢复队列' if is_paused else '完成当前剧集后暂停'):
+            try:
+                set_paused(not is_paused,operator,reason)
+                st.success('已恢复队列。' if is_paused else '已请求在剧集之间暂停。')
+            except (ValueError,RuntimeError,OSError) as exc: st.error(str(exc))
+
+retryable=[r for r in rows if r['状态'] in ('输入需修复','预算已用尽','重试已停止')]
+if retryable:
+    with st.expander('修复后受控续跑'):
+        st.caption('保留累计尝试和原预算。增加运行尝试次数不会增加生图或配音额度。')
+        with st.form('queue-retry-control'):
+            selection=st.selectbox('停止的任务',range(len(retryable)),
+                format_func=lambda i:retryable[i]['批次']+' / '+retryable[i]['剧集'])
+            operator=st.text_input('续跑操作人'); reason=st.text_area('已完成的修复与续跑原因')
+            attempts=st.number_input('额外运行尝试次数',min_value=1,max_value=3,value=1,step=1)
+            if st.form_submit_button('使用原预算续跑'):
+                try:
+                    from app.services.batch_worker import retry_episode
+                    row=retryable[selection]
+                    retry_episode(row['批次'],row['剧集'],operator,reason,int(attempts))
+                    st.success('已重新排队，准入和原预算限制仍然生效。')
+                except (ValueError,RuntimeError,OSError,KeyError) as exc: st.error(str(exc))
+
 s = get_settings()
 r = get_relay()
 

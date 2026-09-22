@@ -423,38 +423,15 @@ def main():
     p.add_argument("--stage", action="append", default=None,
                    help="[produce] 指定阶段，可多次：--stage tts --stage compose")
     p.add_argument("--merge-short", action="store_true",
-                   help="[produce] 新集建档时合并过短片段（<10 字，≈2.5s 以下）。"
-                        "⚠️ 既有多集不要开：帧数会变，已配好的音频与 scene_plan 全错位")
-    p.add_argument("--tts-granularity", choices=["paragraph", "frame"],
-                   default="paragraph",
-                   help="[produce] TTS 合成粒度：paragraph=按段落合成长音频再切回"
-                        "逐帧（**默认**）；frame=逐帧合成。"
-                        "⚠️ 默认选 paragraph 是**流畅度优先**（2026-09-08 出片实测）："
-                        "逐帧会让每帧自带约 300ms 首尾静音，把汉语「话题+逗号+述题」"
-                        "结构劈开（如「在隋炀帝…的那一刻，」⟵300ms⟶「算盘就…」），"
-                        "全片处处不通顺。段落级是连续音频，帧间只剩 6~7ms。"
-                        "代价：段落级在长上下文下可能把紧连专名读断"
-                        "（「晋阳令刘文静」→「晋阳 / 令刘文静」），靠易错词表降级兜底。"
-                        "⚠️ 历史：2026-09-07 曾为断词把默认改回逐帧，出片后证明"
-                        "流畅度是 100%% 帧的问题、断词是 0.5%% 帧的问题，得不偿失。")
+                   help="仅 legacy-preview：合并短帧；不控制 v2 旁白单元")
+    p.add_argument("--tts-granularity", choices=["paragraph", "frame"], default="paragraph",
+                   help="仅 legacy-preview：旧配音切分粒度；v2 使用源稿旁白单元")
     p.add_argument("--tts-group-chars", type=int, default=None,
-                   help="[produce] 单次 TTS 的目标字数（默认 400）。相邻段落会被"
-                        "打包到这个长度。服务端非流式上限 2 万字符（中文按 2 计），"
-                        "本集全篇通常也就 3~4 千字 —— 想一次合成整集可以设大，"
-                        "但组越大切片越依赖语速估算，偏差过大会有告警。"
-                        "设 1（或 0）= 不打包，严格一段一组。"
-                        "⚠️ 想退回逐帧合成请用 --tts-granularity frame，"
-                        "本参数设 0 不会退回逐帧")
+                   help="仅 legacy-preview：旧配音分组字数；不控制 v2 请求")
     p.add_argument("--tts-workers", type=int, default=None,
-                   help="[produce] TTS 并发路数。不设则按粒度自动取值："
-                        "逐帧档 2（默认档，220 帧 = 220 次请求，4 路并发实测会撞"
-                        " Throttling.RateQuota：D 档 83 次突发只成功 25 帧）；"
-                        "段落档 4（请求数少得多，可以跑满）。"
-                        "⚠️ 2026-09-07 前这个值是写死 4 且**没有开关** —— "
-                        "默认档退回逐帧后请求数涨了 20 倍，等于没得调。")
+                   help="仅 legacy-preview：旧配音并发数；不控制 v2 请求")
     p.add_argument("--no-fallback", action="store_true",
-                   help="[produce] cosyvoice 失败时不降级 edge（宁可失败也不混"
-                        "音色；交付集建议加）")
+                   help="仅 legacy-preview：禁止换引擎；v2 始终禁止静默更换声音")
     p.add_argument("--pipeline", choices=["v2", "legacy-preview"], default="v2")
     p.add_argument("--allow-edge-fallback", action="store_true", help="仅旧预览允许显式换人声")
     p.add_argument("--max-requests", type=int, default=0, help="本轮最多新增 TTS 请求，默认 0")

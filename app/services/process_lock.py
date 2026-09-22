@@ -29,8 +29,10 @@ def file_lock(path):
                 import psutil
                 if psutil.pid_exists(int(old)):
                     raise RuntimeError(f"legacy writer still running: PID {old}")
-        stream=path.open('a+b')
-        if stream.seek(0,2)==0: stream.write(b'#');stream.flush()
+        # Windows byte-range locks can cover an empty file. Acquire before
+        # writing anything: an initial buffered marker could race another owner,
+        # fail on flush, then fail again on close and bypass mutex.release().
+        stream=path.open('a+b',buffering=0)
         stream.seek(0)
         if os.name=='nt':
             import msvcrt
@@ -46,14 +48,18 @@ def file_lock(path):
         if not held: raise RuntimeError(f"operation already running: {path}") from exc
         raise
     finally:
-        if stream:
-            if held:
-                stream.seek(0)
-                if os.name=='nt':
-                    import msvcrt
-                    msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
-                else:
-                    import fcntl
-                    fcntl.flock(stream.fileno(),fcntl.LOCK_UN)
-            stream.close()
-        mutex.release()
+        try:
+            if stream:
+                try:
+                    if held:
+                        stream.seek(0)
+                        if os.name=='nt':
+                            import msvcrt
+                            msvcrt.locking(stream.fileno(),msvcrt.LK_UNLCK,1)
+                        else:
+                            import fcntl
+                            fcntl.flock(stream.fileno(),fcntl.LOCK_UN)
+                finally:
+                    stream.close()
+        finally:
+            mutex.release()

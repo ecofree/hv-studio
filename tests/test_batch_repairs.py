@@ -71,3 +71,29 @@ def test_operator_retry_keeps_spending_and_attempts(tmp_path,tmp_episodes):
     row=read(path)['episodes']['one']
     assert row['attempts']==3 and row['authorized_attempt_limit']==4
     assert row['status']=='QUEUED' and read(ledger.path)==before
+
+
+def test_pause_finishes_active_child_and_resume_keeps_budget(tmp_path,tmp_episodes,monkeypatch):
+    folder=tmp_path/'queue';path=worker.enqueue('pause',['first','next'],{},folder=folder)
+    budget_before=read(read(path)['budget_path'])
+    monkeypatch.setattr(admission,'check',lambda _:dict(eligible=True,blockers=[],input_fingerprint='x'))
+    def command(spec,eid,token):
+        result=folder/'results'/(token+'.json')
+        script=('import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); p.parent.mkdir(exist_ok=True); '
+                'pathlib.Path(sys.argv[2]).write_text("pause requested while running"); '
+                'time.sleep(0.1); p.write_text(\'{"status":"NEEDS_REVIEW"}\')')
+        return [sys.executable,'-c',script,str(result),str(folder/'PAUSE')]
+    worker.run_once(folder,command_factory=command)
+    job=read(path)
+    assert job['episodes']['first']['status']=='NEEDS_REVIEW'
+    assert job['episodes']['next']['status']=='QUEUED'
+    assert read(folder/'worker.json')['status']=='paused'
+    worker.run_once(folder,command_factory=lambda *a:pytest.fail('paused worker must not dispatch'))
+    assert read(read(path)['budget_path'])==budget_before
+    worker.set_paused(False,'test operator','resume after local repair',folder)
+    monkeypatch.setattr(admission,'check',lambda _:dict(eligible=False,blockers=['input review'],input_fingerprint='x'))
+    worker.run_once(folder)
+    assert read(path)['episodes']['next']['status']=='NEEDS_REVIEW'
+    assert read(folder/'worker.json')['status']=='idle'
+    assert read(read(path)['budget_path'])==budget_before
+    assert len(list((folder/'controls').glob('*.json')))==1
