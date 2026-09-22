@@ -37,11 +37,34 @@ def inputs(ep_id):
                 unsupported_cues=[c['cue_id'] for c in unsupported])
 
 
-def record_approval(ep_id, reviewer, finding, direction_policy=None):
+def review_materials(ep_id):
+    """Return the actual source material shown to the reviewer, bound to inputs."""
+    from app.managers import load
+    from app.orchestrator import _load_script_md
+    from app import paths
+    value=inputs(ep_id);folder=episode_dir(ep_id)
+    state_path=folder/'production/v2/run.json'
+    state=read(state_path) if state_path.exists() else {}
+    previews=[]
+    for key,name in state.get('image_assets',{}).items():
+        path=Path(name).resolve()
+        if path.is_relative_to(paths.ROOT.resolve()) and path.is_file():
+            previews.append(dict(id=key,path=str(path),sha256=file_sha256(path)))
+    result=dict(input_fingerprint=fingerprint(value),source=_load_script_md(load(ep_id)),
+                storyboard=read(folder/'scene_plan.json'),prompts=read(folder/'image_prompts.json'),
+                directions=value['direction_cues'],previews=previews)
+    if fingerprint(inputs(ep_id))!=result['input_fingerprint']:
+        raise ValueError('review inputs changed while loading; reload material')
+    return result
+
+
+def record_approval(ep_id, reviewer, finding, direction_policy=None, *, expected_fingerprint=None):
     if not reviewer.strip() or not finding.strip(): raise ValueError('reviewer and findings are required')
     if direction_policy not in (None,'candidate_review_required'):
         raise ValueError('unknown direction execution policy')
     value = inputs(ep_id)
+    if expected_fingerprint is not None and expected_fingerprint!=fingerprint(value):
+        raise ValueError('review inputs changed; reload and review the current material')
     # Input approval never converts unsupported direction into implemented work.
     path = episode_dir(ep_id)/'production/input-approval.json'
     atomic_json(path, dict(input_fingerprint=fingerprint(value), reviewer=reviewer.strip(),

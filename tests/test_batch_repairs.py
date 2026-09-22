@@ -73,6 +73,20 @@ def test_operator_retry_keeps_spending_and_attempts(tmp_path,tmp_episodes):
     assert row['status']=='QUEUED' and read(ledger.path)==before
 
 
+def test_input_review_cannot_approve_unseen_changed_material(tmp_episodes,monkeypatch):
+    from app.paths import episode_dir
+    from app.services.provenance import fingerprint
+    value=dict(source_sha256='shown source',unsupported_cues=[])
+    monkeypatch.setattr(admission,'inputs',lambda _:value)
+    shown=fingerprint(value)
+    value['source_sha256']='changed while form was open'
+    with pytest.raises(ValueError,match='reload'):
+        admission.record_approval('one','test reviewer','reviewed old input',expected_fingerprint=shown)
+    assert not (episode_dir('one')/'production/input-approval.json').exists()
+    admission.record_approval('one','test reviewer','reviewed current input',expected_fingerprint=fingerprint(value))
+    assert read(episode_dir('one')/'production/input-approval.json')['input_fingerprint']==fingerprint(value)
+
+
 def test_pause_finishes_active_child_and_resume_keeps_budget(tmp_path,tmp_episodes,monkeypatch):
     folder=tmp_path/'queue';path=worker.enqueue('pause',['first','next'],{},folder=folder)
     budget_before=read(read(path)['budget_path'])
