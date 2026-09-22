@@ -17,7 +17,8 @@ def runtime_versions(python,lock):
                   if line.strip() and not line.startswith('#'))
     code="import importlib.metadata as m,json,sys;print(json.dumps({n:m.version(n) for n in json.loads(sys.argv[1])}))"
     result=subprocess.run([str(python),'-c',code,json.dumps(list(expected))],capture_output=True,
-                          text=True,encoding='utf-8',timeout=30,check=True)
+                          text=True,encoding='utf-8',timeout=30,check=True,
+                          creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
     actual=json.loads(result.stdout)
     if actual!=expected:raise ValueError('local ASR environment differs from requirements.asr.lock.txt')
     return actual
@@ -60,7 +61,8 @@ def recognize(audio, *, config=None, context=None):
         output=Path(tmp)/'result.json'
         run=subprocess.run([str(resolve(config.python_executable)),str(worker),'--audio',str(Path(audio).resolve()),
             '--model',str(model.resolve()),'--output',str(output),'--threads',str(config.threads)],
-            capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=config.timeout_seconds)
+            capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=config.timeout_seconds,
+            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
         if run.returncode:
             raise RuntimeError('local ASR failed: '+run.stderr[-1200:])
         result=json.loads(output.read_text(encoding='utf-8'))

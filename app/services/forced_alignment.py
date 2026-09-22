@@ -59,7 +59,8 @@ def align(audio, source, recognition, duration, context=None):
             inp, out = Path(tmp)/'request.json', Path(tmp)/'result.json'
             atomic_json(inp, request)
             run = subprocess.run([str(resolve(config.python_executable)), str(worker), '--request', str(inp), '--output', str(out)],
-                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=config.timeout_seconds)
+                                 capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=config.timeout_seconds,
+                                 creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
             if run.returncode: raise RuntimeError('local alignment failed: '+run.stderr[-1600:])
             result = read(out)
         if result['audio_sha256'] != request['audio_sha256'] or file_sha256(audio) != request['audio_sha256']:

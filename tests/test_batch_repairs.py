@@ -9,6 +9,33 @@ from app.services.provider_budget import ProviderBudget
 pytestmark=pytest.mark.production
 
 
+def test_local_window_close_is_recoverable_without_authorizing_another_attempt(tmp_path,tmp_episodes,monkeypatch):
+    error='RuntimeError: local alignment failed: forrtl: error (200): program aborting due to window-CLOSE event'
+    assert worker.classify(error)=='RETRY_WAIT'
+    folder=tmp_path/'queue';path=worker.enqueue('window-close',['one'],{},retries=0,folder=folder)
+    job=read(path);job['episodes']['one'].update(status=worker.classify(error),attempts=1,error=error)
+    atomic_json(path,job)
+    monkeypatch.setattr(admission,'check',lambda _:dict(eligible=True,blockers=[],input_fingerprint='x'))
+    worker.run_once(folder,command_factory=lambda *a:pytest.fail('retry was not authorized'))
+    row=read(path)['episodes']['one']
+    assert row['status']=='FAILED' and row['attempts']==1
+
+
+def test_new_attempt_does_not_keep_resolved_input_blockers(tmp_path,tmp_episodes,monkeypatch):
+    folder=tmp_path/'queue';path=worker.enqueue('fresh-status',['one'],{},folder=folder)
+    job=read(path);job['episodes']['one'].update(status='NEEDS_REVIEW',blockers=['old unapproved input'],error='old error')
+    atomic_json(path,job)
+    monkeypatch.setattr(admission,'check',lambda _:dict(eligible=True,blockers=[],input_fingerprint='approved'))
+    def command(spec,eid,token):
+        running=read(spec)['episodes'][eid]
+        assert 'blockers' not in running and 'error' not in running
+        result=folder/'results'/(token+'.json')
+        return [sys.executable,'-c','import pathlib,sys;p=pathlib.Path(sys.argv[1]);p.parent.mkdir(exist_ok=True);p.write_text(\'{"status":"BLOCKED_INPUT","error":"new local failure"}\')',str(result)]
+    worker.run_once(folder,command_factory=command)
+    row=read(path)['episodes']['one']
+    assert row['error']=='new local failure' and 'blockers' not in row
+
+
 @pytest.mark.parametrize('badrow',[{},None,{'status':'RUNNING','attempts':1,'token':'../../escape'},
     {'status':'QUEUED','attempts':'1'}])
 def test_damaged_row_does_not_block_next_episode(tmp_path,tmp_episodes,monkeypatch,badrow):

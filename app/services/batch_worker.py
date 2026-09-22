@@ -69,7 +69,7 @@ def classify(error):
     low = error.lower()
     if 'budget' in low: return 'BUDGET_EXHAUSTED'
     if any(s in low for s in ('review', 'disposition', 'unsupported artistic')): return 'NEEDS_REVIEW'
-    if any(s in low for s in ('timeout', 'timed out', 'transientimageerror', 'interrupted', 'already running', '429', '503', '502', 'connection')):
+    if any(s in low for s in ('timeout', 'timed out', 'transientimageerror', 'interrupted', 'window-close event', 'already running', '429', '503', '502', 'connection')):
         return 'RETRY_WAIT'
     return 'BLOCKED_INPUT'
 
@@ -255,6 +255,9 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
     if row['attempts'] >= row.get('authorized_attempt_limit',1+job['spec']['retries']):
         row['status']='FAILED'; event(job,eid,'FAILED','retry limit'); atomic_json(path,job); return
     token = uuid.uuid4().hex
+    # Previous failure details remain in events; they are not current blockers.
+    for key in ('blockers', 'error', 'retry_at'):
+        row.pop(key, None)
     row.update(status='RUNNING', attempts=row['attempts']+1, token=token,
                admission_fingerprint=admission.get('input_fingerprint'),
                started_at=time.time(), owner_pid=owner.pid, owner_created=owner.create_time(),
