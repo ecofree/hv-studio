@@ -15,6 +15,7 @@ from app import paths
 from app.services.provenance import atomic_json, fingerprint
 from app.services.narration_pipeline import read
 from app.services.process_lock import file_lock
+from app.services.queue_records import load_result
 
 
 def queue_dir(): return paths.state_dir()/'production-queue'
@@ -123,82 +124,146 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
 
 
 def run_once(folder=None, *, command_factory=None):
-    """One bounded queue pass. Tests can supply a local child command, never APIs."""
-    folder = Path(folder or queue_dir()); folder.mkdir(parents=True, exist_ok=True)
+    """Isolate invalid batches and episodes, preserving their original evidence."""
+    import threading
+    from app.services.queue_records import validate_job, validate_row
+    folder=Path(folder or queue_dir());folder.mkdir(parents=True,exist_ok=True)
     with file_lock(folder/'worker.lock'):
-        owner = psutil.Process()
-        for path in sorted(folder.glob('*.json')):
-            if path.name == 'worker.json': continue
-            try:
-                job = read(path)
-                if not isinstance(job,dict): raise ValueError('invalid queue record')
-                if 'spec' in job and (not isinstance(job.get('episodes'),dict) or not job['episodes']):
-                    raise ValueError('invalid episode queue')
-            except (OSError,ValueError) as exc:
-                atomic_json(folder/'errors'/(path.stem+'.json'),dict(error=type(exc).__name__, path=str(path), at=time.time()))
-                continue
-            if 'spec' not in job: continue
-            for eid, row in job['episodes'].items():
-                if (folder/'STOP').exists(): return
-                if row['status'] == 'RUNNING':
-                    stop_tree(row.get('child_pid'), row.get('child_created'))
-                    result_path = folder/'results'/(row['token']+'.json')
-                    if result_path.exists(): row.update(read(result_path))
-                    else: row.update(status='RETRY_WAIT', error='interrupted worker', retry_at=time.time())
-                    event(job, eid, row['status'], 'recovered previous owner')
-                    atomic_json(path, job)
-                if row['status'] == 'APPROVED':
-                    from app.services.production_status import get_status
-                    if get_status(eid).get('approved'): continue
-                    row['status'] = 'NEEDS_REVIEW'
-                if row['status'] == 'NEEDS_REVIEW' and row.get('candidate_path'):
-                    from app.services.production_status import get_status
-                    status = get_status(eid)
-                    if status['approved']:
-                        row['status']='APPROVED'; event(job,eid,'APPROVED'); atomic_json(path,job)
-                    elif status['status'] == 'STALE' and not status['quality_pending_units'] and not status['delivery_pending']:
-                        row['status']='QUEUED'
-                    else: continue
-                if row['status'] in ('BUDGET_EXHAUSTED','FAILED'): continue
-                if row.get('retry_at', 0)>time.time(): continue
-                from app.services.production_admission import check
-                admission = check(eid)
-                if row['status']=='BLOCKED_INPUT' and row.get('admission_fingerprint')==admission.get('input_fingerprint'):
-                    continue
-                if not admission['eligible']:
-                    if row['status'] != 'NEEDS_REVIEW' or row.get('blockers') != admission['blockers']:
-                        row.update(status='NEEDS_REVIEW', blockers=admission['blockers'])
-                        event(job,eid,'NEEDS_REVIEW','input admission'); atomic_json(path,job)
-                    continue
-                if row['attempts'] >= 1+job['spec']['retries']:
-                    row['status']='FAILED'; event(job,eid,'FAILED','retry limit'); atomic_json(path,job); continue
-                token = uuid.uuid4().hex
-                row.update(status='RUNNING', attempts=row['attempts']+1, token=token,
-                           admission_fingerprint=admission.get('input_fingerprint'),
-                           started_at=time.time(), owner_pid=owner.pid, owner_created=owner.create_time(),
-                           child_pid=None, child_created=None)
-                event(job,eid,'RUNNING'); atomic_json(path,job)
-                command = ([sys.executable, str(paths.ROOT/'bin/production_worker.py'), '--execute', str(path.resolve()),
-                            '--episode', eid, '--token', token, '--owner-pid', str(owner.pid),
-                            '--owner-created', str(owner.create_time())] if command_factory is None else command_factory(path,eid,token))
-                log_path = folder/'logs'/(token+'.log'); log_path.parent.mkdir(exist_ok=True)
-                with log_path.open('ab') as log:
-                    child = subprocess.Popen(command, cwd=paths.ROOT, stdout=log, stderr=log,
-                                             creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-                    row.update(child_pid=child.pid, child_created=psutil.Process(child.pid).create_time())
-                    atomic_json(path,job)
-                    while child.poll() is None and not (folder/'STOP').exists():
-                        if time.time()-row['started_at'] > job['spec']['timeout']: break
-                        atomic_json(folder/'worker.json', dict(pid=owner.pid, created_at=owner.create_time(),
-                            heartbeat=time.time(), batch=job['spec']['batch_id'], episode=eid, deadline=row['started_at']+job['spec']['timeout']))
-                        time.sleep(.5)
-                    if child.poll() is None: stop_tree(row['child_pid'],row['child_created'])
-                    child.wait(timeout=10)
-                result_path = folder/'results'/(token+'.json')
-                if result_path.exists(): row.update(read(result_path))
-                else: row.update(status='RETRY_WAIT', error='interrupted or timed out child')
-                if row['status']=='RETRY_WAIT': row['retry_at']=time.time()+min(2**row['attempts'],60)
-                event(job,eid,row['status'],row.get('error')); atomic_json(path,job)
-            job['status'] = 'APPROVED' if all(r['status']=='APPROVED' for r in job['episodes'].values()) else 'PENDING'
+        owner=psutil.Process()
+        done=threading.Event()
+        def heartbeat():
+            while not done.is_set():
+                atomic_json(folder/'worker.json',dict(pid=owner.pid,created_at=owner.create_time(),heartbeat=time.time(),status='scanning'))
+                done.wait(5)
+        ticker=threading.Thread(target=heartbeat,daemon=True);ticker.start()
+        try:
+            for path in sorted(folder.glob('*.json')):
+                if path.name=='worker.json': continue
+                if (folder/'STOP').exists(): break
+                try:
+                    job=read(path);validate_job(job,path)
+                except Exception as exc:
+                    _record_error(folder,path,None,exc);continue
+                _resolve_error(folder,path,None)
+                for eid,row in job['episodes'].items():
+                    if (folder/'STOP').exists(): break
+                    try:
+                        validate_row(row)
+                        _run_episode(folder,path,job,eid,row,owner,command_factory)
+                    except Exception as exc:
+                        _record_error(folder,path,eid,exc)
+                        # Keep damaged rows intact for repair; never manufacture
+                        # ownership, attempts or an empty replacement budget.
+                        continue
+                    _resolve_error(folder,path,eid)
+                job['status']='APPROVED' if all(isinstance(r,dict) and r.get('status')=='APPROVED' for r in job['episodes'].values()) else 'PENDING'
+                atomic_json(path,job)
+        finally:
+            done.set();ticker.join(timeout=10)
+            atomic_json(folder/'worker.json',dict(pid=owner.pid,created_at=owner.create_time(),heartbeat=time.time(),status='idle'))
+
+
+def _error_path(folder,path,eid):
+    return folder/'errors'/((path.stem if eid is None else path.stem+'-'+fingerprint(eid)[:16])+'.json')
+
+
+def _record_error(folder,path,eid,exc):
+    atomic_json(_error_path(folder,path,eid),dict(error=type(exc).__name__,message=str(exc)[:500],path=str(path),episode=eid,at=time.time()))
+
+
+def _resolve_error(folder,path,eid):
+    target=_error_path(folder,path,eid)
+    if target.exists():
+        try: prior=read(target)
+        except (ValueError,OSError):return
+        if isinstance(prior,dict) and not prior.get('resolved_at'):
+            prior.update(resolved_at=time.time());atomic_json(target,prior)
+
+
+def retry_episode(batch_id,eid,operator,reason,extra_attempts=1,folder=None):
+    """Explicitly retry a stopped job without erasing spending or attempt history."""
+    from app.services.queue_records import validate_job,validate_row,integer
+    import re
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',batch_id):raise ValueError('invalid batch ID')
+    paths.validate_episode_id(eid);integer(extra_attempts,1)
+    if extra_attempts>3 or not operator.strip() or not reason.strip():raise ValueError('operator, reason and 1..3 attempts required')
+    folder=Path(folder or queue_dir());path=folder/(batch_id+'.json')
+    with file_lock(folder/'worker.lock'):
+        job=read(path);validate_job(job,path);row=job['episodes'][eid];validate_row(row)
+        if row['status'] not in ('FAILED','BLOCKED_INPUT','BUDGET_EXHAUSTED','RUNNING'):
+            raise ValueError('only stopped or interrupted jobs can be retried')
+        if row['status']=='RUNNING' and alive(row.get('child_pid'),row.get('child_created')):
+            raise ValueError('production child is still alive')
+        prior_status=row['status']
+        row['authorized_attempt_limit']=row['attempts']+extra_attempts
+        row.setdefault('retry_authorizations',[]).append(dict(operator=operator.strip(),reason=reason.strip(),
+            prior_status=prior_status,attempts_before=row['attempts'],extra_attempts=extra_attempts,at=time.time()))
+        row.update(status='QUEUED');row.pop('retry_at',None)
+        event(job,eid,'QUEUED','explicit retry: '+reason.strip());job['status']='PENDING';atomic_json(path,job)
+    return dict(batch_id=batch_id,episode=eid,status='QUEUED',attempts=row['attempts'],budget_path=job['budget_path'])
+
+def _run_episode(folder, path, job, eid, row, owner, command_factory):
+    if (folder/'STOP').exists(): return
+    if row['status'] == 'RUNNING':
+        stop_tree(row.get('child_pid'), row.get('child_created'))
+        result_path = folder/'results'/(row['token']+'.json')
+        if result_path.exists(): row.update(load_result(result_path))
+        else: row.update(status='RETRY_WAIT', error='interrupted worker', retry_at=time.time())
+        event(job, eid, row['status'], 'recovered previous owner')
+        atomic_json(path, job)
+    if row['status'] == 'APPROVED':
+        from app.services.production_status import get_status
+        if get_status(eid).get('approved'): return
+        row['status'] = 'NEEDS_REVIEW'
+    if row['status'] == 'NEEDS_REVIEW' and row.get('candidate_path'):
+        from app.services.production_status import get_status
+        status = get_status(eid)
+        if status['approved']:
+            row['status']='APPROVED'; event(job,eid,'APPROVED'); atomic_json(path,job)
+        elif status['status'] == 'STALE' and not status['quality_pending_units'] and not status['delivery_pending']:
+            row['status']='QUEUED'
+        else: return
+    if row['status'] in ('BUDGET_EXHAUSTED','FAILED'): return
+    if row.get('retry_at', 0)>time.time(): return
+    from app.services.production_admission import check
+    admission = check(eid)
+    if row['status']=='BLOCKED_INPUT' and row.get('admission_fingerprint')==admission.get('input_fingerprint'):
+        return
+    if not admission['eligible']:
+        if row['status'] != 'NEEDS_REVIEW' or row.get('blockers') != admission['blockers']:
+            row.update(status='NEEDS_REVIEW', blockers=admission['blockers'])
+            event(job,eid,'NEEDS_REVIEW','input admission'); atomic_json(path,job)
+        return
+    if row['attempts'] >= row.get('authorized_attempt_limit',1+job['spec']['retries']):
+        row['status']='FAILED'; event(job,eid,'FAILED','retry limit'); atomic_json(path,job); return
+    token = uuid.uuid4().hex
+    row.update(status='RUNNING', attempts=row['attempts']+1, token=token,
+               admission_fingerprint=admission.get('input_fingerprint'),
+               started_at=time.time(), owner_pid=owner.pid, owner_created=owner.create_time(),
+               child_pid=None, child_created=None)
+    event(job,eid,'RUNNING'); atomic_json(path,job)
+    command = ([sys.executable, str(paths.ROOT/'bin/production_worker.py'), '--execute', str(path.resolve()),
+                '--episode', eid, '--token', token, '--owner-pid', str(owner.pid),
+                '--owner-created', str(owner.create_time())] if command_factory is None else command_factory(path,eid,token))
+    log_path = folder/'logs'/(token+'.log'); log_path.parent.mkdir(exist_ok=True)
+    with log_path.open('ab') as log:
+        child = subprocess.Popen(command, cwd=paths.ROOT, stdout=log, stderr=log,
+                                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+        try:
+            row.update(child_pid=child.pid, child_created=psutil.Process(child.pid).create_time())
             atomic_json(path,job)
-        atomic_json(folder/'worker.json', dict(pid=owner.pid, created_at=owner.create_time(), heartbeat=time.time(), status='idle'))
+            while child.poll() is None and not (folder/'STOP').exists():
+                if time.time()-row['started_at'] > job['spec']['timeout']: break
+                atomic_json(folder/'worker.json', dict(pid=owner.pid, created_at=owner.create_time(),
+                    heartbeat=time.time(), batch=job['spec']['batch_id'], episode=eid, deadline=row['started_at']+job['spec']['timeout']))
+                time.sleep(.5)
+        finally:
+            if child.poll() is None:
+                if row.get('child_created') is not None: stop_tree(child.pid,row['child_created'])
+                else: child.terminate()
+            child.wait(timeout=10)
+    result_path = folder/'results'/(token+'.json')
+    if result_path.exists(): row.update(load_result(result_path))
+    else: row.update(status='RETRY_WAIT', error='interrupted or timed out child')
+    if row['status']=='RETRY_WAIT': row['retry_at']=time.time()+min(2**row['attempts'],60)
+    event(job,eid,row['status'],row.get('error')); atomic_json(path,job)

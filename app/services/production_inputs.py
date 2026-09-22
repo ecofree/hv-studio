@@ -16,6 +16,8 @@ def prepare(ep, plan_path, root):
         raise ValueError('scene_plan.json and image_prompts.json must be supplied together')
     if scene_path.exists():
         jobs = build_image_jobs(ep.id, strict=True)
+        from app.services.existing_images import include_registered
+        jobs = include_registered(ep.id,jobs)
         scene = read(scene_path)
         if 'scenes' in scene:
             from app.services.production_timeline import scene_bindings
@@ -42,7 +44,8 @@ def prepare(ep, plan_path, root):
         scene_path = folder/'scene_plan.json'
         atomic_json(scene_path, storyboard); atomic_json(folder/'image_prompts.json', prompts)
     if not jobs: raise ValueError('no source-bound image jobs')
-    for job in jobs: job.out_path = root/'images'/job.request_fingerprint()/job.out.name
+    for job in jobs:
+        if not getattr(job,'imported',False): job.out_path = root/'images'/job.request_fingerprint()/job.out.name
     return jobs, scene_path
 
 

@@ -85,14 +85,19 @@ if episode_ids:
         else:
             for blocker in admission['blockers']: st.write('• '+blocker)
         st.caption('仅在已核对原稿史实、分镜和图片提示词后提交；此操作不批准音频或成片。')
+        from app.services.production_admission import inputs as admission_inputs
+        try: directions=admission_inputs(selected).get('direction_cues',[])
+        except (ValueError,RuntimeError,OSError,KeyError,TypeError): directions=[]
+        for cue in directions: st.write('待执行/核查：'+cue['text'])
         with st.form('input-review-'+selected):
             reviewer=st.text_input('输入审核人')
             finding=st.text_area('原稿与分镜核查结论')
             confirmed=st.checkbox('我已核对当前原稿、分镜与图片提示词')
+            deferred=st.checkbox('允许先按现有控制生成候选；未支持的表演和画面要求在成片后逐项审核，不视为已实现',value=False) if directions else False
             if st.form_submit_button('保存输入审核'):
                 if not confirmed or not reviewer.strip() or not finding.strip(): st.error('请完成核查并填写结论。')
                 else:
-                    try: record_approval(selected,reviewer,finding); st.success('已保存输入审核。')
+                    try: record_approval(selected,reviewer,finding,'candidate_review_required' if deferred else None); st.success('已保存输入审核。')
                     except (ValueError,OSError) as exc: st.error(str(exc))
 
 st.subheader('无人生产队列')
@@ -113,7 +118,13 @@ for queue_path in sorted(queue_dir().glob('*.json')):
         for eid,item in queued.get('episodes',{}).items():
             rows.append({'批次':queued['spec']['batch_id'],'剧集':eid,'状态':queue_labels.get(item['status'],item['status']),
                          '已尝试':item.get('attempts',0),'待处理':'; '.join(item.get('blockers',[])) or item.get('error','')})
-    except (ValueError,OSError,KeyError): st.error('无法读取队列记录：'+queue_path.name)
+    except (ValueError,OSError,KeyError,TypeError,AttributeError): st.error('无法读取队列记录：'+queue_path.name)
+for error_path in sorted((queue_dir()/'errors').glob('*.json')):
+    try:
+        issue=read(error_path)
+        if not issue.get('resolved_at'):
+            st.error('已隔离队列异常：'+Path(issue['path']).name+' / '+str(issue.get('episode') or '批次')+'：'+issue.get('message',issue['error']))
+    except (ValueError,OSError,KeyError,TypeError,AttributeError): st.error('无法读取队列异常记录：'+error_path.name)
 if rows: st.dataframe(rows,hide_index=True)
 else: st.caption('暂无生产任务。')
 

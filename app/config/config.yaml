@@ -158,7 +158,10 @@ image_channels:
     key_env: aicost_gpt-image-2
     enabled: true
     max_concurrency: 1
-    models: [gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+    # 2026-09-22 bounded probes: flare and sunburst returned HTTP 503,
+    # "no available channel". Keep the original model; restore variants only
+    # after an explicitly budgeted successful probe, never by automatic retry.
+    models: [gpt-image-2]
   - name: qcyc  # QC_YC: temporarily unavailable; retain credentials for recovery.
     key_env: qcyc_gpt-image-2
     enabled: false

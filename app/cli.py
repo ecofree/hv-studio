@@ -159,6 +159,16 @@ def cmd_backup(args):
         print(f"  {r}")
 
 
+def cmd_queue_retry(args):
+    from app.services.batch_worker import retry_episode
+    print(json.dumps(retry_episode(args.batch_id,args.episode,args.operator,args.reason,args.extra_attempts),ensure_ascii=False))
+
+
+def cmd_reuse_images(args):
+    from app.services.existing_images import register
+    print(str(register(args.episode)))
+
+
 def cmd_gc(args):
     """清理 state/ 下超过 N 天的测试临时目录（_bt_* / .tmp/bt-*）。"""
     from app.services.hv_ops import gc_state
@@ -515,6 +525,14 @@ def main():
     p.add_argument("--all", action="store_true", help="所有集")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_backup)
+
+    p = sub.add_parser('queue-retry', help='受控续跑已停止的队列任务，保留原预算和累计尝试')
+    p.add_argument('--batch-id',required=True);p.add_argument('--episode',required=True)
+    p.add_argument('--operator',required=True);p.add_argument('--reason',required=True)
+    p.add_argument('--extra-attempts',type=int,default=1)
+    p.set_defaults(func=cmd_queue_retry)
+    p = sub.add_parser('reuse-images',help='绑定当前显式分镜引用的历史图片，保留原文件，不生成或批准内容')
+    p.add_argument('episode');p.set_defaults(func=cmd_reuse_images)
 
     # gc：state/ 临时目录清理
     p = sub.add_parser("gc", help="清理 state/ 测试临时目录（默认 dry-run）")

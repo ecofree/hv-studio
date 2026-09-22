@@ -59,7 +59,7 @@ def job(tmp_path, name, model=FLARE):
 
 
 @pytest.mark.parametrize("model,names", [(BASE, {"cxk", "aicost"}), (NEW, {"cxk"}),
-                                        (FLARE, {"cxk", "aicost"}), (SUN, {"cxk", "aicost"})])
+                                        (FLARE, {"cxk"}), (SUN, {"cxk"})])
 def test_configured_support_matrix(model, names):
     assert {c.name for c in configured() if c.supports(model)} == names
     assert all(c.max_concurrency == 1 for c in configured())
@@ -121,10 +121,12 @@ def test_variants_share_supplier_concurrency_and_run_both_suppliers(generator, m
 
     monkeypatch.setattr(generator, "_post_unlocked", transport)
     # Direct and batch traffic both use the same supplier slots.
-    requests = [ImageGenRequest(model=model, prompt="test") for model in (FLARE, SUN)]
+    requests = [(c, ImageGenRequest(model=model, prompt="test"))
+                for c in configured()
+                for model in ((FLARE, SUN) if c.name == "cxk" else (BASE, BASE))]
     budget = ProviderBudget(tmp_path/'concurrent-budget.json', image_requests=8)
     with ThreadPoolExecutor(max_workers=4) as pool:
-        futures = [pool.submit(generator.generate, r, c, budget=budget) for c in configured() for r in requests]
+        futures = [pool.submit(generator.generate, r, c, budget=budget) for c, r in requests]
         for f in futures:
             f.result()
     assert peak == {"cxk": 1, "aicost": 1}
@@ -133,7 +135,7 @@ def test_variants_share_supplier_concurrency_and_run_both_suppliers(generator, m
     results = m.generate_many(jobs, workers=20, progress=False, budget=budget)
     assert all(results[j.id] for j in jobs)
     assert len(seen) == 4
-    assert all(model != NEW or name == "cxk" for name, model in seen)
+    assert all(model == BASE or name == "cxk" for name, model in seen)
 
 
 def test_failover_keeps_model_and_charges_actual_attempts(generator, monkeypatch, tmp_path):
@@ -146,12 +148,12 @@ def test_failover_keeps_model_and_charges_actual_attempts(generator, monkeypatch
         return resp
     monkeypatch.setattr(generator, "_post_unlocked", transport)
     budget = ProviderBudget(tmp_path / "budget.json", image_requests=2)
-    task = job(tmp_path, "fallback")
+    task = job(tmp_path, "fallback", BASE)
     result = m.generate_many([task], budget=budget, progress=False)
     assert result[task.id]
-    assert seen == [("cxk", FLARE), ("aicost", FLARE)]
+    assert seen == [("cxk", BASE), ("aicost", BASE)]
     assert len(budget.snapshot()["attempts"]) == 2
-    assert task.req.model == FLARE
+    assert task.req.model == BASE
 
 
 def test_cached_image_does_not_need_channel_and_model_change_invalidates(monkeypatch, tmp_path):

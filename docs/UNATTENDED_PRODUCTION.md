@@ -4,7 +4,7 @@
 
 ## 入队与恢复
 
-先在控制台核查当前原稿、史实、分镜和图片提示词，再提交输入审核。输入缺失、未审核、音频存在待处置项或导演要求尚无真实处置时，队列进入“等待审核”，不会消费预算，也不挡住其他合格剧集。
+先在控制台核查当前原稿、史实、分镜和图片提示词，再提交输入审核。导演要求可明确选择“先按现有控制生成候选，成片后逐项审核”；选择绑定当前源稿、分镜和声音资产，不代表表演已经实现，也不批准成片。未选择执行方案且尚无当前导演处置时，仍阻断。当前音频的已知待办仍须真实处置。输入不合格不会消费预算，也不挡住其他合格剧集。
 
 ```powershell
 & .venv-core/Scripts/python.exe -m app.cli batch --enqueue --file episodes-to-produce.txt --batch-id my-stable-batch --max-images 0 --max-requests 0 --max-characters 0
@@ -20,6 +20,16 @@
 候选片完成后进入“等待审核”。只有当前哈希绑定的配音、导演、画面与史实核查满足原有发布要求，才显示“审核通过”。输入审核不能替代成片审核。
 
 ## 常驻与停止
+
+损坏的批次、逐集状态和子进程结果会写入 `state/production-queue/errors`，原始记录保留；其余合格任务继续。控制台显示未解决的异常。扫描待审任务期间也会维持心跳。
+
+已停止任务可以明确授权有限的额外执行机会，原累计尝试、预算消耗和历史保留：
+
+```powershell
+& .venv-core/Scripts/python.exe -m app.cli queue-retry --batch-id my-stable-batch --episode my-episode --operator operator-name --reason "故障已修复，沿用原预算恢复" --extra-attempts 1
+```
+
+续跑仍经过输入与预算检查，不提高付费额度。活跃进程或结构损坏的记录不能用此命令强行重置。
 
 ```powershell
 & scripts/install-production-worker.ps1 -StartNow
@@ -38,6 +48,29 @@
 付费前检查项目盘和系统临时盘。根据原稿长度估算时长，按每秒约 6 MB 加余量预留，最低 2500 MB；无法查询空间也停止。所有 v2 生产入口共用一把存储锁，避免多集同时按同一份剩余空间启动。
 
 不会自动清理旧配音、78 张历史图片、批准素材或候选片。日志与已结束任务的临时产物由操作者在确认不再用于恢复后按具体目录归档；不运行历史剧集目录通配清理。空间估算是保守预检，其他应用在运行期间占满磁盘仍会导致本次任务失败并保留恢复状态。
+
+## 复用历史图片
+
+```powershell
+& .venv-core/Scripts/python.exe -m app.cli reuse-images my-episode
+```
+
+将当前显式分镜引用的本集图片、跨集 reuse_from 图片绑定为现有资产，不改动图片，不制造原始生图回执。记录原稿、分镜、提示词和图片哈希；任一绑定改变即要求重新核查。该操作不是画面批准，也不把旧音频冒充当前声音资产生成的配音。
+
+2026-09-22 实测 aicost 的 flare/sunburst 无可用渠道，已从生产支持列表隔离。保留 aicost 原有 gpt-image-2 和 CXK 三个成功小样的模型声明；不得自动恢复失效组合，也不为更换模型重生成已可复用素材。
+
+## 生产备份与隔离恢复
+
+```powershell
+& .venv-core/Scripts/python.exe bin/production_backup.py create --episode lishimin-01 --episode laogongtuan --destination D:/hv_backup/production --dry-run
+& .venv-core/Scripts/python.exe bin/production_backup.py create --episode lishimin-01 --episode laogongtuan --destination D:/hv_backup/production
+& .venv-core/Scripts/python.exe bin/production_backup.py verify --snapshot D:/hv_backup/production/SNAPSHOT_ID
+& .venv-core/Scripts/python.exe bin/production_backup.py restore --snapshot D:/hv_backup/production/SNAPSHOT_ID --destination D:/hv_restore/NEW_DIRECTORY
+```
+
+快照覆盖选定剧集及其引用的共享图片、原始配音、当前/批准候选、回执、审核、声音资产、队列和预算账本，附带源码与依赖声明。重建用的历史未批准渲染缓存无需全部重复备份。密钥、虚拟环境和外部字体等依赖不打包；外部文件记录哈希。
+
+复制前持有生产与队列锁；扫描源文件前后验证一致性，异常快照保留 incomplete 标志，不能作为成功备份。服务在备份占用队列锁时保持等待心跳。恢复只允许写入新的隔离目录，不覆盖项目，也不自动运行；路径重新绑定、独立安装相同运行环境及凭据恢复必须在正式切换前完成。文件恢复与预算保留验证不等于整机灾备切换验收。
 
 ## 验收口径
 

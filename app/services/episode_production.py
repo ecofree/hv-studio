@@ -110,7 +110,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     # v2 never replaces the historical episode's approved images.
                     # Each effective request gets its own candidate directory.
                     for job in jobs:
-                        job.out_path = root / "images" / job.request_fingerprint() / job.out.name
+                        if not getattr(job,'imported',False): job.out_path = root / "images" / job.request_fingerprint() / job.out.name
                     missing = [j for j in jobs if not j.is_done()]
                     dispatch = [j for j in missing if not j.out.with_suffix(j.out.suffix+'.response.json').exists()]
                     if len(dispatch) > max_images:
@@ -125,7 +125,8 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                         budget.check_capacity(tts_requests=quote['requests'], characters=quote['characters'], image_requests=len(dispatch))
                     elif budget: budget.check_capacity(image_requests=len(dispatch))
                     if any(s in requested for s in ('tts','alignment','timeline','compose')): preflight_media()
-                    generated = generate_many(jobs, budget=budget)
+                    generated = generate_many([j for j in jobs if not getattr(j,'imported',False)], budget=budget)
+                    generated.update({j.id:str(j.out) for j in jobs if getattr(j,'imported',False) and j.is_done()})
                     if any(not generated.get(j.id) or not j.is_done() for j in jobs):
                         reasons = [str(generated.get(j.id+'__error','invalid output')) for j in jobs if not generated.get(j.id)]
                         raise ValueError("image generation incomplete: "+'; '.join(reasons[:3]))

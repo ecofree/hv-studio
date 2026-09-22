@@ -148,6 +148,7 @@ def tmp_episodes(tmp_path, monkeypatch):
     ep_root = tmp_path / "episodes"
     ep_root.mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(_paths, "episodes_dir", lambda: ep_root)
+    monkeypatch.setattr(_paths, "state_dir", lambda: tmp_path / "state")
     return ep_root
 
 

@@ -36,7 +36,15 @@ def main():
     from app.services.process_lock import file_lock
     with file_lock(folder/'service.lock'):
         while not (folder/'STOP').exists():
-            run_once(folder)
+            try: run_once(folder)
+            except RuntimeError as exc:
+                if 'operation already running:' not in str(exc) or str(folder/'worker.lock') not in str(exc): raise
+                # A consistent backup owns the queue lock. Stay supervised and
+                # visibly paused instead of consuming the crash restart budget.
+                import os,psutil
+                from app.services.provenance import atomic_json
+                atomic_json(folder/'worker.json',dict(pid=os.getpid(),created_at=psutil.Process().create_time(),
+                    heartbeat=time.time(),status='waiting_for_maintenance'))
             if args.once: break
             time.sleep(args.poll_seconds)
     return 0
