@@ -237,7 +237,10 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
         from app.services.production_status import get_status
         status = get_status(eid)
         if status['approved']:
+            for key in ('blockers', 'error', 'retry_at'):
+                row.pop(key, None)
             row['status']='APPROVED'; event(job,eid,'APPROVED'); atomic_json(path,job)
+            return
         elif status['status'] == 'STALE' and not status['quality_pending_units'] and not status['delivery_pending']:
             row['status']='QUEUED'
         else: return

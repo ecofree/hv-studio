@@ -9,6 +9,23 @@ from app.services.provider_budget import ProviderBudget
 pytestmark=pytest.mark.production
 
 
+@pytest.mark.parametrize('retries',[0,1])
+def test_review_approval_is_terminal_without_another_attempt(tmp_path,tmp_episodes,monkeypatch,retries):
+    from app.services import production_status
+    folder=tmp_path/'queue';path=worker.enqueue('review-approved',['one'],{},retries=retries,folder=folder)
+    job=read(path);job['episodes']['one'].update(status='NEEDS_REVIEW',attempts=1,
+        candidate_path='offline-candidate',blockers=['awaiting review'],error='old error',retry_at=0)
+    atomic_json(path,job);budget_before=read(job['budget_path'])
+    monkeypatch.setattr(production_status,'get_status',lambda _:dict(approved=True))
+    monkeypatch.setattr(admission,'check',lambda _:pytest.fail('approved row must not enter admission or retry'))
+    for _ in range(2):
+        worker.run_once(folder,command_factory=lambda *a:pytest.fail('approved row must not start another child'))
+        current=read(path);row=current['episodes']['one']
+        assert current['status']==row['status']=='APPROVED' and row['attempts']==1
+        assert not any(k in row for k in ('blockers','error','retry_at'))
+        assert read(current['budget_path'])==budget_before
+
+
 def test_local_window_close_is_recoverable_without_authorizing_another_attempt(tmp_path,tmp_episodes,monkeypatch):
     error='RuntimeError: local alignment failed: forrtl: error (200): program aborting due to window-CLOSE event'
     assert worker.classify(error)=='RETRY_WAIT'
