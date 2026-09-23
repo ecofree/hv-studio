@@ -167,14 +167,18 @@ image_channels:
     key_env: qcyc_gpt-image-2
     # 2026-09-23 恢复启用（用户决定）：分担 cxk 的串行压力
     # （此前只有 cxk 一条渠道 + max_concurrency 1，是生图 ~50s/img 的直接原因）。
-    # ⚠️ gpt-image-2.5-flare 今日仍不可用，但按要求已写入 models：
-    #    被派活时会在渠道池内 failover 到 cxk（它也支持 flare），只浪费一次请求；
-    #    无模型级熔断，flare 可用前不建议主动指定它。
-    # 历史：2026-09-07 审计时 ok_rate=0.4375（n_history=32）故被暂停；
-    #      relay.record() 会持续记录健康度，不可用时会自动被排到 cxk 之后。
+    # ⚠️ models 必须与服务端**实际**能力一致 —— 用 GET /v1/models 当场核对
+    #    （免费、即时，比翻历史成功率可靠）。2026-09-23 15:22 实测该 key 返回：
+    #      ['gpt-image-2', 'gpt-image-2.5-sunburst']
+    #    故**不写 gpt-image-2.5-flare**（用户明确说它今天还不能用，服务端列表
+    #    里也确实没有）。写进去会让 supports() 误判为可用 → 派活后失败。
+    #    同一次探测里 cxk 返回 5 个模型（含 flare），说明列表是按 key 区分的真数据。
+    # 历史：2026-09-07 审计 ok_rate=0.4375（n_history=32）故被暂停；
+    #      同日 15:0x 首次探测该 key 返回 0 个模型，15:22 复测返回 2 个
+    #      —— 服务端能力会随时变化，**每次启用前都要当场核对**。
     enabled: true
     max_concurrency: 1
-    models: [gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+    models: [gpt-image-2, gpt-image-2.5-sunburst]
 
 image:
   primary:
