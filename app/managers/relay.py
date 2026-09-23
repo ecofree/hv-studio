@@ -33,6 +33,14 @@ WINDOW_SIZE = 32
 QUOTA_TTL = timedelta(hours=1)
 REQUEST_COOLDOWN_AFTER_FAIL = timedelta(seconds=30)
 
+# score() 的惩罚权重（2026-09-23 修正）。约束：**错误必须压倒延迟**——
+# 否则「慢但可靠」会被「快但全错」挤到后面，且错误率饱和后不再恶化 → 永不自愈。
+# 取值的判据（见 score() docstring 的实测案例）：
+#   全失败渠道(err=1.0, p50=3s) 必须 < 慢但可靠渠道(err=0.125, p50=54s)
+#   → 100−200−1.5 = −101.5  <  100−25−27 = 48  ✅
+ERR_RATE_PENALTY = 200.0    # 每 1.0 错误率的扣分（旧值 60：不足以压倒延迟）
+LATENCY_PENALTY = 0.5       # 每 1s p50 的扣分（旧值 2：54s 罚 108 分过重）
+
 
 class ChannelHealth:
     """单个渠道的滚动窗口 + 配额缓存。"""
@@ -49,7 +57,17 @@ class ChannelHealth:
 
     # ---- 评分 ----
     def score(self) -> float:
-        """综合得分，**越高越优先**。无历史时给基准分 100。"""
+        """综合得分，**越高越优先**。无历史时给基准分 100。
+
+        ⚠️ 权重 2026-09-23 实测修正（旧值 err×60 / p50×2 有设计缺陷）：
+        旧公式下**延迟惩罚远大于错误惩罚**，导致「慢但可靠」被「快但全错」挤掉：
+          · cxk  87.5% 成功 / p50 54s → 100 − 7.5 − 108 = −15.5
+          · qcyc 全失败  / p50  3s → 100 − 60  −  6  =  34.0  ← 反而优先
+        且错误率饱和在 1.0 后不再恶化 → **永不自愈**：每张图都先试不可用渠道、
+        失败重试 2 次才 failover（220 张图 ≈ 浪费 30 分钟）。
+        新权重让「错」压倒「慢」：全失败渠道必落到慢但可靠的渠道之后，
+        同时新渠道（无历史=100）仍保留一次被尝试的机会。
+        """
         if not self.history:
             return 100.0
         n = len(self.history)
@@ -65,7 +83,8 @@ class ChannelHealth:
         quota_penalty = 0
         if self.last_quota and self.last_quota.soft_limit_usd < 1.0:
             quota_penalty = -500
-        return 100 - err_rate * 60 - p50 * 2 + cooldown_penalty + quota_penalty
+        return (100 - err_rate * ERR_RATE_PENALTY - p50 * LATENCY_PENALTY
+                + cooldown_penalty + quota_penalty)
 
     @property
     def is_healthy(self) -> bool:

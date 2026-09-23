@@ -91,3 +91,70 @@ def test_stale_channels_still_pickable():
             h.history.append((i < 5, 1.0, 0.0))
     assert all(not h.is_healthy for h in m._channels.values())
     assert m.pick() is not None
+
+
+# ---------------------------------------------------------------------------
+# 渠道评分权重（2026-09-23 修正）
+# ---------------------------------------------------------------------------
+def _health(hist, quota_usd=None):
+    """造一个带历史的 ChannelHealth。"""
+    from app.managers.relay import ChannelHealth
+    h = ChannelHealth(channel="x")
+    for ok, lat, ts in hist:
+        h.history.append((ok, lat, ts))
+    if quota_usd is not None:
+        from app.models.relay import QuotaSnapshot
+        h.last_quota = QuotaSnapshot(
+            has_payment_method=True, soft_limit_usd=quota_usd,
+            hard_limit_usd=quota_usd, system_hard_limit_usd=quota_usd,
+            access_until=0, channel="x")
+    return h
+
+
+def test_unavailable_channel_ranks_below_slow_reliable_one():
+    """**核心契约**：全失败渠道必须排在「慢但可靠」渠道之后。
+
+    这是 2026-09-23 实测的真实故障：旧权重 (err×60, p50×2) 下
+      cxk  87.5%成功/p50 54s → −15.5
+      qcyc 全失败 /p50  3s → 34.0   ← 不可用的反而优先
+    且错误率饱和在 1.0 后不再恶化 → 永不自愈，每张图都先浪费一次失败。
+    约束：全失败渠道的分数必须 < 慢但可靠渠道。
+    """
+    import time
+    now = time.time()
+    slow_reliable = _health([(True, 54, now - 60)] * 28
+                            + [(False, 15, now - 3600)] * 4)
+    all_fail_fast = _health([(False, 3, now - 60)] * 5)
+    assert all_fail_fast.score() < slow_reliable.score(), (
+        f"不可用渠道({all_fail_fast.score():.1f}) 竟排在慢但可靠渠道"
+        f"({slow_reliable.score():.1f}) 之前 —— 权重回归到了 err 惩罚不足的旧值")
+    assert all_fail_fast.score() < 0 < slow_reliable.score()
+
+
+def test_unknown_channel_gets_one_chance():
+    """无历史渠道给基准分 100 —— 保留「新渠道被尝试一次」的机会，
+    否则恢复一个渠道后永远轮不到它。"""
+    assert _health([]).score() == 100.0
+
+
+def test_latency_alone_does_not_bury_reliable_channel():
+    """慢本身不该是致命的：100% 成功但 54s 的渠道必须仍是正分。"""
+    import time
+    h = _health([(True, 54, time.time() - 60)] * 16)
+    assert h.score() > 0, "纯延迟就把可靠渠道打成负分 —— 延迟权重过重"
+
+
+def test_recent_failure_still_hard_penalised():
+    """30s 内的失败仍是一票否决级惩罚（保持原有语义）。"""
+    import time
+    h = _health([(True, 20, time.time() - 60)] * 10
+                + [(False, 5, time.time() - 5)])
+    assert h.score() < -500, "近期失败没有硬降权"
+
+
+def test_quota_penalty_still_applies():
+    """配额不足仍扣 500（保持原有语义）。"""
+    import time
+    rich = _health([(True, 20, time.time() - 60)] * 10, quota_usd=50.0)
+    poor = _health([(True, 20, time.time() - 60)] * 10, quota_usd=0.5)
+    assert poor.score() == rich.score() - 500
