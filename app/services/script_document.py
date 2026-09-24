@@ -71,12 +71,21 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
             block["kind"] = "metadata"
         elif stripped.startswith(">"):
             block["kind"] = "quote"
-        if block["kind"] in ("heading", "metadata"):
+        # ⚠️ quote 必须与 heading/metadata 同等排除（2026-09-24 实测事故）：
+        #    markdown 引用块（> …）是「给人看的」头部元数据 —— 作品类型 / 预估时长 /
+        #    核心命题 / 格式规范，既不该送 TTS、也不该烧字幕。此前 quote 分支只
+        #    flush() 不排除，内容会被当正文 unit，与 script.split_script 的
+        #    strip_script_markdown（它把 `^>` 整行删除）**口径不一致** →
+        #    production_timeline.scene_bindings 的 frames↔units 比对必然失败：
+        #      "scene frame source differs from current narration"
+        #    之所以以前没暴露：_META 是硬编码标签白名单，旧稿头部恰好写作
+        #    「核心切口 / 格式规范」命中白名单而绕过了 quote 分支；新稿写成
+        #    「本集核心命题 / 格式特性」不在白名单，直接踩中。
+        #    依赖白名单识别元数据本就脆弱 —— 引用块标记 `>` 才是可靠依据。
+        if block["kind"] in ("heading", "metadata", "quote"):
             flush()
             block["excluded"].append({"start":start,"end":end,"reason":block["kind"]})
             continue
-        if block["kind"] == "quote":
-            flush()
         keep = set(range(local_start, local_end))
         reasons = {}
         def exclude(a,b,reason):

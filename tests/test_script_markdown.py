@@ -196,3 +196,50 @@ def test_strip_preserves_sentence_count_of_plain_text():
     """清洗不得改变纯文本的句数（否则帧数漂移 → scene_plan 错位）。"""
     assert len(re.split(S.SENT_END, S.strip_script_markdown(PLAIN_MD.strip()))) \
         == len(re.split(S.SENT_END, PLAIN_MD.strip()))
+
+
+# ---------------------------------------------------------------------------
+# 引用块（> …）必须整块排除 —— 2026-09-24 实测事故
+# ---------------------------------------------------------------------------
+_META_DRIFT = '''# 《测试集》
+
+> **作品类型**：季播微纪录大片
+> **预估时长**：约 13 分钟
+> **本集核心命题**：拆解双权力中心死局（这条**不在** _META 白名单里）
+> **格式特性**：嵌入导演标注（这条也不在）
+
+---
+
+【语气：低沉】
+正文第一句。
+'''
+
+
+def test_quote_block_is_excluded_even_when_label_not_whitelisted():
+    """ 引用块必须整块排除，**不能依赖 _META 标签白名单**。
+
+    2026-09-24 事故：旧稿头部写作「核心切口 / 格式规范」恰好命中 _META，
+    绕过了 quote 分支；新稿写成「本集核心命题 / 格式特性」不在白名单，
+    quote 分支又只 flush() 不排除 → 元数据被当正文 unit →
+    与 script.split_script 的 frames 不一致（2747 vs 2837 字）→
+    production_timeline.scene_bindings 报
+    "scene frame source differs from current narration"，整集 BLOCKED。
+    引用块标记  才是可靠依据（strip_script_markdown 就是这么做的）。
+    """
+    from app.services.script_document import parse_document
+    doc = parse_document(_META_DRIFT, "script.md")
+    text = "".join(u["source_text"] for u in doc["units"])
+    for kw in ("作品类型", "预估时长", "本集核心命题", "格式特性", "拆解双权力中心"):
+        assert kw not in text, f"引用块内容泄漏进正文：{kw}"
+    assert "正文第一句" in text
+
+
+def test_quote_exclusion_matches_split_script():
+    """两个入口口径必须一致：parse_document 与 split_script 的正文相同。"""
+    from app.services.script_document import parse_document
+    from app.services.script import split_script
+    norm = lambda t: "".join(c for c in t if c.isalnum())
+    ep = Episode(id="p", title="p", episode_number=0)
+    a = norm("".join(u["source_text"] for u in parse_document(_META_DRIFT)["units"]))
+    b = norm("".join(f.text for f in split_script(ep, _META_DRIFT, merge_short=True)))
+    assert a == b, "parse_document 与 split_script 的正文口径不一致"
