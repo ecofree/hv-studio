@@ -22,6 +22,7 @@ from app.services.provenance import file_sha256, atomic_json
 import hashlib
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -180,16 +181,51 @@ _BREAK_AFTER = set("，。、；：？！…—")
 # ⚠️ 本集合进了段参数指纹（见 _seg_params_fingerprint），改它旧段会自动作废。
 _SENT_END_PUNCT = frozenset("。！？；：…—，、")
 
+# 上屏标点 → 空格（2026-09-25 用户规则：「视频里的标点符号都换成空格」）。
+# 与 _SENT_END_PUNCT 的分工：
+#   _SENT_END_PUNCT  只作用于**尾部**（rstrip 直接剥掉）；
+#   本集合作用于**整句**（translate 成空格，保留标点造成的视觉间隔）。
+# 例：「浅水原迫降薛仁杲、柏壁逐宋金刚、」→「浅水原迫降薛仁杲 柏壁逐宋金刚」
+# ⚠️ 同样不收 `.` `,`：小数/千分位（「3.5」「2,000」）会被吃掉（沿用 line 179 的既有约束）。
+# ⚠️ 本集合进段参数指纹，改它旧段会自动作废重渲（渲染结果确实变了）。
+_SUB_PUNCT_TO_SPACE = frozenset(
+    "。！？；：…—，、·"          # 全角句末/停顿
+    "“”‘’「」『』"              # 全角引号
+    "（）〔〕【】《》〈〉"          # 全角括号 / 书名号
+    "!?;:~"                     # 半角（安全：不用于小数点）
+)
+
 
 def _sub_strip_punct() -> str:
     """上屏前剥掉的尾部标点，**排序后**返回（进指纹，顺序必须稳定）。"""
     return "".join(sorted(_SENT_END_PUNCT))
 
 
+def _sub_space_punct() -> str:
+    """上屏前换成空格的标点，**排序后**返回（进指纹，顺序必须稳定）。"""
+    return "".join(sorted(_SUB_PUNCT_TO_SPACE))
+
+
+_SPACE_RUN = re.compile(r"\s+")
+_PUNCT_TO_SPACE_TABLE = {ord(c): " " for c in _SUB_PUNCT_TO_SPACE}
+
+
 def strip_sub_tail(text: str) -> str:
     """上屏文案：剥掉尾部句读/句末标点；剥光了退回原文（别出空字幕）。"""
     t = text.rstrip(_sub_strip_punct())
     return t or text
+
+
+def subtitle_display_text(text: str) -> str:
+    """最终上屏文案：标点符号 → 空格（2026-09-25 用户规则）。
+
+    尾部仍整体剥掉（保持 strip_sub_tail 语义，避免孤标点占位）；
+    句中标点换成空格，保留停顿造成的视觉间隔；连续空白压成一个，
+    剥光了退回原文（别出空字幕）。
+    """
+    base = strip_sub_tail(text)
+    t = _SPACE_RUN.sub(" ", base.translate(_PUNCT_TO_SPACE_TABLE)).strip()
+    return t or base
 
 
 def _load_font(size: int) -> ImageFont.FreeTypeFont:
@@ -287,8 +323,8 @@ def _wrap(draw, text: str, font, max_w: int) -> list[str]:
 def _draw_subtitle(img: Image.Image, text: str) -> None:
     d = ImageDraw.Draw(img)
     font = _get_font(_sub_font_size())
-    # 句末标点 rstrip：大字解说不渲染句尾「。！？」（对抖音竖屏是行业惯例，避免孤标点/视觉占位）
-    t = strip_sub_tail(text)
+    # 标点 → 空格（2026-09-25 用户规则）；尾部仍整体剥掉，避免孤标点占位
+    t = subtitle_display_text(text)
     if not t:
         t = text
     lines = _wrap(d, t, font, TEXT_W)
@@ -743,7 +779,7 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
         "vcodec": list(vcodec),
         "spec": [W, H, FPS, HEAD_MS, TAIL_MS],
         "subtitle": [file_sha256(_sub_font_path()) if Path(_sub_font_path()).is_file() else None, _sub_font_size(), _sub_bottom(),
-                     _sub_stroke(), _sub_strip_punct()],
+                     _sub_stroke(), _sub_strip_punct(), _sub_space_punct()],
         "shots": shots,
     }
     return hashlib.md5(

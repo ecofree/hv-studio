@@ -9,7 +9,7 @@ def measure(text):
     font = C._get_font(C._sub_font_size())
     canvas = Image.new('RGB', (1, 1))
     draw = ImageDraw.Draw(canvas)
-    lines = C._wrap(draw, C.strip_sub_tail(text) or text, font, C.TEXT_W)
+    lines = C._wrap(draw, C.subtitle_display_text(text) or text, font, C.TEXT_W)
     boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
     height = sum(b[3] for b in boxes) + C.LINE_GAP * (len(lines)-1)
     stroke = C._sub_stroke()
