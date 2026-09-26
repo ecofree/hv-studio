@@ -29,6 +29,7 @@ from app.managers import save
 from app.managers.episode import load
 from app.models import MotionSpec, Shot
 from app.paths import episode_dir
+from app.services.motion import EXPLICIT_TRAJECTORY_VERSION, resolve_motion
 from app.services.script import frames_fingerprint
 
 GRADE_KEYS = {"dawn", "noon", "dusk", "night", "fire", "frost"}
@@ -39,9 +40,29 @@ _PROF = _settings.get_profile()
 MAX_ZOOM = _PROF.motion.max_zoom                      # 1.15
 _FORBID_SAME = _PROF.motion.forbid_consecutive_same   # True
 
-RAW_ZOOM_LADDER = [1.12, 1.26, 1.40, 1.18, 1.32, 1.08, 1.22]
-ZOOM_LADDER = [min(z, MAX_ZOOM) for z in RAW_ZOOM_LADDER]
+
+def _zoom_ladder(max_zoom: float, count: int = 4) -> list[float]:
+    """每个 scene 的 zoom 上限，按 max_zoom 的可用余量等分。
+
+    旧阶梯 ``RAW_ZOOM_LADDER = [1.12, 1.26, 1.40, 1.18, 1.32, 1.08, 1.22]``
+    被 ``min(z, MAX_ZOOM)`` 一截，7 档塌成 ``[1.12, 1.15, 1.15, 1.15, 1.15,
+    1.08, 1.15]`` —— 5 档同值，start_zoom 实际只会取 4 个值，「阶梯」名不副实。
+    改成按余量等分：任意 max_zoom 下都互不相同（max_zoom=1.15 → 1.038 /
+    1.075 / 1.113 / 1.15），且天然不越界。
+    """
+    span = max(0.0, float(max_zoom) - 1.0)
+    return [round(1.0 + span * (i + 1) / count, 4) for i in range(count)]
+
+
+ZOOM_LADDER = _zoom_ladder(MAX_ZOOM)
 INTENSITY_CYCLE = [0.07, 0.06, 0.08, 0.10, 0.05, 0.09, 0.10, 0.06]
+
+# 横向摆幅（与旧实现同量级：旧 pan 0.44→0.56 = 0.12，旧 drift 0.46→0.54 = 0.08）
+LATERAL_PAN = 0.12
+LATERAL_DRIFT = 0.08
+LATERAL_Y_RATIO = 0.34        # 旧 pan 的 y 摆幅/ x 摆幅 = 0.04/0.12
+LATERAL_BAND = 0.14           # 摆动半宽：长场景里必须往复，不能把主体推出画面
+CENTER = 0.5
 
 # HEAD_MS/TAIL_MS 不再在此手抄一份（整改 C1）。此前这里写着
 # 「需与 compose.HEAD_MS/TAIL_MS 一致」——靠注释承诺同步，没有任何机制保证。
@@ -69,6 +90,88 @@ from app.services.spec import HEAD_MS, TAIL_MS  # noqa: F401  (re-export)
 
 def _default_plan_path(ep_id: str) -> Path:
     return episode_dir(ep_id) / "scene_plan.json"
+
+
+# ---------------------------------------------------------------------------
+# 镜头衔接：把一个 scene 内的镜头串成一条连续轨迹
+# ---------------------------------------------------------------------------
+# 2026-09-26 实测（docs/镜头衔接诊断_2026-09-26.md）：旧实现给每镜**独立**取
+# zoom 阶梯与 pan 原点，从不看上一镜的结束状态。结果同一张底图的相邻镜头之间
+# 裁切窗瞬移 —— lishimin-02 有 133/196 个剪辑点是同图瞬移（最大 139px ≈ 8% 画高，
+# 25fps 下一帧跳完），lishimin-01 最大 68px，laogongtuan 最大 88px。
+#
+# 修法：同 scene 内后一镜的 start_* 直接接前一镜的**渲染落点**（不是 spec 里写的
+# end_* —— legacy 口径下 resolve_motion 会用 type 公式重算，落点得问它才算准）。
+# 横向来回摆、zoom 在 [1.0, scene 上限] 内往复；只有换图（真实剪辑）才归位。
+# 轨迹显式写进 spec 并用 explicit_traj_v1 让 resolve_motion 原样生效。
+# ---------------------------------------------------------------------------
+
+
+def _clamp01(v: float) -> float:
+    return 0.0 if v < 0.0 else (1.0 if v > 1.0 else v)
+
+
+def _lateral_sign(px: float, py: float, carry: int) -> int:
+    """本镜横向摆动方向：偏离中心就朝中心摆，居中则反向延续，形成往复。"""
+    if px > CENTER + 1e-9 or py > CENTER + 1e-9:
+        return -1
+    if px < CENTER - 1e-9 or py < CENTER - 1e-9:
+        return 1
+    return -carry
+
+
+def _chained_motion(start, mtype, intensity, grade, lateral, band) -> MotionSpec:
+    """一镜的显式轨迹：起点 = 上一镜落点，终点 = 本镜落点。
+
+    push/pull 只改 zoom、保持 xy（旧口径会把 xy 强行拉回中心，那正是瞬移来源之一）。
+
+    起点只夹到 MAX_ZOOM 而**不夹到 band**：若相邻两个 scene 恰好共用一张底图，
+    第二个 scene 的 band 可能比当前落点低，夹 band 就会把起点拽回去 = 造出一个
+    新瞬移。band 只用来约束 push 的目标（见 _next_motion），那才是它的本职。
+    """
+    z = min(max(float(start[0]), 1.0), MAX_ZOOM)
+    px, py = _clamp01(start[1]), _clamp01(start[2])
+    if mtype == "push":
+        z1 = min(band, z * (1.0 + intensity))
+    elif mtype == "pull":
+        z1 = max(1.0, z * (1.0 - intensity))
+    else:
+        z1 = z
+    amp = LATERAL_DRIFT if mtype == "drift" else (LATERAL_PAN if mtype == "pan" else 0.0)
+    dx, dy = lateral * amp, lateral * amp * (LATERAL_Y_RATIO if mtype == "pan" else 0.0)
+    ex, ey = px + dx, py + dy
+    if abs(ex - CENTER) > LATERAL_BAND or abs(ey - CENTER) > LATERAL_BAND:
+        ex, ey = px - dx, py - dy          # 摆出安全带就掉头
+    return MotionSpec(geometry_version=EXPLICIT_TRAJECTORY_VERSION, type=mtype,
+                      intensity=round(intensity, 3), max_zoom=MAX_ZOOM,
+                      start_xy=(round(px, 4), round(py, 4)),
+                      end_xy=(_clamp01(round(ex, 4)), _clamp01(round(ey, 4))),
+                      start_zoom=round(z, 4), end_zoom=round(z1, 4), grade=grade)
+
+
+def _continuity_breaks(shots):
+    """同底图相邻镜头中渲染落点不相接的 (prev_id, id, dz, dpx, dpy)。
+
+    装配完的硬校验用：这是本次修复要保住的不变量，靠注释承诺不行，必须每次装配
+    都被验一遍。相接判定问 resolve_motion（渲染口径），不看 spec 字段。
+
+    resolve_motion 的返回位次是 (z0, z1, start_xy, end_xy) —— 这里按下标取，
+    不用解包赋值：解包写错位（把 end 当 start）会让校验恒真或恒假，
+    恒假的版本会把正确的装配全判成断裂。
+    """
+    ordered = sorted(shots, key=lambda s: s.index)
+    breaks, prev = [], None
+    for sh in ordered:
+        if prev is not None and prev.image_path and prev.image_path == sh.image_path:
+            p = resolve_motion(prev.motion)      # 前镜：末帧状态 = z1 / end_xy
+            c = resolve_motion(sh.motion)        # 本镜：首帧状态 = z0 / start_xy
+            dz = c[0] - p[1]
+            dpx = c[2][0] - p[3][0]
+            dpy = c[2][1] - p[3][1]
+            if max(abs(dz), abs(dpx), abs(dpy)) > 1e-6:
+                breaks.append((prev.id, sh.id, dz, dpx, dpy))
+        prev = sh
+    return breaks
 
 
 def _resolve_image(images_cfg: dict, sid: str) -> Path:
@@ -133,9 +236,12 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
     """按 scene_plan 为 ep 重建 shots。返回 (ep, stats)。
 
     - 校验：scene 覆盖全部帧且不重叠、无空洞；底图存在；grade 合法；
-      帧指纹与 ep.frames 同源（见 _check_frames_fingerprint）。
-    - 派生：同底图首帧 zoom=1.0，后续走 ZOOM_LADDER；grade 按 scene.grades 循环；
-      运镜 MOTION_POOL 轮换（禁连续同型）；时长预扣呼吸段（隔离组 +250ms）。
+      帧指纹与 ep.frames 同源（见 _check_frames_fingerprint）；装配后同底图
+      相邻镜头的运镜落点必须相接（见 _continuity_breaks）。
+    - 派生：同一 scene 内镜头串成**一条连续轨迹**（后镜起点 = 前镜落点，
+      横向往复、zoom 在 [1.0, scene 上限] 内往复），换图才归位；grade 按
+      scene.grades 循环；运镜类型 MOTION_POOL 轮换（禁连续同型）；
+      时长预扣呼吸段（隔离组 +250ms）。
     """
     ep = load(ep_id)
     frames = ep.frames
@@ -186,43 +292,55 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
     # ---- 构建 ----
     last_motion: str | None = None
 
-    def _next_motion(desired: str) -> str:
-        nonlocal last_motion
-        if _FORBID_SAME and desired == last_motion:
-            for alt in MOTION_POOL:
-                if alt != last_motion:
-                    desired = alt
-                    break
-        last_motion = desired
-        return desired
+    def _next_motion(desired: str, z: float, intensity: float, band: float) -> str:
+        """轮换运镜类型，并保证这一镜真的有运动。
 
-    def _build_motion(zoom, mtype, intensity, grade) -> MotionSpec:
-        if mtype == "push":
-            sxy, exy, sz, ez = (0.5, 0.5), (0.5, 0.5), zoom, zoom + intensity
-        elif mtype == "pull":
-            sxy, exy, sz, ez = (0.5, 0.5), (0.5, 0.5), zoom, max(1.0, zoom - intensity)
-        elif mtype == "drift":
-            sxy, exy, sz, ez = (0.46, 0.5), (0.54, 0.5), zoom, zoom
-        else:  # pan
-            sxy, exy, sz, ez = (0.44, 0.48), (0.56, 0.52), zoom, zoom
-        return MotionSpec(type=mtype, intensity=round(intensity, 3),
-                          start_xy=sxy, end_xy=exy,
-                          start_zoom=round(sz, 3), end_zoom=round(ez, 3),
-                          grade=grade)
+        两头都要挡：
+          - push 会把 zoom 推到 z*(1+k)，越界则不选（否则落点顶在上限、
+            下一镜 pull 拉不回来，轨迹变锯齿）；
+          - pull 在 z==1.0 时算成 max(1.0, 1.0-k) = 1.0，且 pull 不带横向，
+            于是整镜完全静止 —— 白白冻住 2~5s，比跳一下更糟。
+        两端都只禁「算不出位移」的类型，不为了花样牺牲连续性或可见运动。
+        """
+        nonlocal last_motion
+        pool = [m for m in MOTION_POOL
+                if not (m == "push" and z * (1.0 + intensity) > band + 1e-9)
+                and not (m == "pull" and z <= 1.0 + 1e-9)]
+        if not pool:
+            pool = ["drift"]
+        if _FORBID_SAME and last_motion in pool and len(pool) > 1:
+            pool = [m for m in pool if m != last_motion]
+        chosen = desired if desired in pool else pool[0]
+        last_motion = chosen
+        return chosen
+
+    def band_of(scene_index: int) -> float:
+        """该 scene 的 zoom 上限（阶梯取值，给不同 scene 不同推近性格）。"""
+        return ZOOM_LADDER[scene_index % len(ZOOM_LADDER)]
 
     ep.shots = {}
     rows = []
     no_audio: list[str] = []      # 缺 audio_duration_ms 的帧（B5：不再静默按 3s 兜底）
+    cam: tuple[float, float, float] = (1.0, CENTER, CENTER)   # 摄影机当前落点
+    lateral = 1
     for i, f in enumerate(frames):
         si = covered[i]
         sc = scenes[si]
         sid = sc["image"]
         grades = sc.get("grades", ["dawn"])
         j = i - sc["frames"][0]                # 该 scene 内第 j 帧
-        zoom = 1.0 if j == 0 else ZOOM_LADDER[(j - 1) % len(ZOOM_LADDER)]
+        if j == 0:
+            # 换图 = 真实剪辑，摄影机归位（README 记载的既有行为：同底图首镜 zoom=1.0）
+            cam = (1.0, CENTER, CENTER)
         grade = grades[j % len(grades)]
-        mt = _next_motion(MOTION_POOL[i % len(MOTION_POOL)])
-        motion = _build_motion(zoom, mt, INTENSITY_CYCLE[i % len(INTENSITY_CYCLE)], grade)
+        intensity = INTENSITY_CYCLE[i % len(INTENSITY_CYCLE)]
+        band = band_of(si)
+        mt = _next_motion(MOTION_POOL[i % len(MOTION_POOL)], cam[0], intensity, band)
+        motion = _chained_motion(cam, mt, intensity, grade, lateral, band)
+        # 落点必须问渲染口径要（legacy 口径下 spec 的 end_* 不等于渲染落点）
+        r = resolve_motion(motion)
+        cam = (r[1], r[3][0], r[3][1])          # (z1, end_xy) = 本镜末帧状态
+        lateral = _lateral_sign(cam[1], cam[2], lateral)
 
         shot_id = f"shot-{i:03d}"
         # B5：此前 `f.audio_duration_ms or 3000` 静默捏造时长 —— 装配出的 shots
@@ -243,7 +361,17 @@ def build_episode_shots(ep_id: str, plan_path: Path | None = None,
         )
         f.shot_ids = [shot_id]
         if preview_rows and (i < 4 or i % 8 == 0):
-            rows.append((i, sid, f"{zoom:.2f}", grade, mt, f.text[:18]))
+            rows.append((i, sid, f"{motion.start_zoom:.3f}", grade, mt, f.text[:18]))
+
+    # ---- 硬校验：同图相邻镜头的渲染落点必须相接（本次修复的核心不变量）----
+    breaks = _continuity_breaks(list(ep.shots.values()))
+    if breaks:
+        detail = "\n".join(f"    {a} -> {b}  dz={dz:+.4f} dpx={dpx:+.4f} dpy={dpy:+.4f}"
+                           for a, b, dz, dpx, dpy in breaks[:10])
+        raise SystemExit(
+            f"[shot_builder] {len(breaks)} 处同底图镜头运镜不相接，拒绝落盘：\n{detail}\n"
+            f"  这是 2026-09-26 修的那个缺陷（见 docs/镜头衔接诊断_2026-09-26.md）。"
+            f"相接性由 _chained_motion 保证；这里报错说明该逻辑被改坏了。")
 
     if no_audio:
         print(f"[shots][告警] {len(no_audio)}/{n} 帧缺 audio_duration_ms，"

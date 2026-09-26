@@ -1,0 +1,1766 @@
+{
+  "id": "lishimin-01b",
+  "schema_version": "1.0",
+  "title": "《李世民四部曲·第一集：双日凌空》",
+  "series": "李世民四部曲",
+  "episode_number": 1,
+  "status": "draft",
+  "script_path": "D:\\hv\\episodes\\lishimin-01b\\script.md",
+  "frames": [
+    {
+      "id": "frame-000",
+      "text": "在绝大多数中国人的认知坐标系里，",
+      "narration_text": "在绝大多数中国人的认知坐标系里，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-000-01",
+      "text": "唐太宗李世民是一个几乎无法被挑出瑕疵的帝王模板。",
+      "narration_text": "唐太宗李世民是一个几乎无法被挑出瑕疵的帝王模板。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-001",
+      "text": "文能虚怀纳谏，开辟被后世千古传颂的贞观之治；",
+      "narration_text": "文能虚怀纳谏，开辟被后世千古传颂的贞观之治；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-001-01",
+      "text": "武能单骑斩将，一战生擒两位开国诸侯；",
+      "narration_text": "武能单骑斩将，一战生擒两位开国诸侯；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-001-02",
+      "text": "甚至连塞外最为桀骜的草原部落，",
+      "narration_text": "甚至连塞外最为桀骜的草原部落，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-001-03",
+      "text": "都心甘情愿跪倒在太极殿前，",
+      "narration_text": "都心甘情愿跪倒在太极殿前，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-001-04",
+      "text": "奉上一顶“天可汗”的至高桂冠。",
+      "narration_text": "奉上一顶“天克寒”的至高桂冠。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-002",
+      "text": "两千年来，无数文人墨客在提及这位千古一帝时，",
+      "narration_text": "两千年来，无数文人墨客在提及这位千古一帝时，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-002-01",
+      "text": "笔端流淌的尽是仰望与崇拜。",
+      "narration_text": "笔端流淌的尽是仰望与崇拜。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-003",
+      "text": "但是，如果你小心翼翼地拂去那些层层堆叠的官方溢美之词，",
+      "narration_text": "但是，如果你小心翼翼地拂去那些层层堆叠的官方溢美之词，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-003-01",
+      "text": "翻开初唐那段被反复涂改的岁月，你会清晰地看到：。",
+      "narration_text": "翻开初唐那段被反复涂改的岁月，你会清晰地看到：。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-004",
+      "text": "这位看似完美无瑕的千古明君，",
+      "narration_text": "这位看似完美无瑕的千古明君，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-004-01",
+      "text": "他的王冠，是从一滩永远洗不掉的手足鲜血里捞出来的。",
+      "narration_text": "他的王冠，是从一滩永远洗不掉的手足鲜血里捞出来的。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-005",
+      "text": "更吊诡的是，这场发生在武德九年的同室操戈，",
+      "narration_text": "更吊诡的是，这场发生在武德九年的同室操戈，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-005-01",
+      "text": "后世通俗演义往往把它简化为一场",
+      "narration_text": "后世通俗演义往往把它简化为一场",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-005-02",
+      "text": "“圣明次子反抗昏庸父兄”的忠奸正邪之战。",
+      "narration_text": "“圣明次子反抗昏庸父兄”的忠奸正邪之战。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-006",
+      "text": "如果历史真有这么简单，",
+      "narration_text": "如果历史真有这么简单，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-006-01",
+      "text": "那它就不是政治，而是连环画了。",
+      "narration_text": "那它就不是政治，而是连环画了。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-007",
+      "text": "要看懂玄武门的惊天一箭，",
+      "narration_text": "要看懂玄武门的惊天一箭，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-007-01",
+      "text": "我们首先要看懂大唐王朝这台国家机器，",
+      "narration_text": "我们首先要看懂大唐王朝这台国家机器，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-007-02",
+      "text": "到底是由哪些齿轮咬合而成的。",
+      "narration_text": "到底是由哪些齿轮咬合而成的。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-008",
+      "text": "大唐的天下，从来不是李渊父子关起门来、",
+      "narration_text": "大唐的天下，从来不是李渊父子关起门来、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-008-01",
+      "text": "仅凭几场神机妙算的战役就打下来的。",
+      "narration_text": "仅凭几场神机妙算的战役就打下来的。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-009",
+      "text": "它的底层，深深扎根于一个自西魏、",
+      "narration_text": "它的底层，深深扎根于一个自西魏、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-009-01",
+      "text": "北周以来盘踞关陕上百年的庞大政治实体——关陇军事贵族集团。",
+      "narration_text": "北周以来盘踞关陕上百年的庞大政治实体——关陇军事贵族集团。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-010",
+      "text": "北周的宇文家、隋朝的杨家、",
+      "narration_text": "北周的宇文家、隋朝的杨家、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-010-01",
+      "text": "唐朝的李家，",
+      "narration_text": "唐朝的李家，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-010-02",
+      "text": "包括“天下第一老丈人”独孤信那三位分别嫁入三朝帝王之家的女儿，",
+      "narration_text": "包括“天下第一老丈人”独孤信那三位分别嫁入三朝帝王之家的女儿，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-010-03",
+      "text": "这群人通过持续上百年的门阀联姻与军功世袭，",
+      "narration_text": "这群人通过持续上百年的门阀联姻与军功世袭，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-010-04",
+      "text": "早已构成了一张盘根错节、",
+      "narration_text": "早已构成了一张盘根错节、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-010-05",
+      "text": "利益同盟森严的政治暗网。",
+      "narration_text": "利益同盟森严的政治暗网。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-011",
+      "text": "当年隋炀帝在江都翻车，天下大乱。",
+      "narration_text": "当年隋炀帝在江都翻车，天下大乱。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-011-01",
+      "text": "关陇门阀急需一个新的利益代",
+      "narration_text": "关陇门阀急需一个新的利益代",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-011-02",
+      "text": "理人来维持关中政权的垄断地位。",
+      "narration_text": "理人来维持关中政权的垄断地位。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-012",
+      "text": "太原留守李渊，",
+      "narration_text": "太原留守李渊，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-012-01",
+      "text": "就是这个军事贵族网络在历史十字路口选中的执牛耳者。",
+      "narration_text": "就是这个军事贵族网络在历史十字路口选中的执牛耳者。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-013",
+      "text": "天下初定，老李家坐稳了长安。",
+      "narration_text": "天下初定，老李家坐稳了长安。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-014",
+      "text": "可一场前所未有的制度死局，",
+      "narration_text": "可一场前所未有的制度死局，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-014-01",
+      "text": "也随着战火的熄灭，在太极宫的深处悄然拉响了倒计时。",
+      "narration_text": "也随着战火的熄灭，在太极宫的深处悄然拉响了倒计时。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-015",
+      "text": "在后世被唐太宗时期反复修润过的史书里，",
+      "narration_text": "在后世被唐太宗时期反复修润过的史书里，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-015-01",
+      "text": "皇太子李建成被刻画成了一个不学无术、",
+      "narration_text": "皇太子李建成被刻画成了一个不学无术、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-015-02",
+      "text": "心胸狭隘、整天只会借着长子身份打压功臣的平庸之辈。",
+      "narration_text": "心胸狭隘、整天只会借着长子身份打压功臣的平庸之辈。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-016",
+      "text": "你看，这就是胜利者最经典的叙事滤镜。",
+      "narration_text": "你看，这就是胜利者最经典的叙事滤镜。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-017",
+      "text": "真实的李建成，绝不是戏说故事里那个一无是处的草包太子。",
+      "narration_text": "真实的李建成，绝不是戏说故事里那个一无是处的草包太子。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-018",
+      "text": "作为李渊确立的法定接班人，",
+      "narration_text": "作为李渊确立的法定接班人，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-018-01",
+      "text": "在李唐创业初期，李建成长期坐镇长安枢纽，",
+      "narration_text": "在李唐创业初期，李建成长期坐镇长安枢纽，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-018-02",
+      "text": "承担着整个帝国的关中经营、赋税征收、",
+      "narration_text": "承担着整个帝国的关中经营、赋税征收、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-018-03",
+      "text": "物资调配以及行政官僚网络的运转；",
+      "narration_text": "物资调配以及行政官僚网络的运转；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-018-04",
+      "text": "在战局胶着之时，他也曾亲提铁骑奔赴山东平定刘黑闼之乱，",
+      "narration_text": "在战局胶着之时，他也曾亲提铁骑奔赴山东平定刘黑闼之乱，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-018-05",
+      "text": "展现出极强的治乱手腕。",
+      "narration_text": "展现出极强的治乱手腕。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-019",
+      "text": "他在朝堂上拥有极深的人脉网络，",
+      "narration_text": "他在朝堂上拥有极深的人脉网络，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-019-01",
+      "text": "更吸引了以魏征为代表的大批关东精英士人的效忠。",
+      "narration_text": "更吸引了以魏征为代表的大批关东精英士人的效忠。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-020",
+      "text": "李渊真正解决不了的，",
+      "narration_text": "李渊真正解决不了的，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-020-01",
+      "text": "根本不是“长子与次子谁更聪明”，",
+      "narration_text": "根本不是“长子与次子谁更聪明”，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-020-02",
+      "text": "而是大唐在残酷的统一战争中，",
+      "narration_text": "而是大唐在残酷的统一战争中，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-020-03",
+      "text": "被逼无奈演化出的——“双权力中心”！",
+      "narration_text": "被逼无奈演化出的——“双权力中心”！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-021",
+      "text": "你看这个致命的对称架构：",
+      "narration_text": "你看这个致命的对称架构：",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-022",
+      "text": "一边，是拥有天然正统法统、",
+      "narration_text": "一边，是拥有天然正统法统、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-022-01",
+      "text": "掌控中央行政网络与东宫数千禁卫的皇太子李建成；",
+      "narration_text": "掌控中央行政网络与东宫数千禁卫的皇太子李建成；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-023",
+      "text": "另一边，则是常年统帅大唐最精锐野战铁骑、",
+      "narration_text": "另一边，则是常年统帅大唐最精锐野战铁骑、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-023-01",
+      "text": "手握天下兵马大权的秦王李世民。",
+      "narration_text": "手握天下兵马大权的秦王李世民。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-024",
+      "text": "天下没打完的时候，这叫分工；。",
+      "narration_text": "天下没打完的时候，这叫分工；。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-025",
+      "text": "天下打完以后，这就叫定时炸弹！",
+      "narration_text": "天下打完以后，这就叫定时炸弹！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-026",
+      "text": "战争年代，大唐需要李世民手里的那柄铁剑去荡平群雄。",
+      "narration_text": "战争年代，大唐需要李世民手里的那柄铁剑去荡平群雄。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-027",
+      "text": "浅水原迫降薛仁杲、柏壁逐宋金刚、",
+      "narration_text": "浅水原迫降薛仁杲、柏壁逐宋金刚、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-027-01",
+      "text": "虎牢关一役以数千玄甲铁骑硬撼窦建德十万大军，",
+      "narration_text": "虎牢关一役以数千玄甲铁骑硬撼窦建德十万大军，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-027-02",
+      "text": "进而一举瓦解王世充与窦建德两大割据集团。",
+      "narration_text": "进而一举瓦解王世充与窦建德两大割据集团。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-028",
+      "text": "天下的硬仗、恶仗，全被李世民用马槊一寸寸趟平了。",
+      "narration_text": "天下的硬仗、恶仗，全被李世民用马槊一寸寸趟平了。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-029",
+      "text": "可问题在于，李世民的军功，实在太大了。",
+      "narration_text": "可问题在于，李世民的军功，实在太大了。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-030",
+      "text": "大到了功高震主，大到了开国皇帝李渊在赏无可赏的绝境下，",
+      "narration_text": "大到了功高震主，大到了开国皇帝李渊在赏无可赏的绝境下，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-030-01",
+      "text": "不得不打破数百年制度惯例，",
+      "narration_text": "不得不打破数百年制度惯例，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-030-02",
+      "text": "凭空捏造出一个怪物级别的头衔——“天策上将”。",
+      "narration_text": "凭空捏造出一个怪物级别的头衔——“天策上将”。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-031",
+      "text": "天策上将，位在所有亲王之上。",
+      "narration_text": "天策上将，位在所有亲王之上。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-032",
+      "text": "更可怕的是，朝廷允许天策府自置官署、开府招揽天下英豪！",
+      "narration_text": "更可怕的是，朝廷允许天策府自置官署、开府招揽天下英豪！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-033",
+      "text": "这等于在长安朝廷的母体之内，",
+      "narration_text": "这等于在长安朝廷的母体之内，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-033-01",
+      "text": "硬生生孕育出了一个拥有独立军令权、",
+      "narration_text": "硬生生孕育出了一个拥有独立军令权、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-033-02",
+      "text": "人事任免权与智囊集团的“第二中央”！",
+      "narration_text": "人事任免权与智囊集团的“第二中央”！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-034",
+      "text": "房玄龄、杜如晦在内掌运筹，尉迟恭、",
+      "narration_text": "房玄龄、杜如晦在内掌运筹，玉迟恭、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-034-01",
+      "text": "秦琼、程咬金在外掌虎符。",
+      "narration_text": "秦琼、程咬金在外掌虎符。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-035",
+      "text": "秦王府的这套战斗班底，",
+      "narration_text": "秦王府的这套战斗班底，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-035-01",
+      "text": "其动员效率与凝聚力，",
+      "narration_text": "其动员效率与凝聚力，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-035-02",
+      "text": "甚至隐隐压制了大唐的正规官僚体系。",
+      "narration_text": "甚至隐隐压制了大唐的正规官僚体系。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-036",
+      "text": "老皇帝李渊坐在龙椅上，",
+      "narration_text": "老皇帝李渊坐在龙椅上，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-036-01",
+      "text": "看着大殿左右两边分庭抗礼的儿子，",
+      "narration_text": "看着大殿左右两边分庭抗礼的儿子，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-036-02",
+      "text": "后背第一次冒出了刺骨的凉气。",
+      "narration_text": "后背第一次冒出了刺骨的凉气。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-037",
+      "text": "李渊并不昏聩，他深谙帝王的平衡之道。",
+      "narration_text": "李渊并不昏聩，他深谙帝王的平衡之道。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-038",
+      "text": "但他犯了一个致命的错误：他以为可以用官僚体系的行政条规，",
+      "narration_text": "但他犯了一个致命的错误：他以为可以用官僚体系的行政条规，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-038-01",
+      "text": "去驯服一支刚从尸山血海里杀出来的骄兵悍将。",
+      "narration_text": "去驯服一支刚从尸山血海里杀出来的骄兵悍将。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-039",
+      "text": "为了保住长子建成的法统，",
+      "narration_text": "为了保住长子建成的法统，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-039-01",
+      "text": "李渊开始动用皇权，系统性地拆解秦王府的骨架：",
+      "narration_text": "李渊开始动用皇权，系统性地拆解秦王府的骨架：",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-040",
+      "text": "他默许后宫嫔妃与东宫结盟，",
+      "narration_text": "他默许后宫嫔妃与东宫结盟，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-040-01",
+      "text": "日夜在自己耳边进献谗言；",
+      "narration_text": "日夜在自己耳边进献谗言；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-041",
+      "text": "他借故敲打秦王府的元老，",
+      "narration_text": "他借故敲打秦王府的元老，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-041-01",
+      "text": "甚至一度将秦王府的核心谋士房玄龄、",
+      "narration_text": "甚至一度将秦王府的核心谋士房玄龄、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-041-02",
+      "text": "杜如晦逐出京城，严禁他们与李世民私下联络；",
+      "narration_text": "杜如晦逐出京城，严禁他们与李世民私下联络；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-042",
+      "text": "大将程咬金被调出京师出任刺史，",
+      "narration_text": "大将程咬金被调出京师出任刺史，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-042-01",
+      "text": "猛将段志玄被重金暗中拉拢。",
+      "narration_text": "猛将段志玄被重金暗中拉拢。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-042-02",
+      "text": "秦王府的左膀右臂，正被一把钝刀一寸一寸强行切断。",
+      "narration_text": "秦王府的左膀右臂，正被一把钝刀一寸一寸强行切断。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-043",
+      "text": "太子李建成的反击同样冷静而致命。",
+      "narration_text": "太子李建成的反击同样冷静而致命。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-044",
+      "text": "他听从魏征的建议，没有急于在战场上硬碰硬，",
+      "narration_text": "他听从魏征的建议，没有急于在战场上硬碰硬，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-044-01",
+      "text": "而是用阳谋步步紧逼：",
+      "narration_text": "而是用阳谋步步紧逼：",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-045",
+      "text": "武德九年，突厥再次南下犯境。",
+      "narration_text": "武德九年，突决再次南下犯境。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-045-01",
+      "text": "东宫顺理成章地提议由齐王李元吉代替李世民出征，",
+      "narration_text": "东宫顺理成章地提议由齐王李元吉代替李世民出征，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-045-02",
+      "text": "并借调秦王府麾下的尉迟恭、秦琼、",
+      "narration_text": "并借调秦王府麾下的玉迟恭、秦琼、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-045-03",
+      "text": "程咬金等主力精兵随行。",
+      "narration_text": "程咬金等主力精兵随行。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-046",
+      "text": "这是一记绝户计。",
+      "narration_text": "这是一记绝户计。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-047",
+      "text": "只要李世民手底下的最后这批百战精锐被抽调出京，",
+      "narration_text": "只要李世民手底下的最后这批百战精锐被抽调出京，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-047-01",
+      "text": "留在长安的李世民，瞬间就会沦为案板上一块任人宰割的鱼肉。",
+      "narration_text": "留在长安的李世民，瞬间就会沦为案板上一块任人宰割的鱼肉。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-048",
+      "text": "当时的长安城，空气凝固得像要滴出血来。",
+      "narration_text": "当时的长安城，空气凝固得像要滴出血来。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-049",
+      "text": "秦王府四周，布满了东宫的密探与禁军的巡骑。",
+      "narration_text": "秦王府四周，布满了东宫的密探与禁军的巡骑。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-050",
+      "text": "甚至连宗室饮宴之间，",
+      "narration_text": "甚至连宗室饮宴之间，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-050-01",
+      "text": "都传出了李世民饮酒后心痛呕血数升的险恶传闻。",
+      "narration_text": "都传出了李世民饮酒后心痛呕血数升的险恶传闻。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-051",
+      "text": "不管这杯酒里到底有没有被下毒，事实是：",
+      "narration_text": "不管这杯酒里到底有没有被下毒，事实是：",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-052",
+      "text": "李世民已经被逼到了连喝一口水、",
+      "narration_text": "李世民已经被逼到了连喝一口水、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-052-01",
+      "text": "见一个部下都要怀疑身家性命的悬崖边上。",
+      "narration_text": "见一个部下都要怀疑身家性命的悬崖边上。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-053",
+      "text": "躺平，几天之后大军开拔，",
+      "narration_text": "躺平，几天之后大军开拔，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-053-01",
+      "text": "等待他的就是全家被软禁、",
+      "narration_text": "等待他的就是全家被软禁、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-053-02",
+      "text": "甚至被安上谋反罪名满门处决的终局；",
+      "narration_text": "甚至被安上谋反罪名满门处决的终局；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-054",
+      "text": "反抗，眼前则是大唐开国九年来最坚固的法统秩序，",
+      "narration_text": "反抗，眼前则是大唐开国九年来最坚固的法统秩序，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-054-01",
+      "text": "以及“弑兄逼父”的万世骂名。",
+      "narration_text": "以及“弑兄逼父”的万世骂名。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-055",
+      "text": "李世民不是圣人，但他也绝不是任人宰割的羔羊。",
+      "narration_text": "李世民不是圣人，但他也绝不是任人宰割的羔羊。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-056",
+      "text": "这位二十八岁就踏平了中原各路枭雄的年轻统帅，",
+      "narration_text": "这位二十八岁就踏平了中原各路枭雄的年轻统帅，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-056-01",
+      "text": "骨子里流淌着最纯粹的野性与赌徒本能。",
+      "narration_text": "骨子里流淌着最纯粹的野性与赌徒本能。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-057",
+      "text": "很多人在读到这里时，",
+      "narration_text": "很多人在读到这里时，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-057-01",
+      "text": "都会产生一个巨大的疑问：",
+      "narration_text": "都会产生一个巨大的疑问：",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-058",
+      "text": "李世民在长安朝堂上明明已经被行政权力彻底孤立，",
+      "narration_text": "李世民在长安朝堂上明明已经被行政权力彻底孤立，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-058-01",
+      "text": "他到底凭什么完成逆天改命的绝地翻盘？",
+      "narration_text": "他到底凭什么完成逆天改命的绝地翻盘？",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-059",
+      "text": "答案，就隐藏在关陇军事贵族这张深不可测的关系网深处。",
+      "narration_text": "答案，就隐藏在关陇军事贵族这张深不可测的关系网深处。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-060",
+      "text": "我们当然找不到一张白纸黑字的“玄武门政治合同”。",
+      "narration_text": "我们当然找不到一张白纸黑字的“玄武门政治合同”。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-061",
+      "text": "但在政治斗争的极度深水区，从来不需要合同。",
+      "narration_text": "但在政治斗争的极度深水区，从来不需要合同。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-062",
+      "text": "李世民身后的长孙无忌、高士廉，",
+      "narration_text": "李世民身后的掌孙无忌、高士廉，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-062-01",
+      "text": "以及秦王府的实权将领，",
+      "narration_text": "以及秦王府的实权将领，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-062-02",
+      "text": "他们本身就代表着关陇军事贵族集团中最悍勇、",
+      "narration_text": "他们本身就代表着关陇军事贵族集团中最悍勇、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-062-03",
+      "text": "最激进的那一部分利益。",
+      "narration_text": "最激进的那一部分利益。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-063",
+      "text": "李渊和李建成试图推行关东与南方势力的制衡政策，",
+      "narration_text": "李渊和李建成试图推行关东与南方势力的制衡政策，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-063-01",
+      "text": "已经让这批习惯了军功封邑",
+      "narration_text": "已经让这批习惯了军功封邑",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-063-02",
+      "text": "的开国将领感受到了巨大的生存危机。",
+      "narration_text": "的开国将领感受到了巨大的生存危机。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-064",
+      "text": "谁上台能保住将领们的荣华富贵？",
+      "narration_text": "谁上台能保住将领们的荣华富贵？",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-064-01",
+      "text": "谁上台能保证军队不被文官集团肢解？",
+      "narration_text": "谁上台能保证军队不被文官集团肢解？",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-065",
+      "text": "事实本身就是答案。",
+      "narration_text": "事实本身就是答案。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-066",
+      "text": "而这股盘根错节的深层力量，",
+      "narration_text": "而这股盘根错节的深层力量，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-066-01",
+      "text": "最终神不知鬼不觉地渗透到了大唐",
+      "narration_text": "最终神不知鬼不觉地渗透到了大唐",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-066-02",
+      "text": "帝国最核心的安全命脉——玄武门！",
+      "narration_text": "帝国最核心的安全命脉——玄武门！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-067",
+      "text": "玄武门，太极宫的北门，",
+      "narration_text": "玄武门，太极宫的北门，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-067-01",
+      "text": "也是连接皇帝寝宫与禁军大营的生死要冲。",
+      "narration_text": "也是连接皇帝寝宫与禁军大营的生死要冲。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-068",
+      "text": "当时负责把守玄武门的禁军中郎将，叫做常何。",
+      "narration_text": "当时负责把守玄武门的禁军中郎将，叫做常何。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-069",
+      "text": "表面上，常何是跟随太子李建成征战多年、",
+      "narration_text": "表面上，常何是跟随太子李建成征战多年、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-069-01",
+      "text": "由东宫一手提拔并深信不疑的心腹守将。",
+      "narration_text": "由东宫一手提拔并深信不疑的心腹守将。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-070",
+      "text": "但20世纪初从莫高窟藏经洞流落海外、",
+      "narration_text": "但20世纪初从莫高窟藏经洞流落海外、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-070-01",
+      "text": "现存于法国巴黎的敦煌写本《常何墓碑》，",
+      "narration_text": "现存于法国巴黎的敦煌写本《常何墓碑》，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-070-02",
+      "text": "却用冷冰冰的文字，为后世揭开了一个细思极恐的历史真相：",
+      "narration_text": "却用冷冰冰的文字，为后世揭开了一个细思极恐的历史真相：",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-071",
+      "text": "早在武德七年——也就是玄武门之变整整两年前，",
+      "narration_text": "早在武德七年——也就是玄武门之变整整两年前，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-071-01",
+      "text": "李世民就已经秘密召见常何，",
+      "narration_text": "李世民就已经秘密召见常何，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-071-02",
+      "text": "亲自赐予他“金刀子一枚、",
+      "narration_text": "亲自赐予他“金刀子一枚、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-071-03",
+      "text": "黄金三十挺”，更交付数十枚金刀子，",
+      "narration_text": "黄金三十挺”，更交付数十枚金刀子，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-071-04",
+      "text": "命常何在北门禁军中结纳死士！",
+      "narration_text": "命常何在北门禁军中结纳死士！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-072",
+      "text": "李建成以为，守在自家皇宫大门口的，",
+      "narration_text": "李建成以为，守在自家皇宫大门口的，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-072-01",
+      "text": "是他最忠实的近卫军官；",
+      "narration_text": "是他最忠实的近卫军官；",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-073",
+      "text": "但他做梦也不会想到，",
+      "narration_text": "但他做梦也不会想到，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-073-01",
+      "text": "玄武门门锁的钥匙，",
+      "narration_text": "玄武门门锁的钥匙，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-073-02",
+      "text": "早在两年前就被悄无声息地递到了秦王府的手中！",
+      "narration_text": "早在两年前就被悄无声息地递到了秦王府的手中！",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-074",
+      "text": "武德九年六月初三夜，",
+      "narration_text": "武德九年六月初三夜，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-074-01",
+      "text": "长安城下起了一场无声的细雨。",
+      "narration_text": "长安城下起了一场无声的细雨。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-075",
+      "text": "李世民秘密召回了被驱逐的房玄龄与杜如晦。",
+      "narration_text": "李世民秘密召回了被驱逐的房玄龄与杜如晦。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-076",
+      "text": "在一盏摇曳的油灯下，长孙无忌、",
+      "narration_text": "在一盏摇曳的油灯下，掌孙无忌、",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-076-01",
+      "text": "尉迟恭按住了腰间的横刀，",
+      "narration_text": "玉迟恭按住了腰间的横刀，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-076-02",
+      "text": "李世民亲笔在绢帛上草拟了次日清晨密奏皇帝的弹劾奏折。",
+      "narration_text": "李世民亲笔在绢帛上草拟了次日清晨密奏皇帝的弹劾奏折。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-077",
+      "text": "这是一场赢家通吃、输家粉身碎骨的无情赌局。",
+      "narration_text": "这是一场赢家通吃、输家粉身碎骨的无情赌局。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-078",
+      "text": "刀已经出鞘了半寸，再也没有任何人能够将它按回刀鞘。",
+      "narration_text": "刀已经出鞘了半寸，再也没有任何人能够将它按回刀鞘。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-079",
+      "text": "雨停了。",
+      "narration_text": "雨停了。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-080",
+      "text": "晨雾开始在太极宫森严的青砖城楼之间缓缓蔓延。",
+      "narration_text": "晨雾开始在太极宫森严的青砖城楼之间缓缓蔓延。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-081",
+      "text": "李建成和李元吉的马蹄声，",
+      "narration_text": "李建成和李元吉的马蹄声，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-081-01",
+      "text": "正在从东宫的方向一步步靠近临湖殿。",
+      "narration_text": "正在从东宫的方向一步步靠近临湖殿。",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-082",
+      "text": "大唐帝国最为血腥、也最为不可思议的历史拐点，",
+      "narration_text": "大唐帝国最为血腥、也最为不可思议的历史拐点，",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    },
+    {
+      "id": "frame-082-01",
+      "text": "就在这死一般的黎明破晓前，缓缓扣动了扳机……",
+      "narration_text": "就在这死一般的黎明破晓前，缓缓扣动了扳机……",
+      "audio_path": null,
+      "audio_duration_ms": null,
+      "char_align": [],
+      "subtitle": [],
+      "shot_ids": []
+    }
+  ],
+  "shots": {},
+  "profile": "ancient-realistic",
+  "notes": "",
+  "created_at": "2026-09-24T16:54:53.622317",
+  "updated_at": "2026-09-24T16:54:53.622339"
+}

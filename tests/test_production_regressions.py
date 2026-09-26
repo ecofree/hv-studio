@@ -247,8 +247,11 @@ def _install_fake_encoder(monkeypatch, fail_msg, ok_frames=54):
     from app.services import compose as C
     rec = {"calls": 0, "vcodecs": []}
 
+    # 签名必须与真实 _encode_video_span_once 一致（含 2026-09-26 新增的
+    # transitions 换图黑场参数）。测试替身漏了这个参数就会在降级重试路径上
+    # 抛 TypeError，把「签名漂移」伪装成「降级逻辑坏了」。
     def fake(timeline_slice, upscaled, out_mp4, vcodec, timeout_sec=0,
-             plan_frames=None):
+             plan_frames=None, transitions=None):
         rec["calls"] += 1
         rec["vcodecs"].append(list(vcodec))
         if rec["calls"] == 1 and fail_msg:

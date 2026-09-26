@@ -294,6 +294,10 @@ compose:
       crf: 23
   audio_codec: aac
   audio_bitrate: 192k
+  # 换图处黑场过渡：仅底图变化的镜头首尾，各 6 帧（@25fps ≈ 0.24s）。
+  # 只调亮度、不加帧不动音频 → 总帧数与音画对位不变，段划分/续跑/verify 不受影响。
+  # 0 = 关闭（纯硬切）。同一底图的相邻镜头**不会**加黑场（那是连续运镜，见 shot_builder）。
+  image_transition_frames: 6
   # P1 2.1：ffmpeg 收口超时秒数。0 = 不设超时（默认保守）；若担心编码卡死可设如 1200。
   timeout_sec: 0
   # 分段渲染（2026-09-04）：按段预渲染视频再 concat copy + 一次混音。

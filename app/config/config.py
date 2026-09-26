@@ -374,6 +374,10 @@ class ComposeConfig(BaseModel):
     # 单独收窄段长，确保默认 300s 的段级 watchdog 能收口。
     v2_segment_max_sec: float = 45.0
     segment_min_frames: int = 2500  # 全片预期帧数 < 此值仍走旧单段路径（保短片行为不变）
+    # 换图处的黑场过渡帧数（2026-09-26）。仅在**底图真的变了**的镜头首尾生效，
+    # 在既有帧内调亮度，不加帧、不动音频 —— 所以总帧数与音画对位不变。
+    # 0 = 关闭（纯硬切，保持历史行为）。6 帧 @25fps ≈ 0.24s，读作一次有意的暗场。
+    image_transition_frames: int = 6
 
 
 class VRAMConfig(BaseModel):

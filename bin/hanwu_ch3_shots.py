@@ -36,6 +36,11 @@ from app.managers import save
 from app.managers.episode import load
 from app.models import MotionSpec, Shot
 
+# 运镜口径已收编为 app/services/motion.py::legacy_motion（2026-09-26）。
+# 此前本章与 hanwu_ch1_shots.py 各存一份**逐字节相同**的副本，副本必然漂移。
+# 收编后行为逐位不变；新片请用 app.services.shot_builder（声明式 + 连续轨迹 + 硬校验）。
+from app.services.motion import legacy_motion as _build_motion
+
 ROOT = Path("D:/hv")
 EP = "hanwu-ch3"
 NEW_DIR = ROOT / "episodes" / "hanwu-feature" / "shots"   # NEW-1~12 所在
@@ -109,24 +114,6 @@ def _next_motion(desired: str) -> str:
     return desired
 
 
-def _build_motion(zoom: float, motion_type: str, intensity: float,
-                  light: str) -> MotionSpec:
-    if motion_type == "push":
-        start_xy, end_xy = (0.50, 0.50), (0.50, 0.50)
-        start_zoom, end_zoom = zoom, zoom + intensity
-    elif motion_type == "pull":
-        start_xy, end_xy = (0.50, 0.50), (0.50, 0.50)
-        start_zoom, end_zoom = zoom, max(1.0, zoom - intensity)
-    elif motion_type == "drift":
-        start_xy, end_xy = (0.46, 0.50), (0.54, 0.50)
-        start_zoom, end_zoom = zoom, zoom
-    else:  # pan
-        start_xy, end_xy = (0.44, 0.48), (0.56, 0.52)
-        start_zoom, end_zoom = zoom, zoom
-    return MotionSpec(type=motion_type, intensity=round(intensity, 3),
-                      start_xy=start_xy, end_xy=end_xy,
-                      start_zoom=round(start_zoom, 3),
-                      end_zoom=round(end_zoom, 3), grade=light)
 
 
 def scene_of(i: int):

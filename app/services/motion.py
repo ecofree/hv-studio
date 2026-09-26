@@ -45,7 +45,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from app.models import Shot
+from app.models import MotionSpec, Shot
 # 输出规格常量统一由 app.services.spec 提供（整改 C1）。此处 re-export 是为了
 # 兼容既有的 `from app.services.motion import FPS, W, H` 写法（compose 在用），
 # 值本身只有 spec 里那一份。
@@ -98,14 +98,35 @@ def ease(easing: str, u: float) -> float:
     return u * u * (3 - 2 * u)  # ease_in_out: smoothstep
 
 
+# 显式轨迹版本：start/end_zoom 与 start/end_xy 原样生效，motion.type 只当标签用。
+#
+# 为什么需要第二个版本号（而不是直接复用 fit_cover_v2）：
+#   fit_cover_v2 除了「轨迹显式」，还改了**裁切几何**（frame_box 里
+#   scale = min(iw/W, ih/H)，即按 cover 铺满）。一镜一换底图尺寸的活儿里
+#   改裁切几何 = 改构图，是另一种改动，不该和「把镜头接顺」混在一起。
+#   explicit_traj_v1 保持 legacy 的 scale=1.0 裁切窗，只把「轨迹由谁决定」
+#   从公式改为显式 —— 构图逐位不变，变的只有运镜本身。
+EXPLICIT_TRAJECTORY_VERSION = "explicit_traj_v1"
+EXPLICIT_TRAJECTORY = ("fit_cover_v2", EXPLICIT_TRAJECTORY_VERSION)
+
+
 def resolve_motion(spec) -> tuple[float, float, tuple[float, float], tuple[float, float]]:
     """
     MotionSpec → (z0, z1, (px0,py0), (px1,py1))。
 
+    两条口径：
+      - geometry_version ∈ EXPLICIT_TRAJECTORY：轨迹由 spec 的
+        start/end_zoom、start/end_xy 直接给出，type 不参与计算。
+        这样调用方才能把一串镜头串成一条连续轨迹（见 shot_builder）。
+      - legacy_pixel_crop_v1（默认，历史集全部走这条）：轨迹由 type +
+        start_zoom 乘各自公式**重算**，spec 里的 end_zoom / start_xy 对
+        push/pull 无效、对 drift/pan 只取 xy。保持逐位不变，故老集成片
+        不受影响。
+
     start_zoom 作为「机位基准」乘进各运动曲线：
       start_zoom=1.0（默认）时与历史行为逐位一致，hw-001 基线不受影响。
     """
-    if spec and getattr(spec,"geometry_version","legacy_pixel_crop_v1") == "fit_cover_v2":
+    if spec and getattr(spec,"geometry_version","legacy_pixel_crop_v1") in EXPLICIT_TRAJECTORY:
         z0,z1 = spec.start_zoom,spec.end_zoom
         if not (1 <= z0 <= spec.max_zoom and 1 <= z1 <= spec.max_zoom):
             raise ValueError("zoom trajectory exceeds declared bounds")
@@ -137,6 +158,8 @@ def frame_box(iw: int, ih: int, z: float, px: float, py: float, geometry_version
     单帧裁切窗 (x0, y0, x1, y1)。z 为相对缩放，px/py 归一化位置。
     结果会被夹在图像范围内。
     """
+    # 只有 fit_cover_v2 换过裁切几何；explicit_traj_v1 走下面 else 的 scale=1.0，
+    # 与 legacy 逐位一致 —— 它只改轨迹来源，不改构图。别把两者合并。
     scale = min(iw / W, ih / H) if geometry_version == "fit_cover_v2" else 1.0
     cw = W * scale / max(0.01, z)
     ch = H * scale / max(0.01, z)
@@ -147,6 +170,41 @@ def frame_box(iw: int, ih: int, z: float, px: float, py: float, geometry_version
     x1 = int(round(min(iw, x0 + cw)))
     y1 = int(round(min(ih, y0 + ch)))
     return x0, y0, x1, y1
+
+
+def legacy_motion(zoom: float, motion_type: str, intensity: float, grade: str | None = None):
+    """**冻结**的历史运镜口径 —— 逐位复刻 2026-09-10 之前各章硬编码脚本的写法。
+
+    为什么冻结而不删：hanwu_ch1 / hanwu_ch3 / hw-002 等已交付集的分镜是由
+    这套公式生成的。改它就等于改这些集的历史成片口径。它们各自的脚本里
+    各存着一份**逐字节相同**的副本（2026-09-26 审计发现），副本必然漂移 ——
+    修一处漏两处。这里收成唯一一份，行为一字不变。
+
+    ⚠️ 这套口径有个必须知道的陷阱，也是 2026-09-26「镜头衔接」缺陷的根因之一：
+    它写出的 ``end_zoom`` 在 legacy_pixel_crop_v1 下**根本不会被渲染采用** ——
+    resolve_motion 会用 ``type + start_zoom`` 乘自己的公式重算 z0/z1，
+    ``start_xy`` 也只对 drift/pan 生效、对 push/pull 无效。所以：
+
+      - **读不读得到渲染落点，必须问 resolve_motion，不能读 spec 字段**；
+      - 新片别用这个函数，用 shot_builder.build_episode_shots —— 它把同一
+        scene 内的镜头串成连续轨迹（``explicit_traj_v1``），并有硬校验兜住。
+    """
+    if motion_type == "push":
+        start_xy, end_xy = (0.50, 0.50), (0.50, 0.50)
+        start_zoom, end_zoom = zoom, zoom + intensity
+    elif motion_type == "pull":
+        start_xy, end_xy = (0.50, 0.50), (0.50, 0.50)
+        start_zoom, end_zoom = zoom, max(1.0, zoom - intensity)
+    elif motion_type == "drift":
+        start_xy, end_xy = (0.46, 0.50), (0.54, 0.50)
+        start_zoom, end_zoom = zoom, zoom
+    else:  # pan
+        start_xy, end_xy = (0.44, 0.48), (0.56, 0.52)
+        start_zoom, end_zoom = zoom, zoom
+    return MotionSpec(type=motion_type, intensity=round(intensity, 3),
+                      start_xy=start_xy, end_xy=end_xy,
+                      start_zoom=round(start_zoom, 3),
+                      end_zoom=round(end_zoom, 3), grade=grade)
 
 
 def frames_for_duration_ms(duration_ms: float, fps: int = FPS) -> int:

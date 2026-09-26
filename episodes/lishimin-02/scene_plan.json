@@ -1,0 +1,845 @@
+{
+  "episode": "lishimin-02",
+  "images": {
+    "LS78": {
+      "reuse_from": "lishimin-01"
+    },
+    "PA02": {
+      "path": "episodes/lishimin-02/shots/PA02.png"
+    },
+    "LS77": {
+      "reuse_from": "lishimin-01"
+    },
+    "LS27": {
+      "reuse_from": "lishimin-01"
+    },
+    "PA05": {
+      "path": "episodes/lishimin-02/shots/PA05.png"
+    },
+    "LS61": {
+      "reuse_from": "lishimin-01"
+    },
+    "PA07": {
+      "path": "episodes/lishimin-02/shots/PA07.png"
+    },
+    "LS65": {
+      "reuse_from": "lishimin-01"
+    },
+    "LS69": {
+      "reuse_from": "lishimin-01"
+    },
+    "LS71": {
+      "reuse_from": "lishimin-01"
+    },
+    "LS72": {
+      "reuse_from": "lishimin-01"
+    },
+    "LS73": {
+      "reuse_from": "lishimin-01"
+    },
+    "PA13": {
+      "path": "episodes/lishimin-02/shots/PA13.png"
+    },
+    "PA14": {
+      "path": "episodes/lishimin-02/shots/PA14.png"
+    },
+    "PA15": {
+      "path": "episodes/lishimin-02/shots/PA15.png"
+    },
+    "PA16": {
+      "path": "episodes/lishimin-02/shots/PA16.png"
+    },
+    "PA17": {
+      "path": "episodes/lishimin-02/shots/PA17.png"
+    },
+    "PB01": {
+      "path": "episodes/lishimin-02/shots/PB01.png"
+    },
+    "PB02": {
+      "path": "episodes/lishimin-02/shots/PB02.png"
+    },
+    "PB03": {
+      "path": "episodes/lishimin-02/shots/PB03.png"
+    },
+    "PB04": {
+      "path": "episodes/lishimin-02/shots/PB04.png"
+    },
+    "PB05": {
+      "path": "episodes/lishimin-02/shots/PB05.png"
+    },
+    "PB06": {
+      "path": "episodes/lishimin-02/shots/PB06.png"
+    },
+    "PB07": {
+      "path": "episodes/lishimin-02/shots/PB07.png"
+    },
+    "PB08": {
+      "path": "episodes/lishimin-02/shots/PB08.png"
+    },
+    "PB09": {
+      "path": "episodes/lishimin-02/shots/PB09.png"
+    },
+    "PB10": {
+      "path": "episodes/lishimin-02/shots/PB10.png"
+    },
+    "PB11": {
+      "path": "episodes/lishimin-02/shots/PB11.png"
+    },
+    "PB12": {
+      "path": "episodes/lishimin-02/shots/PB12.png"
+    },
+    "PB13": {
+      "path": "episodes/lishimin-02/shots/PB13.png"
+    },
+    "PB14": {
+      "path": "episodes/lishimin-02/shots/PB14.png"
+    },
+    "PC01": {
+      "path": "episodes/lishimin-02/shots/PC01.png"
+    },
+    "PC02": {
+      "path": "episodes/lishimin-02/shots/PC02.png"
+    },
+    "PC03": {
+      "path": "episodes/lishimin-02/shots/PC03.png"
+    },
+    "PC04": {
+      "path": "episodes/lishimin-02/shots/PC04.png"
+    },
+    "PC05": {
+      "path": "episodes/lishimin-02/shots/PC05.png"
+    },
+    "PC06": {
+      "path": "episodes/lishimin-02/shots/PC06.png"
+    },
+    "PC07": {
+      "path": "episodes/lishimin-02/shots/PC07.png"
+    },
+    "PC08": {
+      "path": "episodes/lishimin-02/shots/PC08.png"
+    },
+    "PC09": {
+      "path": "episodes/lishimin-02/shots/PC09.png"
+    },
+    "PC10": {
+      "path": "episodes/lishimin-02/shots/PC10.png"
+    },
+    "LS35": {
+      "reuse_from": "lishimin-01"
+    },
+    "PC12": {
+      "path": "episodes/lishimin-02/shots/PC12.png"
+    },
+    "PC13": {
+      "path": "episodes/lishimin-02/shots/PC13.png"
+    },
+    "PC14": {
+      "path": "episodes/lishimin-02/shots/PC14.png"
+    },
+    "LS21": {
+      "reuse_from": "lishimin-01"
+    },
+    "PC16": {
+      "path": "episodes/lishimin-02/shots/PC16.png"
+    },
+    "PD01": {
+      "path": "episodes/lishimin-02/shots/PD01.png"
+    },
+    "PD02": {
+      "path": "episodes/lishimin-02/shots/PD02.png"
+    },
+    "PD03": {
+      "path": "episodes/lishimin-02/shots/PD03.png"
+    },
+    "PD04": {
+      "path": "episodes/lishimin-02/shots/PD04.png"
+    },
+    "PD05": {
+      "path": "episodes/lishimin-02/shots/PD05.png"
+    },
+    "LS10": {
+      "reuse_from": "lishimin-01"
+    },
+    "PD07": {
+      "path": "episodes/lishimin-02/shots/PD07.png"
+    },
+    "PD08": {
+      "path": "episodes/lishimin-02/shots/PD08.png"
+    },
+    "PD09": {
+      "path": "episodes/lishimin-02/shots/PD09.png"
+    },
+    "PD10": {
+      "path": "episodes/lishimin-02/shots/PD10.png"
+    },
+    "PD11": {
+      "path": "episodes/lishimin-02/shots/PD11.png"
+    },
+    "PD12": {
+      "path": "episodes/lishimin-02/shots/PD12.png"
+    },
+    "PD13": {
+      "path": "episodes/lishimin-02/shots/PD13.png"
+    },
+    "PD14": {
+      "path": "episodes/lishimin-02/shots/PD14.png"
+    },
+    "PD15": {
+      "path": "episodes/lishimin-02/shots/PD15.png"
+    },
+    "PD16": {
+      "path": "episodes/lishimin-02/shots/PD16.png"
+    },
+    "PD17": {
+      "path": "episodes/lishimin-02/shots/PD17.png"
+    }
+  },
+  "scenes": [
+    {
+      "frames": [
+        0,
+        2
+      ],
+      "image": "LS78",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        3,
+        5
+      ],
+      "image": "PA02",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        6,
+        9
+      ],
+      "image": "LS77",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        10,
+        10
+      ],
+      "image": "LS27",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        11,
+        14
+      ],
+      "image": "PA05",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "frames": [
+        15,
+        19
+      ],
+      "image": "LS61",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "frames": [
+        20,
+        25
+      ],
+      "image": "PA07",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "frames": [
+        26,
+        29
+      ],
+      "image": "LS65",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        30,
+        32
+      ],
+      "image": "LS69",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        33,
+        33
+      ],
+      "image": "LS71",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        34,
+        35
+      ],
+      "image": "LS72",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        36,
+        37
+      ],
+      "image": "LS73",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        38,
+        42
+      ],
+      "image": "PA13",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        43,
+        45
+      ],
+      "image": "PA14",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        46,
+        48
+      ],
+      "image": "PA15",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        49,
+        50
+      ],
+      "image": "PA16",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        51,
+        52
+      ],
+      "image": "PA17",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        53,
+        54
+      ],
+      "image": "PB01",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        55,
+        57
+      ],
+      "image": "PB02",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        58,
+        59
+      ],
+      "image": "PB03",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        60,
+        61
+      ],
+      "image": "PB04",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        62,
+        63
+      ],
+      "image": "PB05",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        64,
+        68
+      ],
+      "image": "PB06",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        69,
+        71
+      ],
+      "image": "PB07",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        72,
+        73
+      ],
+      "image": "PB08",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        74,
+        77
+      ],
+      "image": "PB09",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        78,
+        79
+      ],
+      "image": "PB10",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        80,
+        83
+      ],
+      "image": "PB11",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        84,
+        86
+      ],
+      "image": "PB12",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        87,
+        89
+      ],
+      "image": "PB13",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        90,
+        92
+      ],
+      "image": "PB14",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        93,
+        94
+      ],
+      "image": "PC01",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        95,
+        98
+      ],
+      "image": "PC02",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        99,
+        100
+      ],
+      "image": "PC03",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        101,
+        102
+      ],
+      "image": "PC04",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        103,
+        106
+      ],
+      "image": "PC05",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        107,
+        107
+      ],
+      "image": "PC06",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        108,
+        110
+      ],
+      "image": "PC07",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        111,
+        114
+      ],
+      "image": "PC08",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        115,
+        119
+      ],
+      "image": "PC09",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        120,
+        122
+      ],
+      "image": "PC10",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        123,
+        126
+      ],
+      "image": "LS35",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        127,
+        129
+      ],
+      "image": "PC12",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        130,
+        134
+      ],
+      "image": "PC13",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        135,
+        138
+      ],
+      "image": "PC14",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        139,
+        142
+      ],
+      "image": "LS21",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        143,
+        144
+      ],
+      "image": "PC16",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        145,
+        148
+      ],
+      "image": "PD01",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        149,
+        150
+      ],
+      "image": "PD02",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        151,
+        153
+      ],
+      "image": "PD03",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        154,
+        156
+      ],
+      "image": "PD04",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        157,
+        158
+      ],
+      "image": "PD05",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        159,
+        160
+      ],
+      "image": "LS10",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        161,
+        162
+      ],
+      "image": "PD07",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        163,
+        164
+      ],
+      "image": "PD08",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        165,
+        167
+      ],
+      "image": "PD09",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "frames": [
+        168,
+        170
+      ],
+      "image": "PD10",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        171,
+        177
+      ],
+      "image": "PD11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        178,
+        182
+      ],
+      "image": "PD12",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        183,
+        185
+      ],
+      "image": "PD13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        186,
+        188
+      ],
+      "image": "PD14",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "frames": [
+        189,
+        191
+      ],
+      "image": "PD15",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        192,
+        193
+      ],
+      "image": "PD16",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "frames": [
+        194,
+        196
+      ],
+      "image": "PD17",
+      "grades": [
+        "dawn"
+      ]
+    }
+  ],
+  "frames_fingerprint": {
+    "count": 197,
+    "sha1": "39a92928573d",
+    "head": "武德九年六月初四，凌晨四点。",
+    "tail": "那场对大唐国运与新君尊严的终极拷问，正呼啸而来。"
+  }
+}

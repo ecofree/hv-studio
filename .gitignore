@@ -23,6 +23,16 @@ episodes/*/production/
 episodes/hanwu_15min/*.mp4
 # 但保留 episode 模型 json
 !episodes/*.json
+# 编排锁：运行期互斥用的临时文件，进程退出即失效，入库只会制造假冲突
+episodes/*/.produce.lock
+# 人工审听记录：属于人工决定的留痕，与成片一起入库
+!episodes/*/分镜审听_*.md
+# ⚠️ 以下三类**要入库**，它们是作者输入的源，不是生成产物（AGENTS.md
+#    "Preserve source narration"）。列在这里只为防误加宽泛规则把它们扫掉：
+#      episodes/*/script.md          解说脚本原文（唯一真源）
+#      episodes/*/scene_plan.json    声明式分镜
+#      episodes/*/image_prompts.json 生图提示词
+#    同目录下其余（audio/ build/ out/ shots/ production/）已在上面排除。
 # 清理暂存区（本仓可回收的僵尸/备份）
 .trash_hv/
 
@@ -51,3 +61,6 @@ episodes/smoke-*.json
 # ---- Agent/实验瞬态（不入库） ----
 .workbuddy/
 .cache/
+
+# ---- 外部音频接入（大文件，不入库）----
+resource/external_audio/

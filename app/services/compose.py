@@ -535,6 +535,7 @@ def _encode_video_span_once(
     vcodec: list[str],
     timeout_sec: float = 0,
     plan_frames=None,
+    transitions: dict[str, tuple[int, int]] | None = None,
 ) -> int:
     """把一段 timeline 逐镜出帧喂 ffmpeg，编码成 **无音轨** 的视频 mp4。
 
@@ -582,6 +583,12 @@ def _encode_video_span_once(
                 with Image.open(upscaled[sh.id]) as _im:
                     img = _im.convert("RGB")
                 boxes = pf(*img.size, sh.duration_ms / 1000.0, sh.motion, FPS)
+                # 换图处的黑场过渡：只在**既有帧内**调亮度，不加帧、不动音频。
+                # fade_in = 本镜开头几帧从黑里淡入（前一镜换了底图时）
+                # fade_out = 本镜结尾几帧淡入黑（下一镜换了底图时）
+                # 见 compose_episode 的 _image_transitions()。
+                fin, fout = (transitions or {}).get(sh.id, (0, 0))
+                n_frames = len(boxes)
                 for n, box in enumerate(boxes):
                     x0, y0, x1, y1 = box
                     cw, ch = x1 - x0, y1 - y0
@@ -592,6 +599,10 @@ def _encode_video_span_once(
                     # 光线调色在已裁帧上做（峰值内存 ~1/3，低 pagefile 避免与编码器争）
                     if grade:
                         frame = apply_grade(frame, grade)
+                    if fin and n < fin:
+                        frame = _fade_to_black(frame, 1.0 - n / max(1, fin))
+                    elif fout and n >= n_frames - fout:
+                        frame = _fade_to_black(frame, (n - (n_frames - fout) + 1) / max(1, fout))
                     g_ms = s0 - sh.audio_start_ms + n * 1000.0 / FPS
                     if s0 <= g_ms <= s1:
                         _draw_subtitle(frame, sh.subtitle_text)
@@ -627,6 +638,56 @@ def _encode_video_span_once(
     return n_total
 
 
+def _fade_to_black(frame, amount: float):
+    """把一帧按 amount 压暗到黑，返回**新**图（amount=0 时原样返回入参）。
+
+    ⚠️ PIL 的 ``Image.point(lut)`` 返回**新图**，不修改原图（本机 PIL 12.3 实测：
+    ``f.point([0]*768)`` 之后 f 仍为原值）。所以必须用返回值重新绑定 ——
+    写成 `frame.point(lut)` 而不接返回值就是一个静默空操作，黑场过渡会
+    「配了但什么都没发生」。
+
+    用 point() 的 LUT 一次性完成（与 apply_grade 同思路），逐像素 Python 循环
+    在 1080x1920 上会慢两个数量级。amount<0 或 >1 被夹住，调用方不必自己保证。
+    """
+    a = 0.0 if amount < 0 else (1.0 if amount > 1 else amount)
+    if a <= 0.0:
+        return frame
+    if a >= 1.0:
+        return frame.point([0] * 768)      # 全黑：全零 LUT
+    lut = [max(0, min(255, int(round(i * (1.0 - a))))) for i in range(256)]
+    return frame.point(lut * 3)
+
+
+def _image_transitions(timeline, frames_per_shot: dict[str, int], fade: int) -> dict:
+    """算出每个镜头在换图处要淡入/淡出几帧。
+
+    只在**底图真的变了**的边界做过渡。同一张底图的相邻镜头之间**不能**加黑场 ——
+    那是连续运镜（见 shot_builder 的 _chained_motion），中间插一段黑等于人为
+    制造一次「剪辑」，把刚修好的连续性又破坏掉。
+
+    关键设计：**不加帧、不动音频**。原本要给每个换图点插入 K 帧黑场 + K 帧静音，
+    那会同时改动 frames_for_duration_ms、expected_frames、分段边界和音频时钟
+    （历史上正是这些口径分裂导致过「11 段永远判不完」）。改为在既有帧内调亮度：
+    总帧数与总采样数一字不变，音画对位天然保持，段划分/断点续跑/verify 全不受
+    影响。代价只是切点那一帧不到全黑，视觉上仍读作一次有意的暗场切换。
+    """
+    if fade <= 0:
+        return {}
+    out: dict[str, tuple[int, int]] = {}
+    shots = [sh for sh, _, _ in timeline]
+    for i, sh in enumerate(shots):
+        prev = shots[i - 1] if i else None
+        nxt = shots[i + 1] if i + 1 < len(shots) else None
+        n = frames_per_shot.get(sh.id, 0)
+        if n <= 0:
+            continue
+        fin = min(fade, n // 2) if (prev is not None and prev.image_path != sh.image_path) else 0
+        fout = min(fade, n // 2) if (nxt is not None and nxt.image_path != sh.image_path) else 0
+        if fin or fout:
+            out[sh.id] = (fin, fout)
+    return out
+
+
 def _encode_video_span(
     timeline_slice,
     upscaled: dict[str, Path],
@@ -634,6 +695,7 @@ def _encode_video_span(
     vcodec: list[str],
     timeout_sec: float = 0,
     plan_frames=None,
+    transitions: dict[str, tuple[int, int]] | None = None,
 ) -> int:
     """_encode_video_span_once + 硬件编码器失败自动降级。
 
@@ -649,7 +711,8 @@ def _encode_video_span(
         vcodec = _build_vcodec(False)
     try:
         return _encode_video_span_once(timeline_slice, upscaled, out_mp4,
-                                       vcodec, timeout_sec, plan_frames)
+                                       vcodec, timeout_sec, plan_frames,
+                                       transitions)
     except RuntimeError as e:
         if not _is_hw_vcodec(vcodec) or _HWENC_DISABLED:
             raise
@@ -666,7 +729,7 @@ def _encode_video_span(
               f"需重跑以获得统一编码器时请先清理 build/segments/。")
         Path(out_mp4).unlink(missing_ok=True)
         return _encode_video_span_once(timeline_slice, upscaled, out_mp4,
-                                       sw, timeout_sec, plan_frames)
+                                       sw, timeout_sec, plan_frames, transitions)
 
 
 def _probe_segment_frames(p: Path) -> int:
@@ -751,13 +814,31 @@ def _segments_of(timeline, max_sec: float) -> list:
     return segs
 
 
-def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
+def _ffmpeg_version() -> str:
+    """ffmpeg 版本串，进段指纹。
+
+    为什么必须进指纹：编解码器行为随 ffmpeg 版本变（默认封装、色彩空间转换、
+    码率控制的实现差异）。2026-09-26 本机 ffmpeg 从 8.x 换到 9.0.2，若指纹不含
+    版本，升级后重跑会**复用旧版本编的段** —— 同一成片里混着两种编码器输出，
+    而 verify 只数帧数，看不出来。v2 链路早就有这个字段（production_v2._render
+    的 runtime['ffmpeg']），legacy 这条路是漏的。
+    """
+    try:
+        out = subprocess.run(["ffmpeg", "-version"], capture_output=True, text=True,
+                             timeout=15)
+        return (out.stdout or out.stderr or "").splitlines()[0].strip()
+    except Exception:
+        return "unavailable"
+
+
+def _seg_params_fingerprint(timeline, vcodec, mode: str, segs,
+                            transition_frames: int = 0) -> str:
     """成片内容指纹（G 批）：一切「改了就该重编」的参数。
 
     断点续跑的跳过判据此前只有「段文件存在 + 帧数 == 预期」——只要改的东西
-    不改变帧数（字幕样式、grade 调色、cq/preset、编码器），所有段就全部命中
-    跳过，成片纹丝不动。最阴的一种：NVENC 中途降级 libx264 之后重跑，前 N 段
-    仍命中跳过 → 硬件段 + 软件段混合编码被永久固化。
+    不改变帧数（字幕样式、grade 调色、cq/preset、编码器、ffmpeg 版本），所有段
+    就全部命中跳过，成片纹丝不动。最阴的一种：NVENC 中途降级 libx264 之后重跑，
+    前 N 段仍命中跳过 → 硬件段 + 软件段混合编码被永久固化。
     """
     shots = []
     for sh, _s0, _s1 in timeline:
@@ -773,6 +854,8 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
         })
     payload = {
         "renderer_version": "legacy-render-v2",
+        "ffmpeg": _ffmpeg_version(),
+        "transition_frames": int(transition_frames or 0),
         "grade_values": __import__("app.services.motion",fromlist=["GRADE_MAP"]).GRADE_MAP,
         "mode": mode,                          # single / segmented
         "layout": [len(sl) for sl in segs],    # 短片与长片都写 seg-000，必须区分
@@ -787,17 +870,19 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs) -> str:
         .encode("utf-8")).hexdigest()[:16]
 
 
-def _sync_segment_params(seg_dir: Path, timeline, vcodec, mode: str, segs) -> None:
+def _sync_segment_params(seg_dir: Path, timeline, vcodec, mode: str, segs,
+                         transition_frames: int = 0) -> None:
     """参数指纹落盘；与上次不一致就作废所有旧段，强迫重编。
 
     指纹里必须含 vcodec：内容没变、只有编码器变了（NVENC 降级）时，若前 N 段
-    沿用旧段，成片就是硬件+软件混合编码。
+    沿用旧段，成片就是硬件+软件混合编码。ffmpeg 版本同理（换版本重跑不得复用
+    旧段）。transition_frames 也必须进：它改的是像素，改完还命中旧段就等于没改。
     """
-    fp = _seg_params_fingerprint(timeline, vcodec, mode, segs)
+    fp = _seg_params_fingerprint(timeline, vcodec, mode, segs, transition_frames)
     pf = seg_dir / "params.json"
     try: old=json.loads(pf.read_text(encoding="utf-8"))
     except (OSError,ValueError): old={}
-    segment_fps={f"seg-{i:03d}.mp4":_seg_params_fingerprint(sl,vcodec,"segment",[sl]) for i,sl in enumerate(segs)}
+    segment_fps={f"seg-{i:03d}.mp4":_seg_params_fingerprint(sl,vcodec,"segment",[sl],transition_frames) for i,sl in enumerate(segs)}
     if old.get("fp")==fp and old.get("segments")==segment_fps: return
     for p in seg_dir.glob("seg-*.mp4"):
         if old.get("mode")!=mode or old.get("segments",{}).get(p.name)!=segment_fps.get(p.name):
@@ -884,10 +969,35 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
         nxt = shots[i + 1] if i + 1 < len(shots) else None
         tail_of[sh.id] = TAIL_MS if (nxt is None or _group_of(nxt.frame_id) != _group_of(sh.frame_id)) else 0
 
+    # ---------- 1.05) 镜头时长一律以**磁盘 wav 的真实采样数**为准 ----------
+    # 旧实现用 json 的 frame.audio_duration_ms 算镜头长度，却把**真实 wav** 放到
+    # 音频轨（见下方 chunks 拼接）。两者一旦不同步（TTS 重跑后 json 过时、
+    # 手工换过 wav），每镜的差值会逐镜累积成音画漂移 —— 197 镜各差 20ms 就是
+    # 约 4s，而 _WAV_TOLERANCE_MS 允许单镜差到 120ms（累积上界 23.6s），
+    # verify 阶段又只数总帧数，压根看不出来。
+    #
+    # 现在反过来：**磁盘是时序的唯一真源**，json 值降级为「是否过时」的交叉
+    # 校验（_verify_audio_vs_disk，超容差即报错）。漂移因此不再是「被容差
+    # 限制的风险」，而是结构上不可能发生 —— 两边算的是同一个 wav。
+    # 代价是多读一遍 wav 头（197 次 open，纯 IO，毫秒级），换掉一整类静默故障。
+    disk_ms: dict[str, int] = {}
+    if ep.shots:
+        for sh in shots:
+            f = frames.get(sh.frame_id)
+            if not f or not f.audio_path:
+                raise RuntimeError(
+                    f"shot {sh.id} 的 frame {sh.frame_id} 无 audio_path，无法校验音频")
+            p = Path(f.audio_path)
+            if not p.exists():
+                raise RuntimeError(f"frame {f.id} 音频缺失: {f.audio_path}（需先跑 TTS）")
+            disk_ms[sh.id] = _disk_wav_duration_ms(p)
+        _verify_audio_vs_disk(shots, frames)
+
     timeline, t = [], 0
     for sh in shots:
-        f = frames[sh.frame_id]
-        a_dur = f.audio_duration_ms or 0
+        a_dur = disk_ms.get(sh.id)
+        if a_dur is None:                      # 无 shots 的空集路径，保持旧口径
+            a_dur = frames[sh.frame_id].audio_duration_ms or 0
         sh.audio_start_ms = head_of[sh.id]
         sh.duration_ms = sh.audio_start_ms + a_dur + tail_of[sh.id]
         sh.audio_end_ms = sh.audio_start_ms + a_dur
@@ -909,13 +1019,13 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     # ---------- 1.5) 合成前护栏（P0-3 修复：在【重算之后】跑门禁，而非用持久化值） ----------
     # 此前 gate 在重算前用 episode.json 里存的 shot 时长断言（自洽但可能过时），
     # 而合成用 frame.audio_duration_ms 重算 —— 若某 frame 漏合成(audio=0)，旧 gate 通过、
-    # 重算却出 ~250ms 闪镜静默绕门。现改为：先校验磁盘 wav 真实时长与 json 一致，
-    # 再对【重算后的内存 shot 值】跑 §5.4 门禁（此时 sh.* 已被本函数按真实音频回填，
-    # gate 看到的就是合成将用的口径）。任一失败 raise，绝不静默出片。
-    if ep.shots:
-        _verify_audio_vs_disk(shots, frames)
-        if run_timing_gate:
-            assert_timing_or_raise(ep)   # 重算后：失败即抛 TimingError，不出半成品
+    # 重算却出 ~250ms 闪镜静默绕门。现改为：对【重算后的内存 shot 值】跑 §5.4 门禁
+    # （此时 sh.* 已被本函数按真实音频回填，gate 看到的就是合成将用的口径）。
+    # 任一失败 raise，绝不静默出片。
+    # _verify_audio_vs_disk 已上移到 1.05（必须早于时序构造：它校验的正是时序
+    # 所依据的那个 wav），此处不再重复调用。
+    if ep.shots and run_timing_gate:
+        assert_timing_or_raise(ep)   # 重算后：失败即抛 TimingError，不出半成品
 
     # ---------- 2) 拼旁白 ----------
     # 采样率必须逐帧校验（整改 B3）：此前 `sr` 被循环里最后一次 _read_wav 的返回
@@ -924,6 +1034,7 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     # 变速/变调，而代码一行不报——靠「voice 统一转 16k」的约定才一直没出事。
     # 约定要变成断言：出错即停，而不是静默产出一部变了声的片子。
     chunks = []
+    promised_samples = 0
     for sh, s0, s1 in timeline:
         f = frames[sh.frame_id]
         data, sr = _read_wav(Path(f.audio_path))
@@ -932,15 +1043,44 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
                 f"{sh.frame_id} 的音频采样率 {sr}Hz ≠ 约定值 {NARRATION_SR}Hz"
                 f"（{f.audio_path}）：混采样率拼接会导致成片变速变调。"
                 f"请用 voice 的转码口径重新导出该段 wav。")
-        chunks.append(np.zeros(int(NARRATION_SR * sh.audio_start_ms / 1000),
-                               dtype=np.int16))
+        head_n = int(NARRATION_SR * sh.audio_start_ms / 1000)
+        tail_n = int(NARRATION_SR * tail_of[sh.id] / 1000)
+        # 本镜的「整毫秒取整残差」补进尾部静音。
+        #
+        # _disk_wav_duration_ms 把时长截断成整数毫秒（丢 <1ms = <16 采样），而音频
+        # chunk 用的是**精确**采样数。两者不补的话，每镜欠下最多 15 个采样，197 镜
+        # 累积约 800 采样（50ms）—— 表现为整片音画缓慢错开，且总量对不上。
+        # 补进本镜尾部后，下一镜的音频起点就精确落在视频期望的位置，误差不累积；
+        # 镜内残留 <1ms，听感不可闻。
+        a_ms = sh.duration_ms - sh.audio_start_ms - tail_of[sh.id]
+        residual = len(data) - (a_ms * NARRATION_SR // 1000)
+        chunks.append(np.zeros(head_n, dtype=np.int16))
         chunks.append(data)
-        chunks.append(np.zeros(int(NARRATION_SR * tail_of[sh.id] / 1000),
-                               dtype=np.int16))
+        chunks.append(np.zeros(tail_n + residual, dtype=np.int16))
+        promised_samples += head_n + len(data) + tail_n + residual
     nwav = build / "narration.wav"
+    narration = np.concatenate(chunks)
     with wave.open(str(nwav), "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(NARRATION_SR)
-        w.writeframes(np.concatenate(chunks).tobytes())
+        w.writeframes(narration.tobytes())
+
+    # ---------- 2.1) 音轨对位硬断言 ----------
+    # narration 的实际长度必须**精确等于**上面按镜累加出来的承诺值。不等就意味着
+    # 「视频按 A 算长度、音频按 B 摆位置」。allowed 是按镜累加的分量算的，所以
+    # 这里容差为 0 —— 任何偏差都是真 bug（某镜 wav 被改写、混了不同采样率、
+    # 或上面的残差补偿被改坏），而不是取整误差。
+    allowed = len(timeline)          # 每镜至多 1 采样的 float→int 抖动
+    drift = abs(len(narration) - promised_samples)
+    if drift > allowed:
+        raise RuntimeError(
+            f"旁白实际 {len(narration)} 采样 ≠ 逐镜累加承诺 {promised_samples} 采样"
+            f"（差 {drift} > 容差 {allowed}，{len(timeline)} 镜）。"
+            f"音画会整体错位，拒绝出片。\n"
+            f"  常见原因：某镜 wav 在读取期间被改写、混入了不同采样率的片段，"
+            f"或尾部残差补偿被改坏。")
+    if drift:
+        print(f"  [compose] 音轨对位残差 {drift} 采样（{drift/NARRATION_SR*1000:.1f}ms，"
+              f"容差 {allowed}）—— 整毫秒取整所致，不累积")
 
     # ---------- 2.5) 混入 BGM（Task #29；assets/bgm/{profile}.mp3 存在才生效） ----------
     # 约定路径，无文件则优雅跳过（保持纯旁白成片）。bgm.volume / fade_out_sec 来自 config。
@@ -1015,17 +1155,28 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     else:
         segs, mode = _segments_of(timeline, _compose_cfg.segment_max_sec), "segmented"
 
+    # 换图处的黑场过渡。只改亮度、不加帧/不加采样，所以总帧数与音频时钟不变 ——
+    # 分段边界、断点续跑、expected_frames、verify 全部不受影响。
+    # 必须排在 _sync_segment_params 之前：过渡帧数进了段指纹。
+    _fade = int(getattr(_compose_cfg, "image_transition_frames", 0) or 0)
+    _trans = _image_transitions(
+        timeline, {sh.id: expected_frames([(sh, 0, 0)]) for sh, _, _ in timeline}, _fade)
+
     seg_dir = build / "segments"
     seg_dir.mkdir(parents=True, exist_ok=True)
-    _sync_segment_params(seg_dir, timeline, vcodec, mode, segs)
+    _sync_segment_params(seg_dir, timeline, vcodec, mode, segs, _fade)
+
+    if _trans:
+        print(f"  [compose] 换图黑场过渡：{len(_trans)} 镜首尾淡入淡出（各 ≤{_fade} 帧，"
+              f"不加帧不动音频）")
 
     if mode == "single":
         # 短片：单段直出（纯视频无音轨），再统一 mux 音轨。
         # 保持历史可读性且不回归：产物等价（video+h264 + audio+aac +faststart）。
         vid = seg_dir / "seg-000.mp4"
         if not (vid.exists() and _probe_segment_frames(vid) == n_total_all):
-            _encode_video_span(timeline, upscaled, vid, vcodec, _timeout,
-                               plan_frames=plan_frames)
+                _encode_video_span(timeline, upscaled, vid, vcodec, _timeout,
+                                   plan_frames=plan_frames, transitions=_trans)
         _mux_full_audio(vid, final)
     else:
         # 长片：按镜头边界逐段编码（可断点续跑），concat copy + 一次混音
@@ -1050,7 +1201,7 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
             if not skip:
                 print(f"  [compose] 渲染段 {i+1}/{len(segs)} ({len(sl)} 镜, {exp} 帧)")
                 _encode_video_span(sl, upscaled, p, vcodec, _timeout,
-                                   plan_frames=plan_frames)
+                                   plan_frames=plan_frames, transitions=_trans)
                 rendered_any = True
             seg_paths.append(p)
         # concat 无音轨视频
