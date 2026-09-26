@@ -110,6 +110,19 @@ python -m venv <hv-venv>
 - **配置=运行事实**：upscale 实际 `pil_lanczos`（config 声明一致）；I2V/RealESRGAN 未实现
   已标注为 disabled / 占位，不虚报已启用。2026-09-05 复查删掉了三处零消费者的死配置段
   （`aligner` / 顶层 `motion` / `profile.rhythm`），规格常量收口在 `app/services/spec.py`。
+- **时序以磁盘 wav 为唯一真源**（2026-09-26）：镜头长度按磁盘 wav 的真实采样数算，
+  json 的 `frame.audio_duration_ms` 降级为「是否过时」的交叉校验（超
+  `_WAV_TOLERANCE_MS=120ms` 即报错）。此前按 json 值算镜头长度、却把真实 wav 摆到
+  音频轨，两者不同步时误差逐镜累积成音画整体漂移（上界 23.6s），而 verify 只数总帧数、
+  根本看不出来。现在两边算的是同一个 wav，漂移结构上不可能发生；拼完旁白另有
+  「实际采样数 == 时间轴承诺采样数」硬断言。
+- **换图黑场过渡**（`compose.image_transition_frames`，默认 6 帧 ≈ 0.24s）：只在
+  **底图真的变了**的镜头首尾生效，在**既有帧内调亮度** —— 不加帧、不动音频，所以
+  总帧数与音画对位一字不变，段划分/断点续跑/verify 全不受影响。同一底图的相邻镜头
+  **不会**加黑场（那是连续运镜，插黑等于人为制造剪辑）。设 0 即回到纯硬切。
+- **段参数指纹**含 vcodec、**ffmpeg 版本**、过渡帧数、字幕样式、grade 表与每镜完整
+  motion spec：任一改动都会作废旧段强迫重编。ffmpeg 版本曾在 legacy 路径缺席 ——
+  升级 ffmpeg 后重跑会复用旧版本编的段，成片混着两种编码器输出而 verify 察觉不到。
 
 ## 剧本→分镜（scene_plan 规格）
 
@@ -132,10 +145,24 @@ python -m venv <hv-venv>
 }
 ```
 
-引擎自动派生：同底图首镜 zoom=1.0、后续走 config zoom 阶梯；运镜 push/drift/pull/pan
-轮换（禁连续同型）；grade 按 scene.grades 循环；呼吸段（head 100ms + tail 150ms）预扣。
-**护栏**：空洞帧 / 重复覆盖 / 越界 / 缺图 / 非法 grade 一律拒绝，绝不产出错位 shots。
+引擎自动派生（2026-09-26 起，见 `docs/镜头衔接诊断_2026-09-26.md`）：
+**同一 scene 内的镜头串成一条连续轨迹** —— 后一镜的 `start_zoom`/`start_xy` 直接接
+前一镜的**渲染落点**（落点必须问 `motion.resolve_motion` 要：legacy 口径下 spec 里写的
+`end_zoom` 并不等于渲染落点，`resolve_motion` 会用 `type + start_zoom` 乘自己的公式重算）。
+横向往复、zoom 在 `[1.0, scene 上限]` 内往复；**只有换图（真实剪辑）才归位**。
+运镜类型 push/drift/pull/pan 轮换（禁连续同型），且 `push` 不越 scene 上限、`pull`
+不在 `z==1.0` 处选（否则整镜静止）；grade 按 scene.grades 循环；呼吸段
+（head 100ms + tail 150ms）预扣。
+轨迹用新的几何版本 `explicit_traj_v1` 显式写出：裁切几何仍与 legacy 逐位相同
+（`scale=1.0`），只有「轨迹由公式决定」改为「由 spec 决定」，所以构图不变。
+**护栏**：空洞帧 / 重复覆盖 / 越界 / 缺图 / 非法 grade 一律拒绝；装配完再硬校验
+`_continuity_breaks` —— 同底图相邻镜头的渲染落点不相接即 `SystemExit` 拒绝落盘。
 样例见 `episodes/hanwu-feature/scene_plan.json`（与手写 ch1 逐帧一致，0 mismatch）。
+
+已交付集的历史运镜口径**冻结**在 `motion.legacy_motion`，`bin/hanwu_ch1_shots.py` 与
+`bin/hanwu_ch3_shots.py` 原先各存一份逐字节相同的副本，已收编为那唯一一份（行为逐位
+不变）。`bin/m2_shots.py` 有自己的额外逻辑（方向交替 + 高倍镜位 pan 降级 drift），
+不在这套口径内。**新片一律用 `episode shots`**，不要新增 shots 脚本。
 
 ## 验收基线（tests/）
 
