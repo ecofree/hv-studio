@@ -27,9 +27,15 @@ NEW = "gpt-image-2.5"
 FLARE = NEW + "-flare"
 SUN = NEW + "-sunburst"
 
+CONFIG_PATH = Path(__file__).parents[1] / "app/config/config.yaml"
+
+
+def raw_config():
+    return yaml.safe_load(CONFIG_PATH.read_text("utf-8"))
+
 
 def configured():
-    raw = yaml.safe_load((Path(__file__).parents[1] / "app/config/config.yaml").read_text("utf-8"))
+    raw = raw_config()
     return configured_channels({f"{name}_{BASE}": "sk-offline" for name in
                                 ("cxk", "aicost", "qcyc")}, raw["image_channels"])
 
@@ -58,11 +64,61 @@ def job(tmp_path, name, model=FLARE):
     return m.ImageJob(name, ImageGenRequest(model=model, prompt=name), tmp_path / f"{name}.png")
 
 
-@pytest.mark.parametrize("model,names", [(BASE, {"cxk"}), (NEW, {"cxk"}),
-                                        (FLARE, {"cxk"}), (SUN, {"cxk"})])
-def test_configured_support_matrix(model, names):
-    assert {c.name for c in configured() if c.supports(model)} == names
-    assert all(c.max_concurrency == 1 for c in configured())
+def test_supports_matches_the_models_listed_in_config():
+    """supports() 必须与 config 声明的 models 列表逐条一致。
+
+    这条是本测试组的核心不变量。**不要**把支持矩阵硬编码成一份副本来断言：
+    config 里并发数、渠道启停、模型清单都是按实测数据合法变动的（2026-09-26
+    就把 cxk 1→2、qcyc 1→3 并调整了模型清单），副本式断言只会在每次合法改动
+    后变红，逼人要么改代码要么改测试——最后往往是改测试，等于什么都没验。
+    改为断言「Channel.supports 的判定 == config.models」，这样：
+      - config 与 supports() 实现漂移会被抓住；
+      - 合法配置改动不会让测试变红。
+    """
+    channels, routes = configured(), {r["name"]: r for r in raw_config()["image_channels"]}
+    assert channels, "没有任何渠道通过校验"
+    for c in channels:
+        declared = routes[c.name].get("models") or [routes[c.name].get("model")]
+        for model in declared:
+            assert c.supports(model), f"{c.name}.supports({model}) 与 config.models 不符"
+        for model in {BASE, NEW, FLARE, SUN}:
+            expected = c.enabled and model in declared
+            assert c.supports(model) is expected, (
+                f"{c.name} 对 {model} 的判定是 {c.supports(model)}，"
+                f"但 config（enabled={c.enabled}, models={declared}）推出的是 {expected}")
+
+
+def test_disabled_channel_supports_nothing():
+    off = [c for c in configured() if not c.enabled]
+    for c in off:
+        for model in (BASE, NEW, FLARE, SUN):
+            assert not c.supports(model), f"已停用的 {c.name} 仍声称支持 {model}"
+
+
+def test_primary_engine_has_at_least_one_routable_channel():
+    """默认引擎必须至少有一个可用渠道。
+
+    这正是 2026-09-26 踩到的生产故障：cxk 的 models 里加了新变体却漏了另一条
+    线路的登记，生图时直接报「无可用渠道支持模型」。故障在配置里，不在代码里，
+    所以验收必须有这条兜底。
+    """
+    primary = raw_config()["image"]["primary"]["engine"]
+    assert any(c.supports(primary) for c in configured()), (
+        f"image.primary.engine={primary!r} 没有任何启用的渠道支持 —— "
+        f"生图一定会在派活时失败")
+
+
+def test_concurrency_is_applied_and_within_declared_bounds():
+    """.env 的 key 齐备时，config 的 max_concurrency 必须真的生效。
+
+    配置写了并发却没被读进去，等于单渠道串行 —— 表现为生图慢一倍但没有任何报错，
+    是那种只能靠肉眼发现的退化。取值范围由 ChannelRoute 的 ge/le 约束另行保证。
+    """
+    routes = {r["name"]: r for r in raw_config()["image_channels"]}
+    for c in configured():
+        assert c.max_concurrency == routes[c.name].get("max_concurrency", 1)
+        assert 1 <= c.max_concurrency <= 16
+
 
 
 def test_missing_keys_fail_closed_and_duplicate_rejected():

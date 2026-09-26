@@ -24,7 +24,8 @@ def production_episode(tmp_path, tmp_episodes, monkeypatch):
     ep = Episode(id="entry-audit", title="Audit", episode_number=1)
     save(ep)
     directory=tmp_episodes/ep.id; directory.mkdir(exist_ok=True)
-    (directory/'script.md').write_text('**李世民率军出征。**\n\n> 兵贵神速。\n\n普通正文。',encoding='utf-8')
+    (directory/'script.md').write_text(
+        '> 作品类型：历史解说\n\n**李世民率军出征。**\n\n普通正文。',encoding='utf-8')
     cache=tmp_path/'voice-cache.json'
     atomic_json(cache,{'voice_id':'cosyvoice-fixture','model':'cosyvoice-v3.5-flash'})
     asset=tmp_path/'voice.json'; N.import_voice(cache,asset)
@@ -41,7 +42,10 @@ def test_public_prepare_preserves_source_without_migrating_old_frames(production
     before=episode_path(ep.id).read_bytes()
     r=produce(ep.id,stages=['script'])
     assert r['run_ok'] and r['pipeline_version']=='production_v2'
-    assert [u['source_text'] for u in N.read(r['plan_path'])['units']]==['李世民率军出征。','兵贵神速。','普通正文。']
+    # 只有正文进 narration。头部引用块是「给人看的」元数据（`作品类型：…`），
+    # 按约定与 script.strip_script_markdown 口径一致地整行排除 —— 见
+    # test_quote_looking_like_narration_is_flagged_not_silently_dropped。
+    assert [u['source_text'] for u in N.read(r['plan_path'])['units']]==['李世民率军出征。','普通正文。']
     assert episode_path(ep.id).read_bytes()==before
     assert not r['approved']
 
@@ -80,11 +84,14 @@ def test_v2_tts_reuses_exact_master_and_never_falls_back(production_episode,monk
         'audio_sha256':file_sha256(audio),'expected_sha256':fingerprint(text)})
     monkeypatch.setattr(voice,'_one_edge',lambda *a:pytest.fail('no voice fallback'))
     ep,directory,_=production_episode
+    # 2 个旁白单元（头部引用块是元数据，不产生 TTS 调用）→ 恰好 2 次供应商调用。
+    # 断言精确次数是本测试的重点：多一次就意味着发生了 fallback 或重复合成。
+    expected_units=2
     first=produce(ep.id,stages=['tts'],max_requests=3,max_characters=100)
-    assert first['run_ok'] and len(calls)==3 and first['technical_quality']=='pending'
+    assert first['run_ok'] and len(calls)==expected_units and first['technical_quality']=='pending'
     manifest=N.read(directory/'production/v2/run.json')['manifest_path']
     again=produce(ep.id,stages=['tts'])
-    assert again['run_ok'] and len(calls)==3
+    assert again['run_ok'] and len(calls)==expected_units
     assert N.read(directory/'production/v2/run.json')['manifest_path']==manifest
     compose=produce(ep.id,stages=['compose'])
     assert compose['status']=='BLOCKED' and 'timeline' in compose['error']

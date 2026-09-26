@@ -56,15 +56,50 @@ def test_document_preserves_source_and_delivery():
     source='# 标题\n\n**整句正文！**\n\n> 天下太平？\n\n【语气：克制】行军3.5里。[停顿0.5秒]随后[停顿1.5秒]继续。\n\nHello world\nagain.\n\n> 作者：测试\n'
     d=parse_document(source)
     text=''.join(u['source_text'] for u in d['units'])
-    assert '整句正文！' in text and '天下太平？' in text and '3.5里' in text
+    # 引用块按约定是「给人看的」头部元数据，两个解析器都整行排除（见
+    # script_document 的 quote 分支与 script.strip_script_markdown）。
+    # 所以 `> 天下太平？` 不该出现在旁白里 —— 它是被**记录下来**地排除，
+    # 不是消失：下面的 accounting 不变式正是校验这一点。
+    assert '整句正文！' in text and '3.5里' in text
+    assert '天下太平' not in text and '作者' not in text and '停顿' not in text
     assert 'Hello world again.' in text
-    assert '作者' not in text and '停顿' not in text
     assert [c['pause_seconds'] for c in d['delivery_cues'] if c['intent']=='pause']==[.5,1.5]
     for b in d['blocks']:
         assert source[b['start']:b['end']]==b['raw_text']
         explained=set(b['source_map'])
         for e in b['excluded']:explained.update(range(e['start'],e['end']))
         assert explained==set(range(b['start'],b['end']))
+
+
+def test_quote_looking_like_narration_is_flagged_not_silently_dropped():
+    """看着像正文的引用块必须 review_required —— 防止漏排的旁白被默默吃掉。
+
+    `>` 整行排除是既定约定（两个解析器口径一致），但它意味着「作者把旁白写进
+    引用块」这类手误会**静默**丢失：不进 TTS、不烧字幕、不报错。所以要分三档：
+
+      > 作者：测试          命中 _META 白名单      -> metadata，不报警
+      > 核心命题：…         标签：值 形状，非白名单  -> quote，不报警（2026-09-24 事故形态）
+      > 这段像是漏排的旁白。  既非白名单也无标签：值  -> quote + review_required
+    """
+    from app.services.script_document import parse_document
+    d=parse_document('正文一。\n\n> 作者：测试\n\n> 核心命题：守成的代价\n\n> 这段像是漏排的旁白。\n')
+    by_text={b['raw_text'].strip():b for b in d['blocks']}
+
+    labelled=by_text['> 作者：测试']
+    assert labelled['kind']=='metadata', '白名单命中的引用块应直接归为 metadata'
+    assert 'review_required' not in labelled
+
+    shaped=by_text['> 核心命题：守成的代价']
+    assert shaped['kind']=='quote', '「标签：值」形状的元数据仍归 quote（与旧稿头部一致）'
+    assert 'review_required' not in shaped, '「标签：值」是头部元数据的可靠结构，不该报警'
+
+    prose=by_text['> 这段像是漏排的旁白。']
+    assert prose['kind']=='quote'
+    assert prose.get('review_required') is True, '旁白样引用块必须标记待审'
+    assert prose['excluded'] and not prose['source_map']
+    # 三者都被记录下来地排除，accounting 不变式成立
+    text=''.join(u['source_text'] for u in d['units'])
+    assert text=='正文一。', f'旁白里不该出现任何引用块内容：{text!r}'
 
 
 def test_table_uses_same_body_contract():

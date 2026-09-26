@@ -8,6 +8,10 @@ import re
 from app.services.provenance import fingerprint
 
 _META = re.compile(r"^(?:作品类型|预估时长|时长预估|核心切口|格式规范|标题|作者|版本|目标时长)\s*[：:]")
+# 元数据行的通用形状：`标签：值`。比 _META 的硬编码白名单宽得多 —— 白名单依赖
+# 作者恰好用了那几种措辞，本集就因为「新稿写的是『核心命题』而没命中」踩过坑
+# （见下方 quote 分支的长注释）。`标签：值` 是这类头部块的稳定结构。
+_META_LABEL = re.compile(r"^[^：:]{1,12}\s*[：:]")
 _CUE = re.compile(r"【[^】]*】|[\[［](?:停顿|重音|语气|叹息|音效|画面|转场)[^\]］]*[\]］]")
 _PAUSE = re.compile(r"停顿\s*(\d+(?:\.\d+)?)\s*秒")
 
@@ -71,6 +75,14 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
             block["kind"] = "metadata"
         elif stripped.startswith(">"):
             block["kind"] = "quote"
+            # 引用块按约定是「给人看的」头部元数据，本函数与
+            # script.strip_script_markdown（MD_QUOTE 整行删除）口径一致，都排除。
+            # 但若作者把旁白写进了引用块，它会**静默**丢掉：不进 TTS、不烧字幕、
+            # 也不报错。_META 白名单识别元数据本就脆弱，所以这里不猜 —— 凡是
+            # 不具备「标签：值」形状的引用块一律标记 review_required，交给人判断
+            # 它到底是元数据还是被漏排的旁白。宁可多问一次，不要默默吃掉一段文案。
+            if not (_META.match(clean_label) or _META_LABEL.match(clean_label)):
+                block["review_required"] = True
         # ⚠️ quote 必须与 heading/metadata 同等排除（2026-09-24 实测事故）：
         #    markdown 引用块（> …）是「给人看的」头部元数据 —— 作品类型 / 预估时长 /
         #    核心命题 / 格式规范，既不该送 TTS、也不该烧字幕。此前 quote 分支只
