@@ -152,8 +152,13 @@ image_channels:
   - name: cxk
     key_env: cxk_gpt-image-2
     enabled: true
-    max_concurrency: 1
-    models: [gpt-image-2, gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+    # 并发 1→2（2026-09-26 实测：成功率 59%，提升并发可摊薄单张失败重试的等待）
+    max_concurrency: 2
+    # 2026-09-26 GET /v1/models 实测 7 个（此前只配了 4 个，导致
+    # gemini-3.1-flash-image 报「无可用渠道支持模型」= 配置漏登记）
+    #   gemini-3-pro-image-preview / gemini-3.1-flash-image / grok-imagine-image 为新增
+    models: [gpt-image-2, gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst,
+             gemini-3-pro-image-preview, gemini-3.1-flash-image, grok-imagine-image]
   - name: aicost
     key_env: aicost_gpt-image-2
     enabled: false
@@ -177,8 +182,10 @@ image_channels:
     #      同日 15:0x 首次探测该 key 返回 0 个模型，15:22 复测返回 2 个
     #      —— 服务端能力会随时变化，**每次启用前都要当场核对**。
     enabled: true
-    max_concurrency: 1
-    models: [gpt-image-2, gpt-image-2.5-sunburst]
+    # 并发 1→3（2026-09-26 实测成功率 94%，远优于 cxk 的 59%）
+    max_concurrency: 3
+    # ⚠️ 2026-09-26 复测：该 key 只剩 gpt-image-2（2.5-sunburst 已从服务端消失）
+    models: [gpt-image-2]
 
 image:
   primary:
