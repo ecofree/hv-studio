@@ -12,6 +12,14 @@
 - Default acceptance runs only the `production` test group. For component changes,
   run the affected files with `-m shared` or `-m legacy` as appropriate. Run all
   groups only when cross-cutting changes or a concrete failure justify it.
+- `ffmpeg`/`ffprobe` are resolved from `PATH`, not from the repo. Put
+  `tools/ffmpeg/bin` on `PATH` before running `NEEDS_FFMPEG` tests or
+  `bin/check_project.py`. A bare `pytest` otherwise reports ~12
+  `FileNotFoundError: ffmpeg` failures that read as regressions but are only a
+  missing `PATH` entry — check this before believing a red suite. Invoking
+  `scripts/ai-project-check.ps1` through `powershell -File` also needs an explicit
+  `-ProjectRoot`; `$PSScriptRoot` is empty in that mode and the script's default
+  fails at parameter binding.
 - Do not pin current engine/backend settings globally in test fixtures or use
   total passing-test counts as production readiness evidence.
 - Never emit Base64 or image data URLs. Inspect batches via contact sheets and
