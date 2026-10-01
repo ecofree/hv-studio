@@ -256,7 +256,12 @@ class ImageGenerator:
                 url,
                 headers={**ch.auth_header, "Content-Type": "application/json"},
                 json=body,
-                timeout=300,
+                # connect/read 分开给：connect 卡住时 read 的长超时救不了
+                # （2026-09-29 实测供应商 503 之后连接既不返回也不报错，整批
+                #  15 分钟零输出；单一 300s 让一个挂死连接占住 worker 线程，
+                #  拖住同批所有任务）。超时值可由环境变量收窄，便于按供应商调。
+                timeout=(float(env_get("HV_IMAGE_CONNECT_TIMEOUT", "20")),
+                         float(env_get("HV_IMAGE_READ_TIMEOUT", "180"))),
             )
         except Exception as e:
             # 网络层异常：requests 的 Timeout/ConnectionError 基本都可重试。

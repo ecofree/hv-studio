@@ -16,6 +16,16 @@ def inputs(ep_id):
     files = [folder/'scene_plan.json', folder/'image_prompts.json']
     if any(not p.is_file() for p in files):
         raise ValueError('explicit storyboard and image prompts required before unattended generation')
+    # 外部音频集把音轨绑定一并纳入指纹：换文件、改帧序、动切分都会让已记录的
+    # 审批立刻失效。v2 的 per-unit TTS 管线本就有 sha256 绑定，legacy/外部
+    # 音频此前只有 Path(...).exists()（2026-09-29 实测缺口）。
+    binding = folder/'production/external-audio-binding.json'
+    if binding.is_file():
+        from app.services.external_audio import verify_binding
+        chk = verify_binding(load(ep_id))
+        if not chk['ok']:
+            raise ValueError('external audio binding invalid: ' + '; '.join(chk['fails']))
+        files.append(binding)
     jobs = build_image_jobs(ep_id, strict=True)
     from app.services.existing_images import include_registered
     jobs = include_registered(ep_id,jobs)
@@ -65,11 +75,26 @@ def record_approval(ep_id, reviewer, finding, direction_policy=None, *, expected
     value = inputs(ep_id)
     if expected_fingerprint is not None and expected_fingerprint!=fingerprint(value):
         raise ValueError('review inputs changed; reload and review the current material')
+    # Output binding: bind the approval to the exact bytes of the delivered mp4.
+    # Without it, re-rendering or swapping the file keeps eligible=true -- the
+    # approval only described the inputs. v2 has the same guarantee on its
+    # published pointer; legacy-preview had none (2026-09-29).
+    from app.services import output_binding
+    output = None
+    try:
+        output = output_binding.bind(ep_id)
+    except (FileNotFoundError, OSError):
+        # A candidate can be approved before it is composed. The output binding
+        # is then established at the next approval; do not fabricate one.
+        pass
     # Input approval never converts unsupported direction into implemented work.
     path = episode_dir(ep_id)/'production/input-approval.json'
     atomic_json(path, dict(input_fingerprint=fingerprint(value), reviewer=reviewer.strip(),
                            direction_policy=direction_policy,
                            direction_plan=[dict(cue_id=c,action='candidate_review_required') for c in value['unsupported_cues']] if direction_policy else [],
+                           output_sha256=(output or {}).get('sha256'),
+                           output_path=(output or {}).get('path'),
+                           output_frames=(output or {}).get('frames'),
                            finding=finding.strip(), decision='approved_inputs', reviewed_at=time.time()))
     return path
 
@@ -85,7 +110,7 @@ def check(ep_id):
         if not approved_inputs:
             blockers.append('source facts and explicit storyboard require current input approval')
         if value['unsupported_cues']:
-            state_path = episode_dir(ep_id)/'production/v2/run.json'
+            state_path = episode_dir(ep_id) / 'production/v2/run.json'
             state = read(state_path) if state_path.exists() else {}
             from app.services.delivery import pending
             planned = (approved_inputs and review.get('direction_policy')=='candidate_review_required'
@@ -93,6 +118,15 @@ def check(ep_id):
             if not planned and (state.get('source_sha256') != value['source_sha256'] or not state.get('manifest_path')
                     or pending(state['manifest_path'])):
                 blockers.append('artistic directions require an explicit input execution plan or current content disposition')
+        # The approval must describe the bytes that were reviewed. If the mp4 was
+        # replaced or re-rendered afterwards, the review no longer applies.
+        bound = review.get('output_sha256')
+        if bound:
+            from app.services import output_binding
+            chk = output_binding.verify(ep_id)
+            if not chk['ok']:
+                blockers.append('delivered video no longer matches the approved bytes: '
+                                + '; '.join(chk['fails']))
         state_path = episode_dir(ep_id)/'production/v2/run.json'
         if state_path.exists():
             state = read(state_path)

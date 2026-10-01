@@ -346,8 +346,9 @@ def _draw_subtitle(img: Image.Image, text: str) -> None:
 
 
 def _group_of(frame_id: str) -> str:
-    parts = frame_id.split("-")
-    return parts[1] if len(parts) > 1 else frame_id
+    """帧所属「源句子组」。单一真源在 spec.group_of（见该函数说明）。"""
+    from app.services.spec import group_of
+    return group_of(frame_id)
 
 
 def _read_wav(p: Path):

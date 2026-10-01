@@ -1,5 +1,6 @@
 """
 命令行入口。提供子命令：
+  status   [id]                  查看进度和下一步
   episode  init/show/produce/reshot/shots/checkpoint/audit-wav
            run = 已废弃（2026-09-05 双轨编排器删除，仅打印指路提示后 exit 1）
   relay    status/sync/pick
@@ -71,9 +72,14 @@ def cmd_episode(args):
         options = dict(max_requests=args.max_requests, max_characters=args.max_characters,
                        max_images=args.max_images, timeline=args.timeline, timeout=args.timeout, budget_id=args.budget_id)
         if args.pipeline == "legacy-preview":
+            # ⚠️ 这里原来**整份替换** options，max_images/budget_id 被静默丢弃 ——
+            #   后果是 legacy 路径拿不到生图预算，CLI 参数形同虚设（同坑 #38：
+            #   --merge-short 当年也是这样失效的）。改为只覆盖 tts 相关项。
             options = dict(tts_fallback=args.allow_edge_fallback and not args.no_fallback,
                            merge_short=args.merge_short, tts_granularity=args.tts_granularity,
-                           tts_group_chars=args.tts_group_chars, tts_workers=args.tts_workers)
+                           tts_group_chars=args.tts_group_chars, tts_workers=args.tts_workers,
+                           max_images=args.max_images, budget_id=args.budget_id,
+                           image_only=(set(args.image_key) if args.image_key else None))
         elif args.allow_edge_fallback:
             raise SystemExit("v2 production never changes the voice engine")
         res = produce(args.episode_id, stages=args.stage or None, pipeline=args.pipeline, **options)
@@ -170,11 +176,33 @@ def cmd_reuse_images(args):
 
 
 def cmd_gc(args):
-    """清理 state/ 下超过 N 天的测试临时目录（_bt_* / .tmp/bt-*）。"""
+    """清理 state/ 下超过 N 天的测试临时目录（_bt_* / .tmp/bt-*）。默认只列出。"""
     from app.services.hv_ops import gc_state
-    r = gc_state(older_than_days=args.older_than, dry_run=args.dry_run)
+    if args.apply and args.dry_run:
+        raise SystemExit("error: --apply 和 --dry-run 只能选一个")
+    dry_run = not args.apply
+    r = gc_state(older_than_days=args.older_than, dry_run=dry_run)
     print(f"  删除 {r['removed']} 个目录（保留近期 {r['skipped_recent']} 个），"
-          f"释放 {r['human']}{'（dry-run）' if args.dry_run else ''}")
+          f"释放 {r['human']}{'（dry-run）' if dry_run else ''}")
+    if dry_run:
+        print("  确认后加 --apply 才会删除。")
+
+
+def cmd_status(args):
+    """打印每集当前进度；指定一集时给出一条下一步命令。"""
+    from app.services.operator_flow import advise, format_detail, format_list, list_rows, operator_status
+
+    if not args.episode:
+        rows, hidden = list_rows(include_smoke=args.smoke)
+        print(format_list(rows, hidden))
+        return
+    from app.paths import validate_episode_id
+    try:
+        episode_id = validate_episode_id(args.episode)
+    except ValueError as exc:
+        raise SystemExit(f"error: {exc}") from exc
+    status, script_exists = operator_status(episode_id)
+    print(format_detail(episode_id, advise(episode_id, status, script_exists=script_exists)))
 
 
 def cmd_batch(args):
@@ -437,6 +465,9 @@ def main():
     p.add_argument("--max-requests", type=int, default=0, help="本轮最多新增 TTS 请求，默认 0")
     p.add_argument("--max-characters", type=int, default=0)
     p.add_argument("--max-images", type=int, default=0, help="实际图片调用上限，包含失败、重试，默认 0")
+    p.add_argument("--image-key", action="append", default=None,
+                   help="只生成这些 image key（可重复）。补单张图时用，"
+                        "避免把其余缺图一起拉进来抢预算")
     p.add_argument("--budget-id", default=None, help="显式新授权的预算标识；续跑复用同一标识")
     p.add_argument("--timeline", default=None, help="v2 样本时间轴 JSON")
     p.add_argument("--timeout", type=int, default=300)
@@ -512,10 +543,16 @@ def main():
     p.add_argument('episode');p.set_defaults(func=cmd_reuse_images)
 
     # gc：state/ 临时目录清理
-    p = sub.add_parser("gc", help="清理 state/ 测试临时目录（默认 dry-run）")
+    p = sub.add_parser("gc", help="清理 state/ 测试临时目录（默认只列出，--apply 才删除）")
     p.add_argument("--older-than", type=int, default=7, help="天数，默认 7")
-    p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--apply", action="store_true", help="实际删除超期测试目录")
+    p.add_argument("--dry-run", action="store_true", help="只列出，不删除（默认行为）")
     p.set_defaults(func=cmd_gc)
+
+    p = sub.add_parser("status", help="查看每集进度和下一步命令")
+    p.add_argument("episode", nargs="?", default=None, help="剧集 id；省略则列出全部正式剧集")
+    p.add_argument("--smoke", action="store_true", help="连 smoke- 试跑残留一起列出")
+    p.set_defaults(func=cmd_status)
 
     # smoke：端到端冒烟
     p = sub.add_parser("batch", help="批量生产多集（失败隔离+断点续跑）")

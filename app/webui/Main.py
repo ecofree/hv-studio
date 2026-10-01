@@ -24,19 +24,30 @@ st.title("hv — 历史解说短视频流水线")
 st.caption("查看当前生产进度、候选成片和待处理问题")
 
 from app import paths
-from app.services.production_status import get_status
+from app.services.operator_flow import advise, explain_blocker, operator_status, split_ids
 from app.services.narration_pipeline import read
-episode_ids = sorted(p.stem for p in paths.episodes_dir().glob('*.json'))
+all_ids = sorted(p.stem for p in paths.episodes_dir().glob('*.json'))
+real_ids, smoke_ids = split_ids(all_ids)
+show_smoke = st.checkbox(f'显示 {len(smoke_ids)} 个冒烟残留', value=False) if smoke_ids else False
+episode_ids = (real_ids + smoke_ids) if show_smoke else (real_ids or smoke_ids)
 if episode_ids:
     selected = st.selectbox('选择剧集', episode_ids)
-    current = get_status(selected)
-    labels = {'NOT_STARTED':'尚未开始', 'RUNNING':'生产中', 'INTERRUPTED':'生产中断，可续跑',
-              'BLOCKED':'需要处理问题', 'STALE':'输入已变化，需要更新候选', 'CANDIDATE':'候选片待审核',
-              'STAGES_COMPLETE':'本次阶段已完成'}
-    st.subheader(labels.get(current['status'], current['status']))
+    current, script_ready = operator_status(selected)
+    advice = advise(selected, current, script_exists=script_ready)
+    st.subheader(advice['label'])
+    st.info(advice['headline'])
+    if advice.get('command'):
+        st.caption('下一步')
+        st.code(advice['command'], language='text')
+    for note in advice.get('notes') or []:
+        st.write(note)
     if current.get('blockers'):
         with st.expander('当前阻断与待处理事项', expanded=True):
-            for blocker in current['blockers']: st.write('• '+blocker)
+            for blocker in current['blockers']:
+                text = explain_blocker(blocker)
+                st.write('• ' + text)
+                if text != blocker:
+                    st.caption(blocker)
     if current.get('stages_done'): st.caption('已完成：'+' → '.join(current['stages_done']))
     if current.get('candidate_path'): st.video(current['candidate_path'])
     if current.get('quality_report_path'):
@@ -187,48 +198,37 @@ if retryable:
 s = get_settings()
 r = get_relay()
 
-# ---- 渠道健康（ok_rate 真实成功率；err_rate = 1 - ok_rate） ----
-st.subheader("subrouter 渠道池")
-snap = r.snapshot()
-if not snap:
-    st.warning("无可生图渠道（.env 未配或未同步）")
-else:
-    cols = st.columns(len(snap))
-    for col, (name, h) in zip(cols, snap.items()):
-        ok_rate = h.get("ok_rate", 1.0)
-        err_rate = 1 - ok_rate
-        with col:
-            st.metric(
-                name,
-                f"{h['score']:.0f}",
-                delta=f"err {err_rate*100:.0f}%" if h.get("n_history", 0) else "无历史",
-                delta_color="inverse",  # err 越低越好
-            )
-            st.caption(f"ok {ok_rate*100:.0f}% · {h['n_history']} 次 · "
-                       f"quota ${h['last_quota_usd'] or '—'}")
+with st.expander("生图渠道、图像参数和多音字"):
+    snap = r.snapshot()
+    if not snap:
+        st.warning("无可生图渠道（.env 未配或未同步）")
+    else:
+        cols = st.columns(len(snap))
+        for col, (name, h) in zip(cols, snap.items()):
+            ok_rate = h.get("ok_rate", 1.0)
+            err_rate = 1 - ok_rate
+            with col:
+                st.metric(
+                    name,
+                    f"{h['score']:.0f}",
+                    delta=f"err {err_rate*100:.0f}%" if h.get("n_history", 0) else "无历史",
+                    delta_color="inverse",
+                )
+                st.caption(f"ok {ok_rate*100:.0f}% · {h['n_history']} 次 · "
+                           f"quota ${h['last_quota_usd'] or '—'}")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("请求 size", s.image_size)
+    c2.metric("预测实际", f"{s.predict_actual_image_dims()[0]}×{s.predict_actual_image_dims()[1]}")
+    c3.metric("超分后", f"{s.predict_upscaled_dims()[0]}×{s.predict_upscaled_dims()[1]}")
+    text = st.text_area("多音字原文", value="张骞被匈奴扣押十年，单于冒顿派阏氏看守")
+    if text:
+        st.code(preprocess(text), language="text")
 
-# ---- 关键参数 ----
-st.subheader("图像配置")
-c1, c2, c3 = st.columns(3)
-c1.metric("请求 size", s.image_size)
-c2.metric("预测实际", f"{s.predict_actual_image_dims()[0]}×{s.predict_actual_image_dims()[1]}")
-c3.metric("超分后", f"{s.predict_upscaled_dims()[0]}×{s.predict_upscaled_dims()[1]}")
-
-# ---- 多音字测试 ----
-st.subheader("多音字预处理")
-text = st.text_area("原文", value="张骞被匈奴扣押十年，单于冒顿派阏氏看守")
-if text:
-    out = preprocess(text)
-    st.code(out, language="text")
-
-# ---- 使用指引 ----
 st.subheader("生产入口")
 st.info(
-    "真实出片不在此页。用：\n"
-    "- `python -m app.cli episode produce <ep> --stage script`：准备 v2 旁白计划；"
-    "生成需显式设置预算，时间轴确认后合成候选。旧片重建需 `--pipeline legacy-preview`。"
-    "长片中断后重跑即断点续跑；\n"
-    "- `... episode produce <ep> --stage verify`：只读校验产物真值；\n"
-    "- `... episode --all audit-wav --apply`：清孤儿音频；\n"
-    "- API：`POST /v1/episode/{id}/produce`。"
+    "这一页负责查看进度、试听和保存你提交的核查结论。出片命令：\n"
+    "- `.\\cli.bat status`：看每集进度；`.\\cli.bat status <id>`：看这一集的下一步\n"
+    "- `.\\cli.bat episode produce <id> --stage script`：只做旁白计划，不调用付费接口\n"
+    "- `.\\cli.bat episode produce <id>`：额度为 0 时只复用缓存，需要新调用会在花钱前停住\n"
+    "- 孤儿音频：`.\\cli.bat episode audit-wav --all`，确认后再加 `--apply`"
 )

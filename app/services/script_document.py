@@ -13,6 +13,17 @@ _META = re.compile(r"^(?:作品类型|预估时长|时长预估|核心切口|格
 # （见下方 quote 分支的长注释）。`标签：值` 是这类头部块的稳定结构。
 _META_LABEL = re.compile(r"^[^：:]{1,12}\s*[：:]")
 _CUE = re.compile(r"【[^】]*】|[\[［](?:停顿|重音|语气|叹息|音效|画面|转场)[^\]］]*[\]］]")
+# 括号式表演/音效提示：（微混响）（叹气）（回响）（气音）等。这些不是口播内容——
+# split_script 侧 strip_script_markdown 已把它们排除在字幕之外，若这里仍计入
+# source_text，scene_bindings 的「帧文本 == 旁白源文本」绑定就永远不成立
+# （caomin-01 实测：字幕正确排除了（微混响），门禁却判定两者不一致）。
+# 与 _CUE 一样按 delivery cue 排除，并登记为 direction，交由成片呈现判定。
+# 括号形态与白名单统一从 script 侧取，避免两处各写一份、各飘各的
+# （2026-09-29 caomin-01：strip_script_markdown 已删（微混响），这里仍计入
+#  source_text，字幕字面门禁因此永远报「帧文本 != 剧本正文」）。
+from app.services.script import PAREN_CUE_WORDS as _PAREN_WORDS  # noqa: E402
+
+_PAREN_CUE = re.compile(r"[（(][^（()）]{1,12}[)）]")
 _PAUSE = re.compile(r"停顿\s*(\d+(?:\.\d+)?)\s*秒")
 
 
@@ -104,17 +115,20 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
             for i in range(a,b):
                 keep.discard(i)
                 reasons[i]=reason
-        for m in _CUE.finditer(raw,local_start,local_end):
-            pause = _PAUSE.search(m.group())
-            known = pause is not None or any(w in m.group() for w in ("语气", "重音", "叹息", "画面", "音效", "转场"))
-            cue = {"cue_id":f"cue-{len(cues):05d}", "block_id":block["block_id"],
-                   "raw_text":m.group(),"start":start+m.start(),"end":start+m.end(),
-                   "scope":"next_utterance", "intent": "pause" if pause else "direction",
-                   "pause_seconds":float(pause[1]) if pause else None,
-                   "confidence":1.0 if pause else 0.0, "review_required":not bool(pause),
-                   "recognized":known,"user_override":None}
-            cues.append(cue)
-            exclude(m.start(),m.end(),"delivery_cue")
+        for pattern,is_paren in ((_CUE,False),(_PAREN_CUE,True)):
+            for m in pattern.finditer(raw,local_start,local_end):
+                pause = _PAUSE.search(m.group())
+                if is_paren and not any(w in m.group() for w in _PAREN_WORDS):
+                    continue                      # 普通括号（补语/括注）仍算旁白
+                known = pause is not None or any(w in m.group() for w in ("语气", "重音", "叹息", "画面", "音效", "转场")) or is_paren
+                cue = {"cue_id":f"cue-{len(cues):05d}", "block_id":block["block_id"],
+                       "raw_text":m.group(),"start":start+m.start(),"end":start+m.end(),
+                       "scope":"next_utterance", "intent": "pause" if pause else "direction",
+                       "pause_seconds":float(pause[1]) if pause else None,
+                       "confidence":1.0 if pause else 0.0, "review_required":not bool(pause),
+                       "recognized":known,"user_override":None}
+                cues.append(cue)
+                exclude(m.start(),m.end(),"delivery_cue")
         for m in re.finditer(r"\*\*|__|<br\s*/?>",raw):
             exclude(m.start(),m.end(),"markdown")
         m = re.match(r"\s*>\s?",raw)

@@ -10,7 +10,16 @@ def get_status(ep_id):
     from app.managers import load
     from app.services.production_identity import artifacts_current
     root = _episode_dir(ep_id)/'production/v2'; state_path = root/'run.json'
-    if not state_path.exists(): return dict(pipeline_version='production_v2', status='NOT_STARTED', approved=False, production_ready=False, blockers=[])
+    if not state_path.exists():
+        # No v2 run state. If this episode was delivered through the
+        # legacy-preview pipeline, report *that* truthfully instead of
+        # NOT_STARTED/approved=False -- a delivered episode must never look
+        # unapproved to every reader of get_status (2026-09-29: 5 delivered
+        # episodes all reported approved=False here).
+        legacy = _legacy_status(ep_id)
+        if legacy is not None:
+            return legacy
+        return dict(pipeline_version='production_v2', status='NOT_STARTED', approved=False, production_ready=False, blockers=[])
     try:
         state = read(state_path); last = state.get('last_result', {})
     except (OSError, ValueError, TypeError, AttributeError) as exc:
@@ -89,6 +98,88 @@ def get_status(ep_id):
         except (OSError, ValueError, KeyError, TypeError) as exc:
             result['blockers'].append('budget ledger unreadable: '+type(exc).__name__)
     result['blockers'] = list(dict.fromkeys(result['blockers']))
+    return result
+
+
+def _legacy_status(ep_id):
+    """Truthful status for episodes delivered through the legacy-preview pipeline.
+
+    Same approval semantics as the v2 path, reached through the gates that path
+    actually enforces: input approval + external audio binding + subtitle
+    fidelity + output binding. Returns None when the episode has no composed
+    video and no recorded approval, so the caller keeps reporting NOT_STARTED.
+
+    Why a separate reader instead of teaching the v2 reader about legacy: the v2
+    chain (manifest -> forced alignment -> quality -> published pointer) is the
+    stronger evidence model and stays untouched. This only stops legacy
+    deliveries from being invisible (2026-09-29).
+    """
+    from app.orchestrator import _episode_dir
+    from app.services import output_binding
+    from app.services.narration_pipeline import read
+    from app.services.production_admission import check
+    from app.services.subtitle_fidelity import (_narration_source,
+                                                 frame_text_report)
+    from app.managers import load
+
+    approval = _episode_dir(ep_id)/'production/input-approval.json'
+    mp4 = output_binding.final_mp4(ep_id)
+    if not approval.is_file() and not mp4.is_file():
+        return None
+    # A composed video can legitimately have no approval yet (not reviewed).
+    # Reported as PREPARED so it is not confused with an unstarted episode,
+    # but never as approved.
+    reviewed = approval.is_file()
+    blockers, dimensions = [], {}
+    try:
+        adm = check(ep_id)
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        adm = dict(eligible=False, blockers=['admission check failed: '+type(exc).__name__])
+    for b in adm.get('blockers', []):
+        blockers.append(b)
+    out = output_binding.verify(ep_id)
+    if not out.get('ok'):
+        blockers.extend(out.get('fails', []))
+    if not out.get('skipped') and not mp4.is_file():
+        blockers.append('bound video is missing')
+    try:
+        ep = load(ep_id)
+        if ep.frames and _narration_source(ep).strip():
+            fid = frame_text_report(ep)
+            dimensions['subtitle_fidelity'] = 'passed' if fid['ok'] else 'failed'
+            if not fid['ok']:
+                blockers.extend(fid['fails'])
+        else:
+            # No source script to compare against (synthetic/smoke episodes).
+            # Report as not-applicable rather than failing: a missing baseline is
+            # not a fidelity defect (2026-09-29: smoke fixture has frames but no
+            # script.md, and the gate correctly found nothing to compare).
+            dimensions['subtitle_fidelity'] = 'not_applicable'
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        dimensions['subtitle_fidelity'] = 'stale_or_invalid'
+        blockers.append('subtitle fidelity: '+str(exc))
+    approved = (reviewed and bool(adm.get('eligible')) and out.get('ok', True)
+                and bool(fid['ok']))
+    if approved:
+        status = 'APPROVED'
+    elif blockers:
+        status = 'STALE'
+    else:
+        status = 'PREPARED'
+    result = dict(
+        pipeline_version='legacy_preview_v1',
+        status=status,
+        approved=approved, production_ready=approved, delivery_ready=approved,
+        stages_done=(['script', 'images', 'compose', 'verify']
+                     if mp4.is_file() else []),
+        active_stage=None, candidate_path=str(mp4) if mp4.is_file() else None,
+        output_sha256=(out.get('sha256') if not out.get('skipped') else None),
+        output_frames=(out.get('frames') if not out.get('skipped') else None),
+        source_current=True, dimensions=dimensions,
+        approval_path=str(approval) if approval.is_file() else None,
+        input_fingerprint=adm.get('input_fingerprint'),
+        delivery_pending=[], quality_pending_units=[],
+        blockers=list(dict.fromkeys(blockers)))
     return result
 
 

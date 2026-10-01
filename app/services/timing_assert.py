@@ -38,6 +38,87 @@ class TimingError(RuntimeError):
     pass
 
 
+def _group_of(frame_id: str) -> str:
+    """帧所属「源句子组」——单一真源在 spec（呼吸间隙按组边界插入）。"""
+    from app.services.spec import group_of
+    return group_of(frame_id)
+
+
+def projected_shot_pacing(ep: Episode) -> dict:
+    """在【还没有 shots】的阶段，从 frames 投影每镜将占多少帧。
+
+    为什么要在花钱前算这个（lishimin-03 实测事故，2026-09-28）：
+      镜长上限 #3（≤200 帧）原本只在 compose 阶段断言，而 compose 在
+      59 张图全部付完钱之后才跑。那一集 285 帧里有 2 帧是旁白真放慢到
+      8.03s / 8.24s（18 字、29 字，都没超切帧器的 MAX_FRAG_CHARS），
+      结果是：预算花完 → 才被拦 → 重切帧 → 重装配 → 重合成。
+      切帧器按 TTS_CHARS_PER_SEC=3.9 估算，而外部真人旁白有戏剧性停顿，
+      字数根本不是时长的可靠预测；只有**实测音频**能提前判定。
+
+    投影必须与 compose 完全同口径，否则会出现假阳性（把合规集拦下来）。
+    compose 的呼吸段规则（compose.py:962-970）：
+      head = HEAD_MS  当且仅当 存在前一帧且组号不同
+      tail = TAIL_MS  当且仅当 是最后一帧 或 后一帧组号不同
+    返回 {ok, fails, per_frame, over, under, total_ms}。
+    """
+    from app.services.motion import frames_for_duration_ms
+
+    frames = ep.frames
+    n = len(frames)
+    per: dict[str, dict] = {}
+    over: list[dict] = []
+    under: list[dict] = []
+    for i, f in enumerate(frames):
+        g = _group_of(f.id)
+        prev_g = _group_of(frames[i - 1].id) if i else None
+        next_g = _group_of(frames[i + 1].id) if i + 1 < n else None
+        head = HEAD_MS if (prev_g is not None and g != prev_g) else 0
+        tail = TAIL_MS if (next_g is None or next_g != g) else 0
+        audio = f.audio_duration_ms or 0
+        shot_ms = audio + head + tail
+        nf = frames_for_duration_ms(shot_ms, FPS)
+        row = dict(frame_id=f.id, audio_ms=audio, head_ms=head, tail_ms=tail,
+                   shot_ms=shot_ms, frames=nf, chars=len(f.narration_text or ""))
+        per[f.id] = row
+        if nf > MAX_FRAMES:
+            over.append(row)
+        elif nf < MIN_FRAMES:
+            under.append(row)
+
+    fails: list[str] = []
+    for r in over:
+        fails.append(
+            f"{r['frame_id']}: 旁白 {r['audio_ms']}ms + 呼吸 {r['head_ms']+r['tail_ms']}ms "
+            f"= {r['shot_ms']}ms -> {r['frames']} 帧 > {MAX_FRAMES}"
+            f"（超 {r['frames'] - MAX_FRAMES} 帧；实测 {r['chars']} 字）")
+    for r in under:
+        fails.append(
+            f"{r['frame_id']}: 旁白 {r['audio_ms']}ms + 呼吸 {r['head_ms']+r['tail_ms']}ms "
+            f"= {r['shot_ms']}ms -> {r['frames']} 帧 < {MIN_FRAMES}"
+            f"（欠 {MIN_FRAMES - r['frames']} 帧）")
+    if any((f.audio_duration_ms or 0) == 0 for f in frames) and frames:
+        n_zero = sum(1 for f in frames if (f.audio_duration_ms or 0) == 0)
+        fails.insert(0, f"有 {n_zero} 帧 audio_duration_ms=0：旁白音频尚未就绪，"
+                        f"此时判断镜长没有意义（先跑 tts 或导入外部音频）")
+    return {"ok": not fails, "fails": fails, "per_frame": per,
+            "over": over, "under": under,
+            "total_ms": sum((f.audio_duration_ms or 0) for f in frames)}
+
+
+def assert_pacing_or_raise(ep: Episode) -> dict:
+    """花钱前的镜长预检。失败即 raise TimingError（此时尚未发起任何 provider 调用）。"""
+    rep = projected_shot_pacing(ep)
+    if not rep["ok"]:
+        detail = "\n  - ".join(rep["fails"])
+        raise TimingError(
+            "镜长预检失败（发生在生图之前，未产生任何图片费用）:\n"
+            f"  - {detail}\n"
+            f"  处置：超限帧需按**实测音频**在旁白真实停顿处切开（字幕同步断句），"
+            f"或重跑 --stage script 调整切分；欠限帧需与相邻帧合并。"
+            f"不要靠改 MAX_FRAMES 绕过——那是成片规格，不是可调参数。")
+    return rep
+
+
 def _shot_frames(shot: Shot) -> int:
     """镜头帧数——委托 motion.frames_for_duration_ms（全项目唯一真值口径），
     与 plan_frames / compose.expected_frames 保证永不口径分裂。"""

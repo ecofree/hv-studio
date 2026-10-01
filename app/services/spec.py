@@ -66,6 +66,18 @@ SPLIT_THRESHOLD_MS = 6000
 SUBROUTER_PIXEL_CAP = 1024 * 1536
 
 
+def group_of(frame_id: str) -> str:
+    """帧 id 所属的「源句子组」。
+
+    呼吸间隙只在**组边界**插入（组首 HEAD_MS、组尾 TAIL_MS），所以「哪些帧
+    属于同一句」是时间轴的一等事实，而不是某处的私有约定。compose 按它算
+    实际镜头时长，timing_assert 的花钱前预检要复刻同一口径 —— 两者一旦各写
+    一份，预检就会与成片产生静默偏差（正是本模块开头警告的那类事故）。
+    """
+    parts = frame_id.split("-")
+    return parts[1] if len(parts) > 1 else frame_id
+
+
 def predict_actual_dims(w: int, h: int) -> tuple[int, int]:
     """按请求的宽高比，预测中转站实际返回的像素 (w_actual, h_actual)。"""
     ratio = w / h

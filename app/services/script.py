@@ -332,6 +332,15 @@ MD_BOLD_LINE = re.compile(r"^\*\*.*\*\*$")             # 整行只有加粗（�
 MD_EMPHASIS = re.compile(r"\*\*(.+?)\*\*")             # 行内 **强调** → 去掉星号留文本
 MD_PARA_SPLIT = re.compile(r"\n\s*\n")
 
+# 括号式表演/音效提示的**唯一白名单真源**。script_document.parse_document 那边
+# 用同一份常量把这些形态记为 direction cue（不进旁白源文本），strip_script_markdown
+# 这边删除它们（不进字幕）。两处必须一致，否则字幕字面门禁会永远报
+# 「帧文本 != 剧本正文」（2026-09-29 caomin-01 实测）。
+PAREN_CUE_WORDS = ("混响", "回响", "叹气", "叹息", "气音", "停顿", "重音",
+                   "耳语", "低声", "冷笑", "哭腔", "画外音", "渐弱", "渐强")
+NARR_PAREN = re.compile(
+    r"[（(][^（()）]{0,12}(?:" + "|".join(PAREN_CUE_WORDS) + r")[^（()）]{0,12}[)）]")
+
 
 def strip_script_markdown(text: str) -> str:
     """剥掉剧本成稿里的 markdown 结构与导演标注，只留可朗读正文。
@@ -347,6 +356,12 @@ def strip_script_markdown(text: str) -> str:
 
     行内标注交给与双栏分镜路径同一套口径（【】→ 删、[停顿N秒]→。、[] → 删），
     避免两处规则各飘各的。
+
+    括号式表演/音效提示（（微混响）（叹气）（回响）…）同样删除，且与
+    app/services/script_document.py 的 _PAREN_CUE **同一份白名单**：
+    那侧把它们算作 direction cue（不进旁白源文本），这侧若保留就会让
+    「帧文本 == 剧本正文」的字幕字面门禁永远不成立（caomin-01 实测）。
+    白名单共用 module 常量，杜绝两处各飘各的第二次。
     """
     kept: list[str] = []
     for para in MD_PARA_SPLIT.split(text):
@@ -362,6 +377,7 @@ def strip_script_markdown(text: str) -> str:
             s = NARR_ANNOT.sub("", s)                 # 【语气/画面标注】
             s = NARR_PAUSE.sub("。", s)               # [停顿N秒] → 。
             s = NARR_BRACKET.sub("", s)               # [重音] 等
+            s = NARR_PAREN.sub("", s)                 # （微混响）（叹气）等表演提示
             lines.append(s)
         if not lines:
             continue
