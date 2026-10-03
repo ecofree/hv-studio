@@ -12,6 +12,35 @@
 - Default acceptance runs only the `production` test group. For component changes,
   run the affected files with `-m shared` or `-m legacy` as appropriate. Run all
   groups only when cross-cutting changes or a concrete failure justify it.
+- **The two pipelines are not interchangeable, and neither is retired.**
+  `produce()` defaults to `v2`; `legacy-preview` refuses the paid stages
+  (`assets`/`tts`/`images`) outright, so **v2 is the only path that can spend
+  money**. `--image-key` works on both; a scoped v2 image run leaves the episode
+  deliberately incomplete and `timeline` refuses to build until every declared
+  plate is present.
+- **v2 has no polyphone substitution, by design — do not port it in.**
+  `spoken_text.compile_text` is punctuation-only and hard-asserts that the
+  alnum content is unchanged, so 可汗 stays 可汗 all the way to the subtitle.
+  The `subtitle_fidelity` polyphone gate is a legacy-path guard for
+  `narration_text`; v2 does not have that field. v2's own subtitle check is
+  `production_v2.validate_timeline` (`cue["text"] != unit["text"][i:j]`), which
+  runs at both compose and verify.
+- **Shot granularity differs by design; do not import legacy limits into v2.**
+  legacy shots are ~11-char fragments bounded to 40–200 frames. v2 shots are one
+  per narration unit and are only required to span at least one frame —
+  `validate_timeline` has **no upper bound**, and observed single shots reach
+  1254 frames (~50s). Enforcing `MAX_FRAMES` in v2 would invalidate every
+  existing v2 timeline (laogongtuan 59/69 shots, lishimin-01 61/78,
+  lishimin-01b 54/57 all exceed it). That is a product decision, not a bug fix.
+- **`episodes/<id>.json` is the only source of truth for a delivered episode's
+  frame structure — `split_script` is not a recovery path.** Frames are hand-
+  edited after splitting (caomin-01: 4 dropped, 2 pairs merged, 2 bed markers;
+  the 242-entry audio plan in `state/` is one revision behind the delivered 238).
+  Nothing records those edits, so re-running the splitter on the same script
+  yields a different frame list. Copy `episodes/<id>.json` before any tooling
+  that might write it, and never let a sandbox copy keep the original `id`:
+  `save(ep)` writes by `ep.id`, so a copied fixture silently overwrites the real
+  episode (this happened on caomin-01, 2026-10-01).
 - `ffmpeg`/`ffprobe` are resolved from `PATH`, not from the repo. Put
   `tools/ffmpeg/bin` on `PATH` before running `NEEDS_FFMPEG` tests or
   `bin/check_project.py`. A bare `pytest` otherwise reports ~12

@@ -37,7 +37,14 @@ def assess(source_fingerprint):
         from app.services.production_status import get_status
         for eid in episodes:
             try:
-                if get_status(eid).get('approved') is not True: blockers.append(eid+' requires current content approval')
+                # `content_approved`, not `approved`: an episode delivered through
+                # the legacy pipeline and later touched by v2 reports
+                # approved=False here (the v2 attempt is stale or unreviewed) even
+                # though its legacy delivery is approved and hash-bound. Keying on
+                # `approved` produced two false "requires current content
+                # approval" blockers for laogongtuan and lishimin-01 (2026-10-01).
+                if get_status(eid).get('content_approved') is not True:
+                    blockers.append(eid+' requires current content approval')
             except (OSError,ValueError,KeyError,TypeError,AttributeError):
                 blockers.append(eid+' content approval cannot be verified')
     except (OSError,ValueError,KeyError,TypeError): blockers.append('current production validation evidence is missing or malformed')

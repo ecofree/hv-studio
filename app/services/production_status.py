@@ -19,17 +19,21 @@ def get_status(ep_id):
         legacy = _legacy_status(ep_id)
         if legacy is not None:
             return legacy
-        return dict(pipeline_version='production_v2', status='NOT_STARTED', approved=False, production_ready=False, blockers=[])
+        return dict(pipeline_version='production_v2', status='NOT_STARTED', approved=False,
+                    production_ready=False, content_approved=False, blockers=[])
     try:
         state = read(state_path); last = state.get('last_result', {})
     except (OSError, ValueError, TypeError, AttributeError) as exc:
         return dict(pipeline_version='production_v2', status='BLOCKED', approved=False, production_ready=False,
-                    delivery_ready=False, blockers=['production state unreadable: '+type(exc).__name__],
+                    delivery_ready=False, content_approved=False,
+                    blockers=['production state unreadable: '+type(exc).__name__],
                     delivery_pending=[], quality_pending_units=[])
     result = dict(pipeline_version='production_v2', status=last.get('status','PREPARED'), approved=False, production_ready=False,
                   stages_done=last.get('stages_done', []), active_stage=state.get('active_stage'),
                   candidate_path=None, blockers=[], delivery_pending=[], quality_pending_units=[])
-    result.update(delivery_ready=False, dimensions={}, source_current=False)
+    result.update(delivery_ready=False, dimensions={}, source_current=False,
+                  content_approved=False, delivered_approval=dict(
+                      approved=False, pipeline=None, output_sha256=None, approval_path=None))
     if state.get('running'):
         try:
             alive = psutil.Process(state.get('owner_pid',-1)).create_time()==state.get('owner_created_at')
@@ -98,7 +102,64 @@ def get_status(ep_id):
         except (OSError, ValueError, KeyError, TypeError) as exc:
             result['blockers'].append('budget ledger unreadable: '+type(exc).__name__)
     result['blockers'] = list(dict.fromkeys(result['blockers']))
+    # Report delivery-level truth alongside the v2 attempt. `approved` stays
+    # narrow (this v2 candidate), `content_approved` answers "is there a current
+    # hash-bound approval for a delivered video by either pipeline".
+    try:
+        delivery = delivered_approval(ep_id)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        delivery = dict(approved=False, pipeline=None, output_sha256=None, approval_path=None)
+    result['delivered_approval'] = delivery
+    result['content_approved'] = bool(delivery['approved'])
     return result
+
+
+def delivered_approval(ep_id):
+    """The strongest currently-valid approval for a delivered video, across pipelines.
+
+    An episode can carry a hash-bound legacy delivery *and* a newer v2 attempt
+    that is merely stale or still short of review. Reporting only the v2 attempt
+    made three delivered episodes read as never-approved (2026-10-01 audit:
+    laogongtuan, lishimin-01, lishimin-03), and readiness then reported two false
+    `requires current content approval` blockers for episodes whose approval
+    demonstrably existed.
+
+    This is deliberately a separate field from `approved`, which keeps its narrow
+    meaning: "this v2 candidate is approved". `content_approved` answers the
+    different question "is there a current, hash-bound approval for a delivered
+    video by either pipeline".
+
+    v2 is preferred when both are valid because its evidence model is stronger
+    (published pointer + two hash-bound human reviews on top of the receipt).
+    """
+    from app.orchestrator import _episode_dir
+    from app.services.provenance import file_sha256
+    out = dict(approved=False, pipeline=None, output_sha256=None, approval_path=None)
+    root = _episode_dir(ep_id) / 'production/v2'
+    published, state_path = root / 'published.json', root / 'run.json'
+    if published.is_file() and state_path.is_file():
+        try:
+            state, pointer = read(state_path), read(published)
+            receipt_path = state.get('receipt_path')
+            if pointer.get('approved') and receipt_path and pointer.get('receipt') == receipt_path:
+                receipt = read(receipt_path)
+                candidate = receipt['candidate_path']
+                if (Path(candidate).is_file()
+                        and file_sha256(candidate) == receipt['candidate_sha256'] == pointer.get('sha256')
+                        and file_sha256(receipt_path) == read(pointer['review']).get('receipt_sha256')
+                        and read(pointer['listening_review']).get('decision') == 'approved'):
+                    out.update(approved=True, pipeline='production_v2',
+                               output_sha256=pointer['sha256'],
+                               approval_path=str(published.resolve()))
+                    return out
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
+    legacy = _legacy_status(ep_id)
+    if legacy and legacy.get('approved'):
+        out.update(approved=True, pipeline='legacy_preview_v1',
+                   output_sha256=legacy.get('output_sha256'),
+                   approval_path=legacy.get('approval_path'))
+    return out
 
 
 def _legacy_status(ep_id):
@@ -131,6 +192,18 @@ def _legacy_status(ep_id):
     # but never as approved.
     reviewed = approval.is_file()
     blockers, dimensions = [], {}
+    # `fid` must exist before the approval test below. It used to be bound only
+    # inside the fidelity branch, so an episode with no comparable frames took
+    # the `not_applicable` path (or raised) and left it unbound -> the approval
+    # expression raised UnboundLocalError. assess() catches only
+    # (OSError,ValueError,KeyError,TypeError,AttributeError), and
+    # UnboundLocalError is a NameError subclass, so it escaped into
+    # check_project instead of being reported as a blocker.
+    #
+    # Two distinct defaults, and the difference matters:
+    #   no baseline   -> {'ok': True}   a missing comparison is not a defect
+    #   could not run -> {'ok': False}  unverifiable must never read as approved
+    fid = {'ok': True, 'fails': []}
     try:
         adm = check(ep_id)
     except (OSError, ValueError, KeyError, TypeError) as exc:
@@ -158,6 +231,7 @@ def _legacy_status(ep_id):
     except (OSError, ValueError, KeyError, TypeError) as exc:
         dimensions['subtitle_fidelity'] = 'stale_or_invalid'
         blockers.append('subtitle fidelity: '+str(exc))
+        fid = {'ok': False, 'fails': []}
     approved = (reviewed and bool(adm.get('eligible')) and out.get('ok', True)
                 and bool(fid['ok']))
     if approved:
@@ -170,12 +244,19 @@ def _legacy_status(ep_id):
         pipeline_version='legacy_preview_v1',
         status=status,
         approved=approved, production_ready=approved, delivery_ready=approved,
+        # For this pipeline the two coincide: an approved legacy delivery *is* a
+        # current hash-bound approval.
+        content_approved=approved,
         stages_done=(['script', 'images', 'compose', 'verify']
                      if mp4.is_file() else []),
         active_stage=None, candidate_path=str(mp4) if mp4.is_file() else None,
         output_sha256=(out.get('sha256') if not out.get('skipped') else None),
         output_frames=(out.get('frames') if not out.get('skipped') else None),
         source_current=True, dimensions=dimensions,
+        delivered_approval=dict(
+            approved=approved, pipeline='legacy_preview_v1',
+            output_sha256=(out.get('sha256') if not out.get('skipped') else None),
+            approval_path=str(approval.resolve()) if approval.is_file() else None),
         approval_path=str(approval) if approval.is_file() else None,
         input_fingerprint=adm.get('input_fingerprint'),
         delivery_pending=[], quality_pending_units=[],

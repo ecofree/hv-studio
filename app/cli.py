@@ -71,6 +71,12 @@ def cmd_episode(args):
         # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
         options = dict(max_requests=args.max_requests, max_characters=args.max_characters,
                        max_images=args.max_images, timeline=args.timeline, timeout=args.timeout, budget_id=args.budget_id)
+        if args.image_key:
+            # Consumed on BOTH pipelines. It used to be wired only inside the
+            # legacy-preview branch below, so `--pipeline v2 --image-key LGT01`
+            # was accepted and then ignored -- the parameter existed, appeared in
+            # --help, and changed nothing (同坑 #38).
+            options["image_keys"] = set(args.image_key)
         if args.pipeline == "legacy-preview":
             # ⚠️ 这里原来**整份替换** options，max_images/budget_id 被静默丢弃 ——
             #   后果是 legacy 路径拿不到生图预算，CLI 参数形同虚设（同坑 #38：
@@ -80,6 +86,8 @@ def cmd_episode(args):
                            tts_group_chars=args.tts_group_chars, tts_workers=args.tts_workers,
                            max_images=args.max_images, budget_id=args.budget_id,
                            image_only=(set(args.image_key) if args.image_key else None))
+            if args.image_key:
+                options.pop("image_keys", None)  # legacy spells it image_only
         elif args.allow_edge_fallback:
             raise SystemExit("v2 production never changes the voice engine")
         res = produce(args.episode_id, stages=args.stage or None, pipeline=args.pipeline, **options)
@@ -467,7 +475,7 @@ def main():
     p.add_argument("--max-images", type=int, default=0, help="实际图片调用上限，包含失败、重试，默认 0")
     p.add_argument("--image-key", action="append", default=None,
                    help="只生成这些 image key（可重复）。补单张图时用，"
-                        "避免把其余缺图一起拉进来抢预算")
+                        "避免把其余缺图一起拉进来抢预算。v2 与 legacy-preview 均生效")
     p.add_argument("--budget-id", default=None, help="显式新授权的预算标识；续跑复用同一标识")
     p.add_argument("--timeline", default=None, help="v2 样本时间轴 JSON")
     p.add_argument("--timeout", type=int, default=300)

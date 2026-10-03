@@ -8,7 +8,8 @@ from app.services.production_storage import production_storage
 
 @production_storage
 def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
-        max_images=0, timeline=None, voice_asset=None, timeout=300, budget=None, budget_id=None):
+        max_images=0, timeline=None, voice_asset=None, timeout=300, budget=None, budget_id=None,
+        image_keys=None):
     import os, time
     from app.managers import load
     from app.orchestrator import _episode_dir, _load_script_md, _episode_lock, _check_disk_space
@@ -107,11 +108,32 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     from app.services.image import generate_many
                     jobs, scene_path = prepare(ep, plan_path, root)
                     if not jobs: raise ValueError("no image jobs are defined")
+                    # Scoped regeneration: regenerate only these keys.
+                    #
+                    # `--image-key` used to be consumed exclusively by the
+                    # legacy-preview branch of cli.py, so on the v2 path -- the only
+                    # path that can still spend money -- it was silently dropped.
+                    # That is the exact "同坑 #38" shape this repo warns about
+                    # three times in cli.py: a parameter that exists, is
+                    # documented in --help, and changes nothing. Regenerating one
+                    # plate meant paying for every missing plate, and the budget
+                    # was consumed before the wanted image was reached (measured on
+                    # caomin-01, 2026-09-29: a 3-slot budget split across 4 plates).
+                    selected = jobs
+                    if image_keys:
+                        wanted = set(image_keys)
+                        unknown = sorted(wanted - {j.id for j in jobs})
+                        if unknown:
+                            raise ValueError(
+                                "requested image keys are not defined for this episode: "
+                                + ", ".join(unknown))
+                        selected = [j for j in jobs if j.id in wanted]
+                        result['scoped_image_keys'] = sorted(j.id for j in selected)
                     # v2 never replaces the historical episode's approved images.
                     # Each effective request gets its own candidate directory.
-                    for job in jobs:
+                    for job in selected:
                         if not getattr(job,'imported',False): job.out_path = root / "images" / job.request_fingerprint() / job.out.name
-                    missing = [j for j in jobs if not j.is_done()]
+                    missing = [j for j in selected if not j.is_done()]
                     dispatch = [j for j in missing if not j.out.with_suffix(j.out.suffix+'.response.json').exists()]
                     if len(dispatch) > max_images:
                         raise ValueError(f"image budget exceeded: {len(dispatch)} jobs need generation, budget {max_images}")
@@ -125,14 +147,28 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                         budget.check_capacity(tts_requests=quote['requests'], characters=quote['characters'], image_requests=len(dispatch))
                     elif budget: budget.check_capacity(image_requests=len(dispatch))
                     if any(s in requested for s in ('tts','alignment','timeline','compose')): preflight_media()
-                    generated = generate_many([j for j in jobs if not getattr(j,'imported',False)], budget=budget)
-                    generated.update({j.id:str(j.out) for j in jobs if getattr(j,'imported',False) and j.is_done()})
-                    if any(not generated.get(j.id) or not j.is_done() for j in jobs):
-                        reasons = [str(generated.get(j.id+'__error','invalid output')) for j in jobs if not generated.get(j.id)]
+                    generated = generate_many([j for j in selected if not getattr(j,'imported',False)], budget=budget)
+                    generated.update({j.id:str(j.out) for j in selected if getattr(j,'imported',False) and j.is_done()})
+                    if any(not generated.get(j.id) or not j.is_done() for j in selected):
+                        reasons = [str(generated.get(j.id+'__error','invalid output')) for j in selected if not generated.get(j.id)]
                         raise ValueError("image generation incomplete: "+'; '.join(reasons[:3]))
-                    artifacts.extend(str(j.out.resolve()) for j in jobs)
-                    artifacts.extend(str(j.receipt_path.resolve()) for j in jobs)
-                    state["image_assets"] = {j.id: str(j.out.resolve()) for j in jobs}
+                    artifacts.extend(str(j.out.resolve()) for j in selected)
+                    artifacts.extend(str(j.receipt_path.resolve()) for j in selected)
+                    # Merge, never replace: a scoped run must not erase the plates
+                    # it did not touch, or `timeline` would fail later with a
+                    # missing-image error that points at the wrong stage.
+                    assets = dict(state.get('image_assets') or {})
+                    assets.update({j.id: str(j.out.resolve()) for j in selected})
+                    state["image_assets"] = assets
+                    incomplete = sorted(set(j.id for j in jobs) - set(assets))
+                    if incomplete:
+                        # Fail-closed but honest: a scoped run is allowed, and the
+                        # episode is explicitly not yet buildable.
+                        result['image_assets_incomplete'] = incomplete
+                    # Record what this episode declares, so `timeline` can tell a
+                    # legitimately partial scoped run from a complete one without
+                    # re-running prepare() (which is not a pure reader).
+                    state['declared_image_keys'] = sorted(j.id for j in jobs)
                     state['scene_plan_path'] = str(scene_path.resolve())
                     artifacts.append(str(scene_path.resolve()))
                 elif stage == "tts":
@@ -178,6 +214,22 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     manifest_path, _ = current_manifest()
                     if not all(state.get(k) for k in ('alignment_path','image_assets','scene_plan_path')):
                         raise ValueError('timeline requires images and alignment stages')
+                    # A scoped image run leaves image_assets deliberately partial.
+                    # Fail here, before the timeline is built, and name the missing
+                    # plates instead of letting build() report a generic
+                    # scene-references-missing error. `declared_image_keys` was
+                    # recorded by the images stage; without it we cannot tell a
+                    # partial set from a complete one, so stay quiet.
+                    declared = state.get('declared_image_keys')
+                    if declared:
+                        absent = sorted(set(declared) - set(state['image_assets']))
+                        if absent:
+                            raise ValueError(
+                                f"timeline needs every declared plate; {len(absent)} missing: "
+                                + ", ".join(absent[:8])
+                                + (" ..." if len(absent) > 8 else "")
+                                + " 处置：hv episode produce <id> --stage images"
+                                  " --image-key <KEY> 逐张补齐")
                     made = build(ep, manifest_path, state['alignment_path'], state['image_assets'],
                                  state['scene_plan_path'], root/'timelines', quality_path=state.get('quality_path'))
                     state['timeline_path'] = str(made.resolve()); artifacts.append(str(made.resolve()))

@@ -68,7 +68,9 @@ def test_verify_detects_replaced_video():
 
 
 def test_admission_breaks_when_output_bytes_change():
-    e = "caomin-01"
+    # lishimin-04, not caomin-01: the mechanism needs a currently eligible
+    # episode, and caomin-01 has been legitimately ineligible since 2026-10-01.
+    e = "lishimin-04"
     if not (ROOT / "episodes" / e / "production" / "input-approval.json").is_file():
         pytest.skip("no recorded approval")
     assert check(e)["eligible"], check(e)["blockers"]
@@ -90,7 +92,15 @@ def test_admission_breaks_when_output_bytes_change():
 # ---------------- legacy status ----------------
 
 def test_delivered_legacy_episodes_report_approved():
-    for e in ("caomin-01", "lishimin-04"):
+    """A hash-bound, intact legacy delivery must read as APPROVED.
+
+    caomin-01 is not in this list on purpose. Its ``episode.json`` frames were
+    reconstructed on 2026-10-01 after a tool overwrote them, and four phrases the
+    delivered structure contained could not be recovered (see
+    ``test_caomin01_known_deviation``). Listing it here would demand a green that
+    can only be faked.
+    """
+    for e in ("lishimin-04",):
         if not _ep(e):
             continue
         s = get_status(e)
@@ -103,6 +113,29 @@ def test_delivered_legacy_episodes_report_approved():
         import shutil
         if shutil.which("ffprobe"):
             assert s["output_frames"] and s["output_frames"] > 0, s
+
+
+def test_caomin01_known_deviation():
+    """Pin the honest state of caomin-01 after the 2026-10-01 frame-text loss.
+
+    Four phrases present in the narration are absent from the reconstructed
+    frames, so ``scene_bindings`` refuses the scene plan and the episode is
+    STALE. This test exists so that state is asserted rather than drifted past:
+    it also pins that the delivered bytes and their bindings are still intact,
+    and that the polyphone fidelity gate passes (the original failure mode).
+    """
+    e = "caomin-01"
+    if not _ep(e):
+        pytest.skip("not present")
+    s = get_status(e)
+    assert s["pipeline_version"] == "legacy_preview_v1"
+    assert s["approved"] is False, "must not read as approved while frames disagree with narration"
+    assert s["content_approved"] is False
+    assert s["status"] == "STALE"
+    assert any("scene frame source differs" in b for b in s["blockers"]), s["blockers"]
+    # The artifact itself is undamaged: mp4 still matches its recorded hash.
+    assert output_binding.verify(e)["ok"]
+    assert s["dimensions"].get("subtitle_fidelity") == "passed"
 
 
 def test_episode_without_video_or_approval_stays_not_started():

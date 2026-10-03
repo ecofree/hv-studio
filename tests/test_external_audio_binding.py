@@ -177,9 +177,16 @@ def test_delivered_episodes_bind_to_existing_audio():
 
 
 def test_admission_fingerprint_includes_binding():
-    """Changing a frame audio must invalidate the recorded input approval."""
+    """Changing a frame audio must invalidate the recorded input approval.
+
+    Fixture is lishimin-04 rather than caomin-01: both are hash-bound legacy
+    deliveries with an external-audio binding, so the property under test is
+    identical, but caomin-01's admission is legitimately refused since 2026-10-01
+    (see test_output_binding_and_legacy_status.caomin01_known_deviation) and the
+    test needs a currently-eligible episode to tamper with.
+    """
     from app.services.production_admission import check
-    ep_id = "caomin-01"
+    ep_id = "lishimin-04"
     if not (ROOT / "episodes" / ep_id / "production" / "input-approval.json").is_file():
         pytest.skip("no recorded approval")
     before = check(ep_id)["input_fingerprint"]
