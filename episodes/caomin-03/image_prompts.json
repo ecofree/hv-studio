@@ -1,0 +1,144 @@
+{
+ "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/flat/infographic/photorealistic/3d render/chiaroscuro/silk-scroll 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。第三集大量内容是地图/沙盘/数据对比（长安里坊格局、漕运粮道、米价数字、法条诗句），一律改用真实场景隐喻表达——不画地图、不画图表、不写字；诗句与法条由旁白念出，画面只给对应的人和处境。自残、饿死、白骨等史实一律用不血腥的余物与空镜表达。",
+ "D01": {
+  "en": "A Tang city night market at its most glorious, a river of lanterns and silk canopies stretching down a packed avenue, richly dressed young couples walking arm in arm, vendors lifting steaming baskets, the whole street glowing, exuberant and crowded, warm saturated lamplight"
+ },
+ "D02": {
+  "en": "The same avenue seen from a high wall just after nightfall, the festive crowd below suddenly small and hemmed in, and beyond it a second row of tall earthen ramparts with closed timber gates and lit watch braziers on top, cold blue dusk against warm lamplight below, the pleasure ending at a wall"
+ },
+ "D03": {
+  "en": "A very high aerial view of an immense walled Tang capital laid out as an exact grid of near-identical square blocks separated by tall ochre ramparts, a single monumental avenue running dead straight up the middle, tiny roofs in every cell, the scale told by one lone bird crossing above it, clear evening light"
+ },
+ "D04": {
+  "en": "Standing in the middle of an enormously wide empty Tang avenue, a Tang official in court robes dwarfed by the breadth of bare rammed earth on both sides, a single set of cart ruts running down the centre, no trees and no stalls anywhere, relentless noon heat haze"
+ },
+ "D05": {
+  "en": "A Tang street officer on a black horse reining in beside a makeshift street food brazier that has just been knocked over, spilt round loaves in the dust, a bamboo pole snapped on the ground, the vendor on his knees shielding his head while the officer reaches for a staff, harsh daylight, ugly and fast"
+ },
+ "D06": {
+  "en": "A Tang ward lane enclosed on all four sides by high solid earthen walls, the only opening a heavy timber lattice gate half open, a few modest houses pressed against the wall inside, one woman carrying water through the gap, the enclosure itself the subject, low afternoon light raking across the wall tops"
+ },
+ "D07": {
+  "en": "On a city gate tower at sunset, a bare-armed drummer driving both arms down onto an enormous leather drum head that visibly shudders, the whole frame vibrating, below him the rooftops of a hundred wards going dim, last red light on the drum skin, urgent and deafening"
+ },
+ "D08": {
+  "en": "A ward gate at night being shut and barred, ward officers hauling the heavy timber leaves together and dropping a large iron bar into brackets, bolts and chain being pushed through, torchlight flaring on the closing gap, a small crowd inside watching the light disappear, cold blue night"
+ },
+ "D09": {
+  "en": "Inside one walled ward at deep night, a family huddled on the floor of a bare room with a single mat and a cold clay stove, an elderly woman pressing her ear to the heavy outer door as if listening for someone who cannot enter, the sealed wall filling the rest of the room, one small lamp, cold and airless"
+ },
+ "D10": {
+  "en": "Outside a ward wall on a moonless night, a patrol of Tang guards on horseback passing in single file along an empty paved road, lances upright, lamplight raking their armour and the blank wall behind them, hoofbeats and nothing else, overcast and cold"
+ },
+ "D11": {
+  "en": "A poor examination candidate in a faded scholar's robe standing at a crossroads inside a ward, head tilted back at the tall blank walls hemming him in from every side, his bundle of books at his feet, the lane around him busy with officials and sedan chairs passing without a glance, midday light, one man stopped and everyone else moving"
+ },
+ "D12": {
+  "en": "A single street crossing the great ward wall, the far end opening on immaculate great-house grounds with a tiled wall, clipped pines and a sliver of ornamental water, and at the near end the street dissolving into a sprawl of sagging thatched shacks on flooded ground, one view holding both ends, soft afternoon light"
+ },
+ "D13": {
+  "en": "The inner garden of an immense Tang minister's residence, a lake with a small painted pleasure boat, a private riding ground where grooms exercise warhorses, ranks of servants moving along the paths, and behind it all the main house with its deep tiled eaves, money made visible, clear rich daylight"
+ },
+ "D14": {
+  "en": "Looking south along the great avenue from its grand northern end, the crowds and roof-tiles thinning out frame by frame into empty hardpan and broken fences, two well-dressed riders ahead of the viewer and a hunched farmer with a hoe behind, the change of neighbourhood told by who is left, low warm light"
+ },
+ "D15": {
+  "en": "A low-lying southern district road after days of rain, mud standing ankle to knee in ruts, abandoned vegetable plots gone to weeds, a few unmarked mounds among tall grass, crude plank huts on slightly higher ground with washing strung between them, grey overcast daylight, neglected and waterlogged"
+ },
+ "D16": {
+  "en": "A young scholar in a bleached threadbare gown standing knee-deep in mud, holding out a short string of copper coins with both hands to a fierce landlady planted on a plank doorstep with arms folded and a broom in the crook of her elbow, dilapidated hovels behind, cold grey rain light, haggling over nothing"
+ },
+ "D17": {
+  "en": "The inside of the worst rented room in the city, a single straw mat and a cracked clay stove with a hole in the roof showing grey sky, water seeping down one wall into a puddle, a small cloth bundle as the only possession, no furniture at all, one shaft of weak daylight, the arithmetic of poverty"
+ },
+ "D18": {
+  "en": "Two Tang markets seen from the same height: on one side a great house portal where servants carry in bolts of silk and a Persian rug from a lacquered cart, on the other a cramped lane of small food and hardware stalls with thin crowds, the two halves of one street, bright daylight on the rich half"
+ },
+ "D19": {
+  "en": "A long queue outside a pawnshop counter in a western market, thin men and women holding out their last possessions one by one, a clerk weighing a worn cotton robe on a small balance and pushing a few coins across, onlookers crowding the doorway, a bare brick counter and hard daylight, pawning as a livelihood"
+ },
+ "D20": {
+  "en": "One frame split by a wall: above and behind it a great house courtyard banquet where servants tip leftover lamb and bones into a gutter, and in front of it, below the wall, ragged figures crouched in mud and wind chewing dry hard biscuits with cold water, dusk, the same city at two levels"
+ },
+ "D21": {
+  "en": "A Tang household eating table seen from above and behind: a large polished lacquer tray holding one whole fish and a roasted fowl, four ornate cups, entirely empty seats except for one gaunt hand that cannot reach, the room beyond going dark, warm lamp light on the untouched food, plenty and hunger at once"
+ },
+ "D22": {
+  "en": "A single wide city gate at dawn with an enormous crowd pressing toward it from every side, farmers, porters, craftsmen and examination candidates all carrying bundles, driven into the city by hunger, guards trying to hold the sides, dust and low red morning light, a one-way funnel"
+ },
+ "D23": {
+  "en": "A literary patron in comfortable robes at a low table turning a young poet's manuscript in his hands while reading, the young man standing respectfully opposite with his hands hidden in his sleeves and a hopeful, uncertain expression, warm lamplight and fine utensils in the room, the moment a name is judged"
+ },
+ "D24": {
+  "en": "The Guanzhong plain at harvest's end: cracked terraced ground, thin dry stalks left standing, exposed pale subsoil on eroded slopes, gully erosion eating into a hillside, exhausted oxen standing in a shallow furrow, a small white-walled city far off in the haze, the land that has fed an empire"
+ },
+ "D25": {
+  "en": "A wide yellow river boiling through a narrow gorge between black cliffs, a single sheer pillar of rock standing midstream with the current tearing white around its base, several heavy grain-laden wooden boats in the narrows, the lead boat driven at an angle toward the rock, spray and helpless motion"
+ },
+ "D26": {
+  "en": "The same gorge in worse moments: a heavy grain boat broken apart against submerged rocks, hull planks and a spilled flood of wheat streaming into the brown water, boatmen clinging to the shattered frame and rope, baskets and cargo going under, grey rain light, a fortune dissolving into silt"
+ },
+ "D27": {
+  "en": "A grain stall in a poor district with a crowd pressing in, a shopkeeper raising the scale and shaking his head, a queue of women holding out their last coins while a man behind them turns away with an empty bag, a bare measure scoop and a few remaining sacks visible, hard midday light, scarcity made physical"
+ },
+ "D28": {
+  "en": "A long convoy of gilded state carriages and heavy covered wagons moving east out of a great palace gate at daybreak, court officials on thin horses falling in behind with drawn faces, servants carrying chests and boxes, the departing court leaving dust hanging in the low sun, one city emptying toward another"
+ },
+ "D29": {
+  "en": "Inside a great audience hall, a grain official on his knees before the emperor with his hands raised in desperate appeal, the emperor already turning away and lifting one hand toward the doors, courtiers exchanging glances, a nearly empty storage chest standing open and bare in the corner, cold hall light"
+ },
+ "D30": {
+  "en": "A grain fleet unloading on calm lowland water where the boats can come straight up to a city wharf without hazard, porters carrying heavy sacks into a great walled granary with wide doorways and high ventilation, smooth river, easy labour, clear weather, abundance by geography alone"
+ },
+ "D31": {
+  "en": "A dark cramped mud-floored room in the southern ward where a family has put out their few belongings to sell, a woman holding a small child close and turned away while a coarse trader examines a child's cloth bundle, an older man seated with his back against the wall and nothing in his hands, single lamp, quiet despair"
+ },
+ "D32": {
+  "en": "An empty state granary, the great storage bins gaping and swept bare, scattered husks and spilled grain trodden into the floor, one measuring scoop lying useless, a thin beam of light from a high barred window falling on nothing, cold and hollow, an empire measured by what is missing"
+ },
+ "D33": {
+  "en": "A riverside night banquet of the very wealthy: loaded silk-covered tables, musicians, servants fanning seated guests in embroidered robes, lanterns along a terrace, wine jars and gold, a young poet in fine clothes standing slightly apart at the rail looking down at the dark river, warm festive light"
+ },
+ "D34": {
+  "en": "A gaunt man in his thirties in a much-patched scholar's robe standing alone on a windswept southern street, a threadbare bag over one shoulder and a bundle of rejected manuscripts under his arm, ten winters of wear in his face and cuffs, tenants' rooms and rubble behind him, hard grey wind and clear winter light"
+ },
+ "D35": {
+  "en": "The same gaunt scholar seated on the frozen edge of a stone step outside a borrowed doorway, writing on a rough sheet held on his knee, lips moving, breath clouding, the door above him shut, an oil lamp barely lighting the paper, deep blue cold evening, persistence without means"
+ },
+ "D36": {
+  "en": "Dawn at the gate of a great mansion: a thin scholar standing with his hands together in petition before a porter who is turning him away, a fat rider already riding out through the gateway kicking up dust, the scholar keeping his hat in his hands, cold light, one refused and one oblivious"
+ },
+ "D37": {
+  "en": "Dusk on a snowy road, a thin scholar trudging in the rut behind a fat nobleman's fat horse, one hand shading his face from the flying snow, hoofprints and wheel ruts already cut ahead of him, bare trees and a high wall, purple dusk, following someone else's dust"
+ },
+ "D38": {
+  "en": "Heavy snow falling outside a city gate at night, a thin traveller with a small bundle trudging out into the white dark, the gate lamps behind him, drifts already closing the road, his footprints the only mark, blue-black winter light, leaving with almost nothing"
+ },
+ "D39": {
+  "en": "A mountain palace hot spring terrace at night, warm vapour rising off steaming water into cold air, two richly dressed figures at the pool's edge with eunuchs holding silk cloaks, braziers and gold lamps, a servant wrapping silk around a tree trunk in the garden beyond to protect it from frost, luxurious warmth held against a freezing world"
+ },
+ "D40": {
+  "en": "A freezing country cottage interior at night, a thin man standing just inside the opened door with snow on his shoulders, his wife collapsed against the wall with her face in her hands, an old woman kneeling over a thin straw mat on the floor with her back turned, one guttering lamp, the room barely furnished, unbearable stillness"
+ },
+ "D41": {
+  "en": "The same cottage after the lamp has burned low: a father seated on the floor beside a thin straw mat, one hand resting on it, the other holding a brush over a sheet of rough paper on his knee, a single pea-sized candle left, everything else in darkness, cold blue light at the shutter, grief held to ordinary objects"
+ },
+ "D42": {
+  "en": "Late sun on a snowfield outside the city where attendants load plain straw-wrapped bundles onto a plain low cart bound for a common burial ground beyond the walls, a plain wooden marker post in the foreground, and far behind them across the roofs the gilded ridges of a great palace catching the last light, warm gold on cold snow"
+ },
+ "D43": {
+  "en": "Split by a great vermilion gate: inside, a torchlit hall of banqueting tables and musicians seen over the wall; outside it, in the mud by the roadside, a huddle of thin people around a single small pot, one frame holding both, cold blue outside and warm gold within, the distance a single wall"
+ },
+ "D44": {
+  "en": "An unmarked common burial ground on a bleak winter slope, rows of shallow nameless mounds under thin snow, rough stakes, no stones and no inscriptions, a single crow on a stake, wind across the empty field, desaturated and quiet, people who left no trace"
+ },
+ "D45": {
+  "en": "A government salt shop counter where an official is turning an ornate new price scale with dramatically raised weights, a queue of poor households watching the balance tip, an old woman putting her last coins on the counter and being waved back, sacks of coarse salt stacked behind the clerk, hard cold daylight, salt as a tax"
+ },
+ "D46": {
+  "en": "Dusk on empty eastern wasteland, a lean failed examination candidate in a travel-worn robe drawing a long rust-flecked blade slowly from his sash, low brush and dry grass around him, a caravan track running west toward a distant walled city on the horizon, deep red sunset, anger gathering after years of nothing"
+ },
+ "D47": {
+  "en": "A wide dusty plain at last light where a long thin file of ordinary travellers, carts and bundles moves away toward a far walled city on the horizon, their backs to the viewer, a single rider at the head of them, huge sky and long shadows, an ending that is a beginning, deep amber dusk"
+ }
+}

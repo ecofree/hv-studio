@@ -1,0 +1,520 @@
+{
+ "episode": "caomin-04",
+ "images": {
+  "D01": {
+   "path": "episodes/caomin-04/shots/D01.png"
+  },
+  "D02": {
+   "path": "episodes/caomin-04/shots/D02.png"
+  },
+  "D03": {
+   "path": "episodes/caomin-04/shots/D03.png"
+  },
+  "D04": {
+   "path": "episodes/caomin-04/shots/D04.png"
+  },
+  "D05": {
+   "path": "episodes/caomin-04/shots/D05.png"
+  },
+  "D06": {
+   "path": "episodes/caomin-04/shots/D06.png"
+  },
+  "D07": {
+   "path": "episodes/caomin-04/shots/D07.png"
+  },
+  "D08": {
+   "path": "episodes/caomin-04/shots/D08.png"
+  },
+  "D09": {
+   "path": "episodes/caomin-04/shots/D09.png"
+  },
+  "D10": {
+   "path": "episodes/caomin-04/shots/D10.png"
+  },
+  "D11": {
+   "path": "episodes/caomin-04/shots/D11.png"
+  },
+  "D12": {
+   "path": "episodes/caomin-04/shots/D12.png"
+  },
+  "D13": {
+   "path": "episodes/caomin-04/shots/D13.png"
+  },
+  "D14": {
+   "path": "episodes/caomin-04/shots/D14.png"
+  },
+  "D15": {
+   "path": "episodes/caomin-04/shots/D15.png"
+  },
+  "D16": {
+   "path": "episodes/caomin-04/shots/D16.png"
+  },
+  "D17": {
+   "path": "episodes/caomin-04/shots/D17.png"
+  },
+  "D18": {
+   "path": "episodes/caomin-04/shots/D18.png"
+  },
+  "D19": {
+   "path": "episodes/caomin-04/shots/D19.png"
+  },
+  "D20": {
+   "path": "episodes/caomin-04/shots/D20.png"
+  },
+  "D21": {
+   "path": "episodes/caomin-04/shots/D21.png"
+  },
+  "D22": {
+   "path": "episodes/caomin-04/shots/D22.png"
+  },
+  "D23": {
+   "path": "episodes/caomin-04/shots/D23.png"
+  },
+  "D24": {
+   "path": "episodes/caomin-04/shots/D24.png"
+  },
+  "D25": {
+   "path": "episodes/caomin-04/shots/D25.png"
+  },
+  "D26": {
+   "path": "episodes/caomin-04/shots/D26.png"
+  },
+  "D27": {
+   "path": "episodes/caomin-04/shots/D27.png"
+  },
+  "D28": {
+   "path": "episodes/caomin-04/shots/D28.png"
+  },
+  "D29": {
+   "path": "episodes/caomin-04/shots/D29.png"
+  },
+  "D30": {
+   "path": "episodes/caomin-04/shots/D30.png"
+  },
+  "D31": {
+   "path": "episodes/caomin-04/shots/D31.png"
+  },
+  "D32": {
+   "path": "episodes/caomin-04/shots/D32.png"
+  },
+  "D33": {
+   "path": "episodes/caomin-04/shots/D33.png"
+  },
+  "D34": {
+   "path": "episodes/caomin-04/shots/D34.png"
+  },
+  "D35": {
+   "path": "episodes/caomin-04/shots/D35.png"
+  },
+  "D36": {
+   "path": "episodes/caomin-04/shots/D36.png"
+  },
+  "D37": {
+   "path": "episodes/caomin-04/shots/D37.png"
+  },
+  "D38": {
+   "path": "episodes/caomin-04/shots/D38.png"
+  },
+  "D39": {
+   "path": "episodes/caomin-04/shots/D39.png"
+  }
+ },
+ "scenes": [
+  {
+   "frames": [
+    0,
+    6
+   ],
+   "image": "D01",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    7,
+    13
+   ],
+   "image": "D02",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    14,
+    24
+   ],
+   "image": "D03",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    25,
+    27
+   ],
+   "image": "D04",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    28,
+    35
+   ],
+   "image": "D05",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    36,
+    43
+   ],
+   "image": "D06",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    44,
+    49
+   ],
+   "image": "D07",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    50,
+    53
+   ],
+   "image": "D08",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    54,
+    64
+   ],
+   "image": "D09",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    65,
+    69
+   ],
+   "image": "D10",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    70,
+    76
+   ],
+   "image": "D11",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    77,
+    80
+   ],
+   "image": "D12",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    81,
+    88
+   ],
+   "image": "D13",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    89,
+    98
+   ],
+   "image": "D14",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    99,
+    103
+   ],
+   "image": "D15",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    104,
+    114
+   ],
+   "image": "D16",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    115,
+    118
+   ],
+   "image": "D17",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    119,
+    124
+   ],
+   "image": "D18",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    125,
+    136
+   ],
+   "image": "D19",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    137,
+    146
+   ],
+   "image": "D20",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    147,
+    148
+   ],
+   "image": "D21",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    149,
+    154
+   ],
+   "image": "D22",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    155,
+    162
+   ],
+   "image": "D23",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    163,
+    171
+   ],
+   "image": "D24",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    172,
+    177
+   ],
+   "image": "D25",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    178,
+    180
+   ],
+   "image": "D26",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    181,
+    182
+   ],
+   "image": "D27",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    183,
+    188
+   ],
+   "image": "D28",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    189,
+    192
+   ],
+   "image": "D29",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    193,
+    195
+   ],
+   "image": "D30",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    196,
+    199
+   ],
+   "image": "D31",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    200,
+    206
+   ],
+   "image": "D32",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    207,
+    209
+   ],
+   "image": "D33",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    210,
+    211
+   ],
+   "image": "D34",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    212,
+    217
+   ],
+   "image": "D35",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    218,
+    223
+   ],
+   "image": "D36",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    224,
+    229
+   ],
+   "image": "D37",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    230,
+    238
+   ],
+   "image": "D38",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    239,
+    243
+   ],
+   "image": "D39",
+   "grades": [
+    "dawn"
+   ]
+  }
+ ],
+ "frames_fingerprint": {
+  "count": 244,
+  "sha1": "1fd55291208b",
+  "head": "在前三集里，咱们带着大家领略了大唐草民魔幻的生",
+  "tail": "却依然像野草一样生生不息的亿万无名苍生！"
+ }
+}

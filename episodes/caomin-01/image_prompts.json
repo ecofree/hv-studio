@@ -1,0 +1,111 @@
+{
+ "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/photorealistic 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。数据对比改用真实场景隐喻，不画图表。",
+ "D01": {
+  "en": "Chang'an Zhuque Avenue at its richest, a Persian dancer with golden hair twirling long water sleeves outside a wine house, a white-robed scholar fanning himself, two silver ingots glittering on the cobbles that busy passers-by step straight over, saturated warm light, busy and confident"
+ },
+ "D02": {
+  "en": "The same prosperous Tang street one second later, a violent shockwave running along the buildings, the dancers and the passers-by caught mid-stride and turning in alarm, dust and debris lifting off the rooftops, one broken silver ingot spinning through the air, abrupt and disorienting"
+ },
+ "D03": {
+  "en": "A vast Tang dynasty census hall, a long lacquered hall where dozens of clerk-scribes record population onto bamboo slips, the near end packed with anxious peasants queuing three deep, the far end of the hall completely empty and echoing, one abandoned lamp at the far wall, the scale of the loss told by the empty distance"
+ },
+ "D04": {
+  "en": "A lone Tang official standing in an enormous bare field, making a dismissive sweeping hand gesture as if a snap could settle everything, his robes immaculate, dwarfed by the empty ploughed land to every side, flat deadpan humour in an otherwise desolate frame, long shadows"
+ },
+ "D05": {
+  "en": "An ancient Tang official road swallowed by wild grass, a traveller in a bamboo hat and rough scholar's robe tiptoeing along a barely visible rut, clutching a red-tipped wooden staff to his chest, the grass on both sides far above his head, low golden evening light, a single figure in a hostile landscape"
+ },
+ "D06": {
+  "en": "Two grey wolves wearing dark sunglasses pushing their heads out of the tall roadside grass, blinking expectantly at the approaching traveller, comically opportunistic, sharp grass blades across the foreground, warm evening light"
+ },
+ "D07": {
+  "en": "An ancient Tang road running dead straight to the horizon, completely empty, deep wheel ruts and hoofprints in the dust with nothing that made them, heat shimmer rising, one stone milestone leaning beside the track, oppressive emptiness"
+ },
+ "D08": {
+  "en": "The interior of a dirt-poor Tang farmstead at night, no wooden door at all, two rotten timbers leaning across the gap, a hole in the thatched roof letting a thin shaft of moonlight onto the packed earth floor, a threadbare quilt and a cold clay stove, deep shadow, a single guttering candle"
+ },
+ "D09": {
+  "en": "A ramshackle Tang farmstead interior seen from within, roof full of holes with starlight pressing through, bare packed earth, a broken storage chest with its lid hanging off, one threadbare blanket, a clay lamp thrown to the floor, deep cold moonlight and hard shadow"
+ },
+ "D10": {
+  "en": "A masked thief in black creeping through the gap in a ruined Tang farmstead, lifting a clay pot and peering inside, exaggerated beads of sweat catching the moonlight, the sleeping peasant family a dark shape in the background, tense and absurd at once"
+ },
+ "D11": {
+  "en": "The masked thief standing alone in the empty dark farmstead, holding up one empty hand and staring straight at the viewer with a flat deadpan expression, dust motes suspended in the moonlight, a single bent nail as his only haul, one hand raised in a silent what-can-you-do gesture"
+ },
+ "D13": {
+  "en": "Ancient Chinese official census volumes bound in yellow silk lying open on a rough wooden desk, neat columns of tiny brush-written figures, one column ringed in red ink, a brush resting across the page, raking daylight, an official hand cropped at the edge of frame"
+ },
+ "D14": {
+  "en": "An abandoned Tang walled village at dusk, doorless doorframes standing open to empty interiors, weeds growing through the thresholds, a single crow on a roofbeam, desaturated and melancholic, human traces everywhere and no humans at all"
+ },
+ "D15": {
+  "en": "A grey wolf in a conical straw hat and dark sunglasses leaning against a weathered road signpost at the junction, the long road behind it completely empty, the wolf looking bored and faintly disappointed, deadpan stillness, warm dusty light"
+ },
+ "D16": {
+  "en": "A state matchmaking bureau cut into a loess cliff face, red lanterns strung above the entrance, scribes inside comparing registers while ragged villagers queue up outside clutching paper slips, a long queue boredly snaking down the slope, orderly and faintly absurd"
+ },
+ "D17": {
+  "en": "The Taiji Palace hall, the Tang emperor in golden dragon robes holding an oversized wooden abacus, clicking the beads with impressive speed, scrolls and ledgers spilling off the lacquered desk, cold morning light falling from high windows, imperial grandeur turned into a clerk's work"
+ },
+ "D18": {
+  "en": "The Tang emperor in full golden dragon robes with an enormous red silk flower fastened to his head, waving a red handkerchief with theatrical abandon, a queue of matchmaking clerks holding registers behind him in a grand palace hall, the most undignified emperor in history, warm sidelight"
+ },
+ "D19": {
+  "en": "A Tang official at a lacquered desk performing matchmaking paperwork, an oversized abacus to one side, a spool of red thread and a stack of marriage documents on the other, anxious peasants visible queuing through the open doorway behind him, brisk and slightly unhinged"
+ },
+ "D20": {
+  "en": "A Tang clerk with a thick household register under his arm walking a village lane, knocking on a mud-brick door and marking it with chalk, villagers peering out warily from behind the frame, bright morning light, the machinery of population recovery in motion"
+ },
+ "D21": {
+  "en": "A sweating county magistrate with three or four constables, a thick household register under his arm, going door to door down a Tang village lane, one constable already dragging a reluctant young man by the arm, loose energetic brushwork, villagers gawping from doorways"
+ },
+ "D22": {
+  "en": "A county magistrate shoving a reluctant young couple together in a Tang village lane, the young man stiff and resisting, the young woman leaning away, the magistrate gesturing grandly with a motion-blurred sleeve, dust kicked up, broad comedic choreography"
+ },
+ "D25": {
+  "en": "The frontier desert beyond the ruined Great Wall, an ox-cart convoy loaded with silk boxes and gold moving along the ridge, a very long line of ragged central-plain men and women supporting each other on foot behind the carts, a veteran Tang soldier on the wall above handing down bowls of turbid wine, dust hanging in the air, vast and sad"
+ },
+ "D26": {
+  "en": "Close on a weathered old Tang soldier standing in a ruined watchtower, pouring a bowl of turbid wine into the cupped hands of a ragged migrant, both faces deeply lined, no words between them, dusty amber light, the gesture carrying everything"
+ },
+ "D27": {
+  "en": "An endless line of ragged migrants in worn Tang clothing walking single file through a dusty mountain pass toward the loess plateau, a supply cart at the head of the line, tiny figures against immense cliffs, haze and dust swallowing the rear of the column"
+ },
+ "D29": {
+  "en": "First light over the Guanzhong plain, thin mist burning off a vast field, hundreds of ragged but resolute farmers swinging hoes into ground thick with wild grass, smoke rising from broken mud huts, children running along the ridges, the first sun striking the new-turned earth"
+ },
+ "D30": {
+  "en": "Close on a weathered farmer's hands holding dark moist earth that has just been broken open for the first time in years, crumbling between cracked fingers, a single wheat seed resting in the palm, tender and hard-worked at once, raking morning light"
+ },
+ "D31": {
+  "en": "A farmer gripping a snapped hoe handle with both hands, striking wild grass on a slope above a vast field of green shoots, backlit by low sun, a broken tool and an unbroken man, quietly heroic"
+ },
+ "D32": {
+  "en": "A single peasant bent over a field at first light, his shadow long across the turned earth, the plain stretching to a distant hazy horizon, sparse and enormous, one figure carrying everything"
+ },
+ "D33": {
+  "en": "An empty loess plateau at high noon, cracked bare ground with grass stubble, heat shimmer distorting the horizon, a single dead tree with no leaves, oppressive and wide, the land itself as the subject"
+ },
+ "D35": {
+  "en": "A dark night sky over an empty Tang road, a single paper lantern swinging on a pole, long shadows thrown across the rutted track, insects in the lamplight, a road conspicuously suited to robbery, still and expectant"
+ },
+ "D37": {
+  "en": "A Tang market street at dawn, stalls being set up with vegetables and fish, a thin early crowd, ordinary commercial life, warm and mundane, the everyday that statistics are made of"
+ },
+ "D39": {
+  "en": "The courtyard of a Tang office, an enormous wooden population register open on a stone table, an abacus and brush beside it, ranks of clerks writing on benches, paper and bamboo slips everywhere, the quiet labour of counting a nation, high midday light"
+ },
+ "D40": {
+  "en": "A broken waterwheel and a dry irrigation channel cut through the loess, an empty stone trough filled with dust, sun-bleached timber and a silent channel, infrastructure left to rot, quiet melancholy"
+ },
+ "D42": {
+  "en": "A night sky thick with stars above dark loess hills, a single lit window in a distant mud hut, cool blue darkness, immense quiet, the whole world reduced to one small stubborn light"
+ },
+ "D43": {
+  "en": "Close on a bowl of thin millet gruel with a half-eaten corncob on a rough wooden table, steam rising, a pair of worn hands resting beside it, the plain texture of Tang poverty, one shaft of window light, no ornament"
+ },
+ "D44": {
+  "en": "A Tang army camp on the loess plain, hundreds of tented soldiers around their own small cooking fires, spears stacked in rows, dust and worn banners, men who must also feed and equip themselves, wide and orderly"
+ }
+}

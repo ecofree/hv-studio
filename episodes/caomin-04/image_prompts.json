@@ -1,0 +1,120 @@
+{
+ "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/flat/infographic/photorealistic/3d render/chiaroscuro/silk-scroll 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。第四集大量内容是数据/引文（《食货志》盐利居半、《旧唐书》黄巢家世、科举诗句、赋税对比），一律用真实场景隐喻表达——不画图表、不写字；诗句与法条由旁白念出。战场、焚城、自残一律用非血腥表达（远景火光、背影、空镜），不给血腥特写。",
+ "D01": {
+  "en": "A weathered Tang smallholder sitting on his own doorstep with a battered straw hat in his lap, staring out at nothing, three worn things laid on the threshold beside him: a plain wooden tally slip, a scrap of field deed tied with cord, and a single broken straw sandal, a high blank ward wall behind him, low grey morning light, one man's whole life in three objects"
+ },
+ "D02": {
+  "en": "An old farmer bent double in a wheat field at noon, working a worn hoe into cracked dry soil, sweat running down with the dust, neither he nor the field shows any sign of being rewarded, the horizon unbroken and empty in every direction, hard white light, endurance without hope"
+ },
+ "D03": {
+  "en": "The interior of an imperial treasury, row after row of open chests completely bare, one official holding a single empty coffer up in both hands before a veiled woman on the steps, dust in the shafts of light, and through the doorway the tail of a column of provincial soldiers riding away without looking back, cold hall light, emptiness as policy"
+ },
+ "D04": {
+  "en": "A peasant family's low table: one dark coarse round loaf on a chipped plate and beside it a small pinch of coarse grey salt in a crude clay dish, a thin pair of chopsticks resting untouched, the family's hands hovering and hesitating, a bare wall behind, single low lamp, the last pinch in the bowl"
+ },
+ "D05": {
+  "en": "A farm labourer slumped against a mud wall in the midday sun, arms hanging, legs unable to hold him, his ankles visibly swollen, a bowl of plain water untouched at his side, worried family watching from a doorway, harsh clear light, a body failing for want of the smallest thing"
+ },
+ "D06": {
+  "en": "A Tang government salt works beside a wide brine pan: officials in green robes supervising while kiln workers haul out raw salt, a heavy official seal being pressed onto stacked sacks with a wooden stamp, a cordon of soldiers watching the shore, acrid white crust on the ground, bright unforgiving daylight, a natural resource turned into a locked warehouse"
+ },
+ "D07": {
+  "en": "A great bronze steelyard balance indoors: on one pan a single small scoop of coarse salt, on the other an absurdly tall and heavy stack of copper coins braced by a wooden strut, an official watching the beam tip downward with satisfaction, a merchant's face falling behind the post, plain lamplight, the whole trick visible in one object"
+ },
+ "D08": {
+  "en": "A garrison kitchen courtyard where rows of soldiers queue silently with bowls while behind them, far up the slope, a palace kitchen sends out plate after plate of untouched food into a gutter, steam rising from both, the distance between the two lines of people told by nothing but the slope, cold morning light"
+ },
+ "D09": {
+  "en": "On a bare yellow river plain, a gaunt old woman scraping the salty alkaline crust off the cracked ground with a broken hoe, letting the powder fall into a bowl of cold water, her hollow face completely matter-of-fact, other starved villagers doing the same further along, even overcast light, survival reduced to licking the earth"
+ },
+ "D10": {
+  "en": "Night on a wide river: fast narrow boats slipping silently out of a reed channel, their bows low in the water, bundles of salt under oiled cloth, and on the bank a watch brazier suddenly flaring as an alarm gong sounds, clouds racing over a moonless sky, clandestine and urgent"
+ },
+ "D11": {
+  "en": "A crude night-market stall where a smuggler pours coarse salt from a hidden cache into a customer's cupped hands, the customer counting out a short string of coins far fewer than an official shop would demand, both men hooded and glancing over their shoulders, lantern light raking their faces, trade that could hang them both"
+ },
+ "D12": {
+  "en": "Seen from high above, a wide braided river plain cut by reed channels and hidden paths, a dozen small boats moving in ones and twos along lines that never follow the main water, so that from the air the network looks like veins, overcast daylight, an economy with no visible shape"
+ },
+ "D13": {
+  "en": "A smuggler convoy on a forest road at dawn: men in coarse travel cloaks and wide bamboo hats, strong bows and crossbows slung under their cloaks, long sabres at their waists, mules carrying sealed barrels, the leader checking the road ahead with one hand raised, mist, dangerous and organised rather than ragged"
+ },
+ "D14": {
+  "en": "A reed marsh at first light with several long sabres drawn at once, the men in bamboo hats standing among the reeds with the low boats behind them, an overturned official skiff and a discarded helmet half sunk in the water, mist and hard cold light, a fight already decided"
+ },
+ "D15": {
+  "en": "Two men standing side by side before a great hall at night, one tall and weathered in a plain travelling robe with a bow case, the other broader in a scholar's cap with an unusually long sword hanging at his waist, both lit from the hall's doorway, looking at each other with the wary respect of equals, warm interior light against cold night"
+ },
+ "D16": {
+  "en": "A rich provincial compound at day: an enormous walled salt storehouse with its doors thrown open onto stacked white sacks, a stable of fine horses being groomed, and in the yard a broad-shouldered man in plain but well-cut clothes holding a very long sword with easy familiarity, well-fed and unmarked, low warm sun"
+ },
+ "D17": {
+  "en": "The same man at a desk late at night, the sword laid across the table beside a stack of examination papers and a brush, his face lit from below by one lamp as he reads a document he cannot make sense of, the room otherwise dark, the lamp flame reflected in the polished blade, restless and calculating"
+ },
+ "D18": {
+  "en": "Before dawn outside a great examination compound, a young attendant grinding ink and straightening brushes while a broad man in a plain robe stands adjusting his own cap with unusual care, trying to look like everyone else, other candidates in fine silks arriving in carriages behind him, cold grey dawn, a man dressing for a test he cannot win by dress"
+ },
+ "D19": {
+  "en": "A broad courtyard in front of a results board with no legible marks, clusters of richly dressed young men on high horses laughing and calling to each other while servants hold their mounts, and at the shadowed edge of the wall a plain-robed man standing very still alone, seeing none of it, hard daylight from the south"
+ },
+ "D20": {
+  "en": "An inn courtyard in late autumn rain, a lone broad man in a plain robe seated at a stone table with a coarse wine jar, his long sword drawn and laid across the wet flagstones, chrysanthemums in pots going over along the wall behind him, rain driving through, cold grey light, despair turning into something else"
+ },
+ "D21": {
+  "en": "A city street under driving autumn rain absolutely overflowing with white and yellow chrysanthemums, petals plastered across the stones and heaped against the walls, a heavy gate at the far end, one man standing in the middle of the flower flood with his back to the viewer, the air cold and gold and strangely still, weather as omen"
+ },
+ "D22": {
+  "en": "The same man on a rooftop at dawn in a plain robe, his very long sword raised high in both hands against a burning red sky, thousands of men massed below in the dark as a single shape, banners and torchlight running to the horizon, a declaration written with a blade, low sun and firelight"
+ },
+ "D23": {
+  "en": "A drought-stricken plain: standing dead corn, cracked earth, a cracked irrigation ditch, and tax collectors in green robes with their clerks and armed escorts pushing through a crowd of hollow-eyed villagers who have nothing left to give, one woman collapsed sitting in the dust, hard white noon light, drought as an accelerant"
+ },
+ "D24": {
+  "en": "The doors of a great salt storehouse and a money store thrown wide open at night while men carry out chests, silver and bundles of coin, handing them to a growing crowd of armed men in bamboo hats below, torches everywhere, the private fortune of one man becoming the army of thousands, firelit night chaos"
+ },
+ "D25": {
+  "en": "A narrow mountain pass fortified gate at daybreak: ranks of dusty but disciplined rebel troops filling the road below in long columns, and on the walls above the defenders already turning to flee, banners dropped, one gate leaf swinging open, distant mountains, hard morning light, a threshold about to be crossed"
+ },
+ "D26": {
+  "en": "A great walled capital's main gate in rolling smoke, its heavy leaves standing wide open and unguarded, debris in the road, a single abandoned guard post toppled, nobody standing between the outside world and the city, the afternoon light turned orange by dust, a door left ajar after three hundred years of locking"
+ },
+ "D27": {
+  "en": "Snow falling on a wide capital avenue at dawn, ranks of cavalry in brilliant gilded armour with tall plumes riding in ordered columns over the untouched snow, their breath clouding, and beyond them the roofs of the city still and waiting, the first light of winter making the armour the brightest thing in the frame, silent and overwhelming"
+ },
+ "D28": {
+  "en": "The same gilded column filling an enormous empty avenue from wall to wall, the immaculate imperial middle axis with no stalls and no citizens anywhere, cavalry filling every lane of it for the first time in three centuries, snow underfoot, low golden winter sun down the exact centre line, an empty road finally used as intended"
+ },
+ "D29": {
+  "en": "A rebel general standing high on a great palace gate tower in gilded armour, addressing a sea of terrified civilians below with one arm raised, his voice carrying over a city that has gone utterly silent, snow on the battlements, hard winter light from the side, the conqueror reading a verdict rather than a proclamation"
+ },
+ "D30": {
+  "en": "Ward gates flung wide as ragged people pour out into the snow, some kneeling, some with arms raised, an old woman clutching a bundled child, their faces turned up at the armoured riders passing, breath clouding in the cold, gate doors swinging behind them, the same gates that locked them in for a hundred years now open, raw and wordless"
+ },
+ "D31": {
+  "en": "An exhausted young soldier sitting alone on a step outside a burnt timber building, armour dented and one sleeve torn, staring at nothing, beside him a set of ankle shackles and a broken chain he has been dragging, ash drifting on warm air, pale overcast light, exhaustion on every side, victory nowhere in sight"
+ },
+ "D32": {
+  "en": "The great palace complex of a fallen capital burning at night seen from across the river, tier after tier of immense timber halls fully alight and the roof frames collapsing inward, the glow turning the smoke orange, small groups of officials and soldiers on the far bank standing to watch, the whole skyline alight, no close detail of any person or injury"
+ },
+ "D33": {
+  "en": "Close view of ashes on stone paving where official ledgers and registers have burned: curled scorched paper fragments mixed with grey ash, half-melted bronze tally tokens, and one heavy iron ward lock that survived, green with corrosion and still fastened to its broken hasp, cold ashen light, paperwork that outlived an empire"
+ },
+ "D34": {
+  "en": "A traveller's hands on a rough table closing the last of a worn account book for the final time, the cover board cracked and stained, a travelling staff and a straw hat beside it, the room beyond plain and empty of anything to pack, low lamp light on the closed cover, one long accounting finished"
+ },
+ "D35": {
+  "en": "Two summary scenes in one frame divided by a wall: on the left a matchmaker's table with a marriage tally slip and a bound pair of new sandals on a respectable household door, on the right the same kind of door with a bundle of field cord and a soldier's kit left on the step and nobody home, cold morning light, the distance a single generation"
+ },
+ "D36": {
+  "en": "Two summary scenes in one frame divided by a wall: on the left the vast walled grid of a ward city seen from above with tiny cells of huts, on the right a single pair of weathered hands cupping a small pinch of coarse grey salt over a cracked bowl, overcast light, the whole empire reduced to one pinch and one city"
+ },
+ "D37": {
+  "en": "A low viewpoint looking up a long open slope on which hundreds of plain-clothed farm workers are walking toward the viewer, each holding out cupped hands holding a small white pinch, the pinches reading from a distance as one continuous pale band across the hillside, wind moving the grain, gathering and rising, overwhelming and quiet"
+ },
+ "D38": {
+  "en": "Early spring in the ruins of a burnt capital: a blackened fallen beam, cracked stone plinths and weeds pushing through, and in the foreground an old farmer with a hoe brushing ash off his trousers, turning to a broad field of green wheat beyond, the first furrow already turned, low warm morning light, ordinary work resuming"
+ },
+ "D39": {
+  "en": "A low nameless mound at the edge of a young green wheat field in early spring, a broken rusted sword driven into the earth at an angle in front of it, wind moving the wheat, and far behind on the ridge a single figure walking a furrow with a hoe, enormous open sky, soft morning light, the land going on without asking who was buried in it"
+ }
+}

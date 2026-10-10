@@ -1,0 +1,141 @@
+{
+ "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/flat/infographic/photorealistic/3d render/chiaroscuro/silk-scroll 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。数字对比、地契、账本、奖状、借条一律改用真实场景隐喻表达，不画文字、不画图表。",
+ "D01": {
+  "en": "A young Tang farmer standing at a rough wooden registration desk while an impassive clerk counts him and his family onto a bamboo tally slip, other ragged men queuing behind him along a road still full of ruin, dawn light through drifting dust, tentative and uncertain"
+ },
+ "D02": {
+  "en": "Inside the vast dim hall of an imperial palace, a Tang emperor on a high dais smiling faintly and sweeping one wide sleeve aside, an enormous vermilion land deed unrolling across the flagstones below him, courtiers standing in rows, warm shafted light from high windows"
+ },
+ "D03": {
+  "en": "Two officials measuring an immense field with a very long bolt of cloth stretched between them, the cloth running out toward the horizon and visibly not reaching the far edge, one stunned peasant dwarfed in the foreground, clear noon light over ploughed ground"
+ },
+ "D04": {
+  "en": "A peasant clutching a coarse cloth sack to his chest, reaching eagerly forward to receive a rolled deed from a clerk's outstretched hand, both men delighted, while at their feet an abacus lies overturned with beads scattered across the stones, warm afternoon light, oneiric and absurd"
+ },
+ "D05": {
+  "en": "A desert excavation trench at a Tang dynasty tomb site, workers brushing sand from a fragile stack of yellowed paper registers still in a wooden tray, ladder against the trench wall, harsh desert noon light, the find half-exposed and fragile"
+ },
+ "D06": {
+  "en": "Extreme close view of a badly torn and water-stained Tang household register page lying on a rough wooden table, faint ruled columns of dried brush marks, one column ringed in red, an official's finger pressing beside two separate ruled lines, raking daylight, one area of the page torn away"
+ },
+ "D07": {
+  "en": "Two Tang peasants standing at the edge of their own farmland holding a knotted measuring cord, behind them a wide ploughed field they have actually received, and to either side far larger stretches of empty unbroken land, one pointing at the gap, clear bright light, the scale of the shortfall told by the distance"
+ },
+ "D08": {
+  "en": "A cramped thatched Tang hut interior barely larger than a clay jar, a whole family of five cramped inside around a single small clay stove, and outside the open doorway an enormous fenced common yard that is theirs to use but cannot touch, cold daylight from the door, absurd and miserable at once"
+ },
+ "D09": {
+  "en": "A Tang peasant squatting in his own thin field, gouging a handful of dry earth and letting it run through his fingers, his back to a wide empty sky, low sun picking out the dust in his hands, the first quiet turn of his mood"
+ },
+ "D10": {
+  "en": "A county tax collector in a coarse robe tipping a heavy steelyard balance loaded with grain at a village threshing yard while a line of peasants hold out their baskets of millet, sacks of tax cloth stacked behind the collector, cold grey morning light, clinical and merciless"
+ },
+ "D11": {
+  "en": "A collector's official wooden tally board bearing deep carved notches pressed down onto a single tiny scrap of field deed lying on the ground, the enormous board covering the small scrap completely, a peasant kneeling and staring at the two objects, hard side light, brutal smallness of what he holds against what he owes"
+ },
+ "D12": {
+  "en": "A lone Tang smallholder standing with his hoe in a vast field of thin dry stalks, other families nowhere in sight, the earth around him bare and exhausted to the horizon, long dusk shadows, the weight of being pinned to one small square of ground"
+ },
+ "D13": {
+  "en": "Outside a rough earthen farmhouse in the Guanzhong countryside at dusk, a broad-shouldered middle-aged farmer crouching on the ground sharpening a long rust-flecked blade on a wet whetstone, sparks and water droplets flying, a thin grey donkey tethered to a post beside him, low golden light, resolute and poor"
+ },
+ "D14": {
+  "en": "A cramped Tang country market street where coarse horsehair saddles, worn bridles, whetstones and bulging sacks of roasted grain are laid out on mats, a farmer's wife bending over the goods counting a small heap of coins in her palm, jostling bodies and dust, hard noon light, a shopping trip that is a life-draining errand"
+ },
+ "D15": {
+  "en": "A county recruiting officer inspecting the biceps and stance of one bare-chested young man from a line of conscripts, the well-fed and well-shod at the front of the line, the empty-handed and threadbare at the back, dust and sweat, the officer's expression openly weighing money rather than muscle"
+ },
+ "D16": {
+  "en": "A conscript holding out both hands, a rolled field deed handed to him in one hand while an official presses a folded conscription writ into the other, his face caught between gratitude and dread, a clerk behind him stamping, muted daylight in a bare yard"
+ },
+ "D17": {
+  "en": "A peasant's courtyard table laid out with the whole kit of a Tang infantryman before departure: one bow, a sheaf of thirty arrows, a quiver, a long sabre, a whetstone, a coarse felt cloak, an iron helmet and a camp cooking pot, with two bulky sacks of roasted grain and rice standing beside, a farmer checking each item with a worried frown, grey morning light"
+ },
+ "D18": {
+  "en": "In a horse market, a proud war horse held by a wealthy dealer while a thin grey peasant stands frozen before it, his whole meagre savings a short string of copper coins in his open palm not worth the animal, the beast towering over him, dust and hard sun, the moment the price becomes unbearable"
+ },
+ "D19": {
+  "en": "Ten conscripts in ragged hemp smocks crouched tight around one big cast-iron camp cauldron set on stones, steam rising as they share thin gruel from clay bowls, one of them turning a wooden tally board covered in notched marks, a thin grey pack donkey tethered behind them with rope salvaged from their belts, cold evening light, stubborn resourceful unity"
+ },
+ "D20": {
+  "en": "Ten ragged men standing shoulder to shoulder around one cooking pot, each gripping his own small share of copper coins in a fist held out to the middle where the coins are being pooled, their shaved heads and identical hemp smocks making them one body, warm firelight on their faces, wordless collective resolve"
+ },
+ "D21": {
+  "en": "Two elegant imperial ministers in a lamplit hall tipping an enormous weight onto one end of a colossal balance beam while a crowd of gaunt peasant soldiers are pushed toward the other end, the beam sinking toward them, cold lamplight from above, an entire army's cost landing on a handful of farmers"
+ },
+ "D22": {
+  "en": "In a Guanzhong wheat field at dusk, conscripts grabbing rough cloth bundles from under their wives' hands while shears of wheat still stand uncut around them, a breathless courier on a foam-flecked horse pushing into the yard with a sealed bamboo dispatch tube, dust and gold light, the harvest abandoned mid-sentence"
+ },
+ "D23": {
+  "en": "A wide idle strip of field between two villages in early summer used as a training ground, a small column of farmers drilling with wooden spears under a low sun, ripe wheat waiting either side of them, an ox and a hoe left standing where they stopped, calm and provisional"
+ },
+ "D24": {
+  "en": "A mounted courier reining in a frothing horse at a field's edge, holding up a sealed bamboo dispatch tube, behind him a column of men with bedrolls turning to look north where the sky darkens, a vast empty road running the other way, wind tearing at the grass, urgency without destination"
+ },
+ "D25": {
+  "en": "A campaign road in deep mud at dusk, a spent grey pack horse lying in the mire with its head down and its ribs showing but still breathing, its saddle emptied, and beside it a snapped bow and a blunted sabre left lying in the mud while a camp sutler holds up a replacement blade at an absurd price, soldiers standing about with empty hands, sleet, hopeless grey light, loss told without spectacle"
+ },
+ "D26": {
+  "en": "A Tang army column sunk to the knee in an endless mud marsh under a low grey sky, pack horses struggling, men hauling each other forward on ropes and lifting each other out of the mire, exhaustion in every posture, mud unbroken to the horizon, merciless and unsparing"
+ },
+ "D27": {
+  "en": "A victorious column riding back in low winter light, banners and lacquered shields, the crowd cheering only on one side of the road while the road ahead opens into a village of collapsed mud walls and empty stripped houses, a rider glancing sideways at the ruin, cold clear light, triumph arriving too late"
+ },
+ "D28": {
+  "en": "In a great audience hall, an emperor at his desk unrolling a length of pale silk and handing across a heavy inscribed bronze tally-rank token to a scarred veteran kneeling before the dais, other generals queued behind, warm lamplight on lacquer and bronze, honour that cannot be eaten or worn"
+ },
+ "D29": {
+  "en": "A one-legged veteran in a patched hemp tunic standing in the doorway of his own village home, holding a bloodstained folded silk honour, the interior behind him stripped bare and a mud wall already leaning, an old father on the ground at his feet clutching a notched wooden debt stick, low cold light, ruin dressed as a triumph"
+ },
+ "D30": {
+  "en": "A limping scarred farmer standing alone before his burnt-out farmstead, the pale silk honour hanging useless from his hand, his plough and ox yoke lying in the weeds beside him, long evening shadows, the quiet arithmetic of a family wiped out"
+ },
+ "D31": {
+  "en": "A barefoot farming boy at the foot of an immense stepped gate tower of white stone, looking up at the narrow opening between two carved pillars far above him, other villagers behind him too, low dusty light, one narrow door and an empire of rank above it"
+ },
+ "D32": {
+  "en": "A faded bloodstained silk honour used as a pot lid over a steaming clay stove in a poor kitchen, its edge blackened and scorched, a hand reaching for it as if to lift the lid, firelight in a smoky room, the promise of a lifetime reduced to kitchen use"
+ },
+ "D33": {
+  "en": "Three generations of one Guanzhong farming family in a courtyard, an old grandfather passing a worn old sabre to a stooped father who hands it to a grown son, each man's hand closing on the grip in turn, warm late afternoon light, martial bloodline handed on like an inheritance of debt"
+ },
+ "D34": {
+  "en": "Two officials tearing a stretched sheepskin contract with its red seal marks ripped apart between their hands, torn halves falling, a farmer reaching uselessly for the piece he once held, cold hard light from a barred window, the oldest unspoken bargain being voided"
+ },
+ "D35": {
+  "en": "A crowded Guanzhong plain cut up by stone boundary markers and long new brick enclosure walls of great noble estates, pressed thin between them, three landless farmers standing in a leftover strip of weeds with their tools, harsh midday light, a commons quietly walled off"
+ },
+ "D36": {
+  "en": "A dusty Chang'an street where a once-rare honour-holder in a fine but threadbare official robe is roughly halted and waved aside by a city gate constable in leather armour holding a stave, a few passers-by smirking, clear winter light, a rank bought with blood now worth nothing"
+ },
+ "D37": {
+  "en": "A narrow forest track in late autumn where a young man sits alone on a fallen trunk with his right hand wrapped in dirty linen and held close against his chest, his face turned away down the path, hunting parties visible far below in the valley, cold grey light and dry leaves, a choice he has already made and will not explain"
+ },
+ "D38": {
+  "en": "Ten ragged former comrades in blowing snow on an open plain, no longer standing together, each turning in a different direction with his own bundle on his back, one cast-iron pot abandoned in the middle of the snow where they used to gather, blue dusk, the break-up of a fire-team"
+ },
+ "D39": {
+  "en": "An abandoned Tang training garrison at nightfall, its wooden gate leaning off its hinges, tattered banners hanging in shreds, the parade ground inside a thicket of thorn and nettle, no one anywhere, low red dying light, a place that exists only on paper"
+ },
+ "D40": {
+  "en": "A snow-blasted frontier watchtower manned instead by tall deep-set foreign mercenaries in fur and lamellar armour, curved sabres on their belts, drinking from bowls, the wind full of snow, one of them leaning on the parapet looking inland, cold blue light, the frontier handed to paid strangers"
+ },
+ "D41": {
+  "en": "A vast frontier army encampment below a frontier pass, ranks of lamellar-armoured cavalry with curved sabres and long standards, banners snapping in the wind, a single cloaked non-Chinese commander on a dark horse seen from behind watching his lines, dust and low red sun, a private army that answers to wages"
+ },
+ "D42": {
+  "en": "Extreme close view of a bow being drawn with an arrow nocked, the archer's weathered hands and the taut string in sharp focus, out of focus behind them abandoned ploughed land and a broken field boundary post, cold dawn light, a weapon being cocked without a target in sight"
+ },
+ "D43": {
+  "en": "A long museum gallery lit from above, a procession of headless armoured figures in glazed terracotta and stone stelae without legible marks standing in a line on plinths, glass cases of bronze fittings along the wall, a single visitor's silhouette at the far end, cool even museum light, grandeur with no names attached"
+ },
+ "D44": {
+  "en": "Extreme close view of a pair of straw sandals and bare heels standing ankle deep in churned mud and meltwater, the ragged straw coming apart, a discarded wooden shaft half sunk in the water beside the feet, low grey dawn light, ordinary people paying for empire"
+ },
+ "D45": {
+  "en": "A low nameless mound standing alone at the edge of a young green wheat field in early spring, a broken rusted iron sabre driven into the earth at an angle in front of it, the hilt still wrapped in rotted hemp cord, wind moving through the wheat, soft morning light, an unmarked grave holding a costly relic"
+ },
+ "D46": {
+  "en": "A narrow shadowed alley between tall wooden shopfronts in a dense Tang city, hanging cloth banners with no legible marks, a porter carrying a heavy sack through the gap, a thin slice of bright midday light falling on the paving stones far above, a cramped and shadowed world inside a prosperous empire"
+ }
+}

@@ -1,0 +1,624 @@
+{
+ "episode": "caomin-03",
+ "images": {
+  "D01": {
+   "path": "episodes/caomin-03/shots/D01.png"
+  },
+  "D02": {
+   "path": "episodes/caomin-03/shots/D02.png"
+  },
+  "D03": {
+   "path": "episodes/caomin-03/shots/D03.png"
+  },
+  "D04": {
+   "path": "episodes/caomin-03/shots/D04.png"
+  },
+  "D05": {
+   "path": "episodes/caomin-03/shots/D05.png"
+  },
+  "D06": {
+   "path": "episodes/caomin-03/shots/D06.png"
+  },
+  "D07": {
+   "path": "episodes/caomin-03/shots/D07.png"
+  },
+  "D08": {
+   "path": "episodes/caomin-03/shots/D08.png"
+  },
+  "D09": {
+   "path": "episodes/caomin-03/shots/D09.png"
+  },
+  "D10": {
+   "path": "episodes/caomin-03/shots/D10.png"
+  },
+  "D11": {
+   "path": "episodes/caomin-03/shots/D11.png"
+  },
+  "D12": {
+   "path": "episodes/caomin-03/shots/D12.png"
+  },
+  "D13": {
+   "path": "episodes/caomin-03/shots/D13.png"
+  },
+  "D14": {
+   "path": "episodes/caomin-03/shots/D14.png"
+  },
+  "D15": {
+   "path": "episodes/caomin-03/shots/D15.png"
+  },
+  "D16": {
+   "path": "episodes/caomin-03/shots/D16.png"
+  },
+  "D17": {
+   "path": "episodes/caomin-03/shots/D17.png"
+  },
+  "D18": {
+   "path": "episodes/caomin-03/shots/D18.png"
+  },
+  "D19": {
+   "path": "episodes/caomin-03/shots/D19.png"
+  },
+  "D20": {
+   "path": "episodes/caomin-03/shots/D20.png"
+  },
+  "D21": {
+   "path": "episodes/caomin-03/shots/D21.png"
+  },
+  "D22": {
+   "path": "episodes/caomin-03/shots/D22.png"
+  },
+  "D23": {
+   "path": "episodes/caomin-03/shots/D23.png"
+  },
+  "D24": {
+   "path": "episodes/caomin-03/shots/D24.png"
+  },
+  "D25": {
+   "path": "episodes/caomin-03/shots/D25.png"
+  },
+  "D26": {
+   "path": "episodes/caomin-03/shots/D26.png"
+  },
+  "D27": {
+   "path": "episodes/caomin-03/shots/D27.png"
+  },
+  "D28": {
+   "path": "episodes/caomin-03/shots/D28.png"
+  },
+  "D29": {
+   "path": "episodes/caomin-03/shots/D29.png"
+  },
+  "D30": {
+   "path": "episodes/caomin-03/shots/D30.png"
+  },
+  "D31": {
+   "path": "episodes/caomin-03/shots/D31.png"
+  },
+  "D32": {
+   "path": "episodes/caomin-03/shots/D32.png"
+  },
+  "D33": {
+   "path": "episodes/caomin-03/shots/D33.png"
+  },
+  "D34": {
+   "path": "episodes/caomin-03/shots/D34.png"
+  },
+  "D35": {
+   "path": "episodes/caomin-03/shots/D35.png"
+  },
+  "D36": {
+   "path": "episodes/caomin-03/shots/D36.png"
+  },
+  "D37": {
+   "path": "episodes/caomin-03/shots/D37.png"
+  },
+  "D38": {
+   "path": "episodes/caomin-03/shots/D38.png"
+  },
+  "D39": {
+   "path": "episodes/caomin-03/shots/D39.png"
+  },
+  "D40": {
+   "path": "episodes/caomin-03/shots/D40.png"
+  },
+  "D41": {
+   "path": "episodes/caomin-03/shots/D41.png"
+  },
+  "D42": {
+   "path": "episodes/caomin-03/shots/D42.png"
+  },
+  "D43": {
+   "path": "episodes/caomin-03/shots/D43.png"
+  },
+  "D44": {
+   "path": "episodes/caomin-03/shots/D44.png"
+  },
+  "D45": {
+   "path": "episodes/caomin-03/shots/D45.png"
+  },
+  "D46": {
+   "path": "episodes/caomin-03/shots/D46.png"
+  },
+  "D47": {
+   "path": "episodes/caomin-03/shots/D47.png"
+  }
+ },
+ "scenes": [
+  {
+   "frames": [
+    0,
+    7
+   ],
+   "image": "D01",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    8,
+    12
+   ],
+   "image": "D02",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    13,
+    20
+   ],
+   "image": "D03",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    21,
+    30
+   ],
+   "image": "D04",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    31,
+    37
+   ],
+   "image": "D05",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    38,
+    42
+   ],
+   "image": "D06",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    43,
+    50
+   ],
+   "image": "D07",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    51,
+    58
+   ],
+   "image": "D08",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    59,
+    63
+   ],
+   "image": "D09",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    64,
+    69
+   ],
+   "image": "D10",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    70,
+    80
+   ],
+   "image": "D11",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    81,
+    83
+   ],
+   "image": "D12",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    84,
+    94
+   ],
+   "image": "D13",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    95,
+    99
+   ],
+   "image": "D14",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    100,
+    110
+   ],
+   "image": "D15",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    111,
+    118
+   ],
+   "image": "D16",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    119,
+    127
+   ],
+   "image": "D17",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    128,
+    134
+   ],
+   "image": "D18",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    135,
+    141
+   ],
+   "image": "D19",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    142,
+    145
+   ],
+   "image": "D20",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    146,
+    149
+   ],
+   "image": "D21",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    150,
+    156
+   ],
+   "image": "D22",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    157,
+    161
+   ],
+   "image": "D23",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    162,
+    171
+   ],
+   "image": "D24",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    172,
+    177
+   ],
+   "image": "D25",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    178,
+    188
+   ],
+   "image": "D26",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    189,
+    194
+   ],
+   "image": "D27",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    195,
+    200
+   ],
+   "image": "D28",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    201,
+    205
+   ],
+   "image": "D29",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    206,
+    214
+   ],
+   "image": "D30",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    215,
+    222
+   ],
+   "image": "D31",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    223,
+    224
+   ],
+   "image": "D32",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    225,
+    229
+   ],
+   "image": "D33",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    230,
+    240
+   ],
+   "image": "D34",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    241,
+    243
+   ],
+   "image": "D35",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    244,
+    246
+   ],
+   "image": "D36",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    247,
+    249
+   ],
+   "image": "D37",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    250,
+    255
+   ],
+   "image": "D38",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    256,
+    262
+   ],
+   "image": "D39",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    263,
+    269
+   ],
+   "image": "D40",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    270,
+    273
+   ],
+   "image": "D41",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    274,
+    276
+   ],
+   "image": "D42",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    277,
+    285
+   ],
+   "image": "D43",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    286,
+    288
+   ],
+   "image": "D44",
+   "grades": [
+    "frost"
+   ]
+  },
+  {
+   "frames": [
+    289,
+    293
+   ],
+   "image": "D45",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    294,
+    298
+   ],
+   "image": "D46",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    299,
+    300
+   ],
+   "image": "D47",
+   "grades": [
+    "dusk"
+   ]
+  }
+ ],
+ "frames_fingerprint": {
+  "count": 301,
+  "sha1": "da5e024836aa",
+  "head": "提起大唐长安，现代人的脑海里，",
+  "tail": "也最彻底的终极复仇：《黄巢的私盐与帝国的葬礼》。"
+ }
+}
