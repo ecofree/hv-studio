@@ -241,7 +241,8 @@ def cmd_input_review(args):
     from app.services.production_admission import check, record_approval
     if args.reviewer or args.finding:
         if not args.reviewer or not args.finding: raise SystemExit('reviewer and finding are both required')
-        print(record_approval(args.episode, args.reviewer, args.finding))
+        print(record_approval(args.episode, args.reviewer, args.finding,
+                              getattr(args, 'direction_policy', None)))
     import json
     print(json.dumps(check(args.episode), ensure_ascii=False, indent=2))
 
@@ -586,6 +587,14 @@ def main():
     p.add_argument('episode')
     p.add_argument('--reviewer')
     p.add_argument('--finding')
+    # 语气/画面等 direction cue 若音色能力不支持，必须显式登记处置去向，
+    # 否则 check() 会以「artistic directions require an explicit input execution
+    # plan」阻断。WebUI（Main.py）一直能传这个策略，CLI 此前**没有**对应参数：
+    # 同一件事在网页能闭合、在命令行必然 BLOCKED，且 --help 里看不出有这个选项。
+    p.add_argument('--direction-policy', choices=['candidate_review_required'], default=None,
+                   help='对未支持的 direction cue 登记处置策略；'
+                        'candidate_review_required = 交由成片候选评审裁定，'
+                        '不把指令当成已执行的工作')
     p.set_defaults(func=cmd_input_review)
 
     p = sub.add_parser("smoke", help="端到端冒烟（全 mock，零成本）")

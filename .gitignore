@@ -21,6 +21,12 @@ episodes/*/out/
 episodes/*/shots/
 episodes/*/production/
 episodes/hanwu_15min/*.mp4
+# ⚠️ `audio/` 上面的规则只挡**正好叫 audio 的目录**，带后缀的兄弟目录
+# （audio_qwen旧策略/、audio_旧旁白_20260928/ 这类失败重试与音色对比残留）
+# 不在规则内 —— 2026-10-10 实测：lishimin-01 的两个 audio_* 目录磁盘上共
+# 22.8GB，`git add -A` 会把其中 552 个文件（128MB）拉进暂存区。
+episodes/*/audio_*/
+episodes/*/audio-*/
 # 但保留 episode 模型 json
 !episodes/*.json
 # 编排锁：运行期互斥用的临时文件，进程退出即失效，入库只会制造假冲突
@@ -64,3 +70,14 @@ episodes/smoke-*.json
 
 # ---- 外部音频接入（大文件，不入库）----
 resource/external_audio/
+
+# ---- 工具二进制与本地渲染音轨（2026-10-10 推送前实测）----
+# tools/ffmpeg/bin/*.exe 三个各 158~161MB，**超 GitHub 单文件 100MB 硬限**，
+# push 必然被拒。ffmpeg 由 `bin/setup_local_asr.ps1` / PATH 安装，不入库。
+tools/ffmpeg/
+# Gemini TTS 渲染出的解说音轨（整集 ~40-50MB ×4 集 + 分幕 wav，合计约 250MB）。
+# 入库的「作者输入源」是 scripts/*.md（剧本与 TTS 专稿）；音轨是**渲染产物**，
+# 与成片同属「Git 之外单独备份」的一类（见 docs/production_runbook.md 末节）。
+resource/风趣历史.writing-DNA/scripts/audio/
+# 音色试听探针产物（与 episodes/_voicetone/ 同类：一次性比对用，不入库）
+resource/风趣历史.writing-DNA/scripts/test_*.wav

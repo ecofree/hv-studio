@@ -400,7 +400,19 @@ def cut_per_frame(wav, asr, alignment, out_dir, *, pad_s=0.4, bed_s=7.5,
         w = out_dir / f"{fid}.wav"
         with wave.open(str(w), "wb") as h:
             h.setnchannels(1); h.setsampwidth(2); h.setframerate(sr)
-            h.writeframes(x[cur * 2:(cur + ln) * 2].tobytes())
+            # ⚠️ 切片必须按**样本下标**切，不能再乘 2：`x` 已经是 `<i2` 视图
+            # （每个元素 = 一个采样），`*2` 是从 int16 字节视图时代留下的。
+            # 乘 2 的后果不报错、不违反下面任何断言，只是内容全错：每帧写出
+            # 2× 于自身区间的前段（后段被下一帧吃掉），越界帧被 Python 切片
+            # 静默截成 0 采样。实测 caomin-01：238 帧里 116 帧是 44 字节空 wav，
+            # 其余帧长 2 倍；而 verify_binding 与 Σsamples 守恒**照样绿灯**
+            # —— 它们核对的是记录值与同一个错误字节流的 sha256，从不看
+            # 帧长与真实语音边界是否对得上。
+            h.writeframes(x[cur:(cur + ln)].tobytes())
+        written = _wav_frames(w)
+        if written != ln:
+            raise ExternalAudioError(
+                f"{fid} 落盘 {written} 采样 != 计划 {ln} 采样（切片与写盘不一致）")
         rows.append(dict(frame=fid, kind=kind, path=str(w), sha256=_sha256(w),
                          start_sample=cur, samples=ln,
                          duration_ms=round(ln * 1000 / sr)))
@@ -411,6 +423,12 @@ def cut_per_frame(wav, asr, alignment, out_dir, *, pad_s=0.4, bed_s=7.5,
     return dict(sample_rate=sr, total_samples=total, rows=rows,
                 bed_frames=sum(1 for r in rows if r["kind"] == "bed"),
                 audio_dir=str(out_dir))
+
+
+def _wav_frames(path) -> int:
+    """读回 wav 的真实帧数。切完必须用它自检：记录值与落盘值可以一起错。"""
+    with wave.open(str(path), "rb") as h:
+        return h.getnframes()
 
 
 def write_binding(ep_id, *, resample, asr, alignment, cut) -> Path:
@@ -490,6 +508,15 @@ def verify_binding(ep: Episode) -> dict:
             break
         if _sha256(p) != o["sha256"]:
             fails.append(f"{o['frame']} 音频内容已变（sha256 不符）")
+            break
+        # 帧长必须等于记录值。sha256 只能证明「文件没被换过」，不能证明
+        # 「切对了」——切分切片写错时，文件与记录是同一条错字节流，sha256
+        # 必然自洽（caomin-01 实测：238 帧里 116 帧是 0 采样空 wav，此处仍绿）。
+        # 帧长对不上就是切分坏了，必须报出来而不是等成片字幕错位。
+        got = _wav_frames(p)
+        if got != o["samples"]:
+            fails.append(f"{o['frame']} 落盘 {got} 采样 != 绑定记录 {o['samples']}"
+                         f"（切分与写盘不一致，需重跑导入）")
             break
     return dict(ok=not fails, fails=fails, path=str(path),
                 total_samples=rec["total_samples"], frames=len(rec["frame_offsets"]))
