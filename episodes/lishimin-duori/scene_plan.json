@@ -1,0 +1,1086 @@
+{
+ "episode": "lishimin-duori",
+ "images": {
+  "D01": {
+   "path": "episodes/lishimin-duori/shots/D01.png"
+  },
+  "LS21": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS12": {
+   "reuse_from": "lishimin-01"
+  },
+  "L41": {
+   "reuse_from": "lsm-15min"
+  },
+  "LS04": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS27": {
+   "reuse_from": "lishimin-01"
+  },
+  "D02": {
+   "path": "episodes/lishimin-duori/shots/D02.png"
+  },
+  "LS13": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS36": {
+   "reuse_from": "lishimin-01"
+  },
+  "D03": {
+   "path": "episodes/lishimin-duori/shots/D03.png"
+  },
+  "LS19": {
+   "reuse_from": "lishimin-01"
+  },
+  "D04": {
+   "path": "episodes/lishimin-duori/shots/D04.png"
+  },
+  "LS10": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS37": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS11": {
+   "reuse_from": "lishimin-01"
+  },
+  "D05": {
+   "path": "episodes/lishimin-duori/shots/D05.png"
+  },
+  "LS08": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS60": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS55": {
+   "reuse_from": "lishimin-01"
+  },
+  "D06": {
+   "path": "episodes/lishimin-duori/shots/D06.png"
+  },
+  "PD05": {
+   "reuse_from": "lishimin-02"
+  },
+  "LS23": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS47": {
+   "reuse_from": "lishimin-01"
+  },
+  "D07": {
+   "path": "episodes/lishimin-duori/shots/D07.png"
+  },
+  "D08": {
+   "path": "episodes/lishimin-duori/shots/D08.png"
+  },
+  "L22": {
+   "reuse_from": "lsm-15min"
+  },
+  "PA05": {
+   "reuse_from": "lishimin-02"
+  },
+  "D09": {
+   "path": "episodes/lishimin-duori/shots/D09.png"
+  },
+  "LS56": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS59": {
+   "reuse_from": "lishimin-01"
+  },
+  "D10": {
+   "path": "episodes/lishimin-duori/shots/D10.png"
+  },
+  "L26": {
+   "reuse_from": "lsm-15min"
+  },
+  "LS65": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS61": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS64": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS03": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS62": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS63": {
+   "reuse_from": "lishimin-01"
+  },
+  "D11": {
+   "path": "episodes/lishimin-duori/shots/D11.png"
+  },
+  "D12": {
+   "path": "episodes/lishimin-duori/shots/D12.png"
+  },
+  "D13": {
+   "path": "episodes/lishimin-duori/shots/D13.png"
+  },
+  "LS69": {
+   "reuse_from": "lishimin-01"
+  },
+  "PA02": {
+   "reuse_from": "lishimin-02"
+  },
+  "D14": {
+   "path": "episodes/lishimin-duori/shots/D14.png"
+  },
+  "D15": {
+   "path": "episodes/lishimin-duori/shots/D15.png"
+  },
+  "D16": {
+   "path": "episodes/lishimin-duori/shots/D16.png"
+  },
+  "D17": {
+   "path": "episodes/lishimin-duori/shots/D17.png"
+  },
+  "D19": {
+   "path": "episodes/lishimin-duori/shots/D19.png"
+  },
+  "D20": {
+   "path": "episodes/lishimin-duori/shots/D20.png"
+  },
+  "D21": {
+   "path": "episodes/lishimin-duori/shots/D21.png"
+  },
+  "LS51": {
+   "reuse_from": "lishimin-01"
+  },
+  "D22": {
+   "path": "episodes/lishimin-duori/shots/D22.png"
+  },
+  "D23": {
+   "path": "episodes/lishimin-duori/shots/D23.png"
+  },
+  "LS68": {
+   "reuse_from": "lishimin-01"
+  },
+  "D24": {
+   "path": "episodes/lishimin-duori/shots/D24.png"
+  },
+  "LS71": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS72": {
+   "reuse_from": "lishimin-01"
+  },
+  "D25": {
+   "path": "episodes/lishimin-duori/shots/D25.png"
+  },
+  "LS73": {
+   "reuse_from": "lishimin-01"
+  },
+  "LS76": {
+   "reuse_from": "lishimin-01"
+  },
+  "D26": {
+   "path": "episodes/lishimin-duori/shots/D26.png"
+  },
+  "PC16": {
+   "reuse_from": "lishimin-02"
+  },
+  "D27": {
+   "path": "episodes/lishimin-duori/shots/D27.png"
+  },
+  "D28": {
+   "path": "episodes/lishimin-duori/shots/D28.png"
+  },
+  "D29": {
+   "path": "episodes/lishimin-duori/shots/D29.png"
+  },
+  "D30": {
+   "path": "episodes/lishimin-duori/shots/D30.png"
+  },
+  "PB07": {
+   "reuse_from": "lishimin-02"
+  },
+  "PA17": {
+   "reuse_from": "lishimin-02"
+  },
+  "PA14": {
+   "reuse_from": "lishimin-02"
+  },
+  "D31": {
+   "path": "episodes/lishimin-duori/shots/D31.png"
+  },
+  "LS78": {
+   "reuse_from": "lishimin-01"
+  }
+ },
+ "scenes": [
+  {
+   "frames": [
+    0,
+    1
+   ],
+   "image": "D01",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    2,
+    4
+   ],
+   "image": "LS21",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    5,
+    7
+   ],
+   "image": "LS12",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    8,
+    9
+   ],
+   "image": "L41",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    10,
+    12
+   ],
+   "image": "LS04",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    13,
+    14
+   ],
+   "image": "LS27",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    15,
+    17
+   ],
+   "image": "D02",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    18,
+    19
+   ],
+   "image": "LS13",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    20,
+    22
+   ],
+   "image": "LS36",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    23,
+    24
+   ],
+   "image": "D03",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    25,
+    27
+   ],
+   "image": "LS19",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    28,
+    33
+   ],
+   "image": "D04",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    34,
+    34
+   ],
+   "image": "LS10",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    35,
+    36
+   ],
+   "image": "LS37",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    37,
+    38
+   ],
+   "image": "LS11",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    39,
+    39
+   ],
+   "image": "D05",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    40,
+    42
+   ],
+   "image": "LS08",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    43,
+    45
+   ],
+   "image": "LS60",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    46,
+    46
+   ],
+   "image": "LS55",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    47,
+    48
+   ],
+   "image": "D06",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    49,
+    56
+   ],
+   "image": "LS04",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    57,
+    57
+   ],
+   "image": "PD05",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    58,
+    58
+   ],
+   "image": "LS23",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    59,
+    62
+   ],
+   "image": "LS47",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    63,
+    64
+   ],
+   "image": "LS27",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    65,
+    66
+   ],
+   "image": "D07",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    67,
+    67
+   ],
+   "image": "D08",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    68,
+    68
+   ],
+   "image": "LS37",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    69,
+    69
+   ],
+   "image": "L22",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    70,
+    72
+   ],
+   "image": "LS23",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    73,
+    74
+   ],
+   "image": "PA05",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    75,
+    75
+   ],
+   "image": "D09",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    76,
+    80
+   ],
+   "image": "LS55",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    81,
+    81
+   ],
+   "image": "LS56",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    82,
+    83
+   ],
+   "image": "LS59",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    84,
+    86
+   ],
+   "image": "D10",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    87,
+    88
+   ],
+   "image": "L26",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    89,
+    91
+   ],
+   "image": "LS60",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    92,
+    94
+   ],
+   "image": "LS65",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    95,
+    95
+   ],
+   "image": "LS61",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    96,
+    97
+   ],
+   "image": "LS64",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    98,
+    100
+   ],
+   "image": "LS03",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    101,
+    102
+   ],
+   "image": "LS63",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    103,
+    106
+   ],
+   "image": "LS62",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    107,
+    108
+   ],
+   "image": "D11",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    109,
+    110
+   ],
+   "image": "LS47",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    111,
+    111
+   ],
+   "image": "LS12",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    112,
+    114
+   ],
+   "image": "D12",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    115,
+    115
+   ],
+   "image": "D13",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    116,
+    118
+   ],
+   "image": "LS69",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    119,
+    119
+   ],
+   "image": "PA02",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    120,
+    122
+   ],
+   "image": "D14",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    123,
+    124
+   ],
+   "image": "LS03",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    125,
+    125
+   ],
+   "image": "D15",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    126,
+    127
+   ],
+   "image": "D16",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    128,
+    128
+   ],
+   "image": "LS65",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    129,
+    130
+   ],
+   "image": "LS27",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    131,
+    133
+   ],
+   "image": "LS69",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    134,
+    135
+   ],
+   "image": "D17",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    136,
+    137
+   ],
+   "image": "D19",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    138,
+    139
+   ],
+   "image": "D20",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    140,
+    140
+   ],
+   "image": "D21",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    141,
+    141
+   ],
+   "image": "LS51",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    142,
+    143
+   ],
+   "image": "D22",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    144,
+    147
+   ],
+   "image": "D23",
+   "grades": [
+    "noon"
+   ]
+  },
+  {
+   "frames": [
+    148,
+    150
+   ],
+   "image": "LS68",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    151,
+    151
+   ],
+   "image": "D24",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    152,
+    152
+   ],
+   "image": "LS71",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    153,
+    153
+   ],
+   "image": "LS72",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    154,
+    156
+   ],
+   "image": "LS69",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    157,
+    158
+   ],
+   "image": "D25",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    159,
+    159
+   ],
+   "image": "LS73",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    160,
+    161
+   ],
+   "image": "LS76",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    162,
+    165
+   ],
+   "image": "D26",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    166,
+    170
+   ],
+   "image": "PC16",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    171,
+    172
+   ],
+   "image": "D27",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    173,
+    175
+   ],
+   "image": "LS65",
+   "grades": [
+    "dusk"
+   ]
+  },
+  {
+   "frames": [
+    176,
+    177
+   ],
+   "image": "LS71",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    178,
+    178
+   ],
+   "image": "D28",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    179,
+    181
+   ],
+   "image": "D29",
+   "grades": [
+    "fire"
+   ]
+  },
+  {
+   "frames": [
+    182,
+    183
+   ],
+   "image": "D30",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    184,
+    185
+   ],
+   "image": "PB07",
+   "grades": [
+    "night"
+   ]
+  },
+  {
+   "frames": [
+    186,
+    186
+   ],
+   "image": "PA17",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    187,
+    187
+   ],
+   "image": "PA14",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    188,
+    189
+   ],
+   "image": "D31",
+   "grades": [
+    "dawn"
+   ]
+  },
+  {
+   "frames": [
+    190,
+    192
+   ],
+   "image": "LS78",
+   "grades": [
+    "dawn"
+   ]
+  }
+ ],
+ "frames_fingerprint": {
+  "count": 193,
+  "sha1": "68b1525b178a",
+  "head": "在绝大多数中国人的认知坐标系里，",
+  "tail": "缓缓扣动了扳机……"
+ }
+}

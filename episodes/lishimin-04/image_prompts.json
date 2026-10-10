@@ -1,0 +1,93 @@
+{
+ "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/photorealistic 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。",
+ "D01": {
+  "en": "The dark depths of a Tang princely eastern palace at night, guttering candles, and standing incongruously in the middle of the white marble courtyard a Turkic felt yurt pitched indoors, its hide walls and tasselled ropes lit orange by the candlelight, cold stone floor against warm felt"
+ },
+ "D02": {
+  "en": "A young Tang crown prince in his early twenties limping into the Turkic felt yurt, one leg dragging, a curved Turkic sabre hanging at his waist, fur-lined robe thrown open, face sullen and coiled, candlelight raking across the hide walls behind him"
+ },
+ "D03": {
+  "en": "Inside the felt yurt at night, the young prince on one knee over a low felt table, a wooden training sword laid across it, his hands stained and his expression turning bitter, the sabre still at his waist, a single candle throwing his shadow huge against the hide wall"
+ },
+ "D04": {
+  "en": "A Tang imperial court session, an elderly remonstrating official in a faded crimson court robe standing alone in the open floor, head raised and looking directly up at the throne, the young emperor seated high above him in cold daylight from the hall's high windows, the whole hall silent"
+ },
+ "D05": {
+  "en": "Close on the elderly remonstrating official's face, grey beard, deep lines, eyes lifted and unflinching, mouth open mid-remonstration, blurred ranks of silent courtiers behind him, hard raking light across one cheek"
+ },
+ "D06": {
+  "en": "The empty floor of a Tang court hall after the officials have knelt and withdrawn, scattered memorial slips on the polished stone, one incense stick still smoking, the throne visible far above and empty, a sense of a confrontation just ended"
+ },
+ "D07": {
+  "en": "Outside the walls of Ansi in Liaodong, a blizzard tearing across an open plain, a muddy siege trench below filled with broken war banners and the carcasses of frozen horses, driven snow cutting the air horizontally, grey-white and merciless"
+ },
+ "D08": {
+  "en": "A Tang emperor in his fifties standing in the wind and snow outside Ansi, a heavy battle robe thrown over his armour, greying hair and beard, whitespace on his face, snow collecting on his shoulders, head slightly bowed, a defeated campaign all around him"
+ },
+ "D09": {
+  "en": "Close on the same weathered emperor's face in the snow, frost in his eyelashes, bloodshot eyes, a long scar near the temple, breath visible, the flat light of a whiteout, exhaustion rather than anger"
+ },
+ "D10": {
+  "en": "The forecourt of Zhaoling on the outskirts of Chang'an, workmen with ropes hauling down a tall stone stele, the tablet cracking into two clean halves, a supervising official in court dress watching with folded arms, dust rising at the base, cold afternoon light"
+ },
+ "D11": {
+  "en": "The broken two halves of the fallen stele lying apart on the ground at Zhaoling, a workman's hand resting on the cracked surface, rope still coiled beside them, weeds already sprouting in the gap, mournful daylight"
+ },
+ "D12": {
+  "en": "Months later at the same forecourt at Zhaoling, workmen silently setting the two halves upright and re-joining them, fresh mortar visible along the seam, an official watching from a distance with his back turned, damp morning light, restoration without ceremony"
+ },
+ "D13": {
+  "en": "Cuiwei Palace hidden deep in the southern mountains, halls half hidden among ancient trees, mist threading between the trunks, a stone stair rising into cloud, remote and deliberately secluded, cold green light"
+ },
+ "D14": {
+  "en": "A dim sleeping chamber at Cuiwei Palace, charcoal brazier glowing low beside a couch, heavy curtains, an Indian fakir in foreign robes kneeling and presenting a small carved jade box with both hands, medicine smoke and charcoal haze in the air"
+ },
+ "D15": {
+  "en": "Close on the opened jade box in a dim palace chamber, a few dark pills inside with a cold metallic glint, a hand hesitating above them, the ember-lit chamber beyond out of focus, an unremarkable object carrying enormous consequence"
+ },
+ "D16": {
+  "en": "A sick emperor in his fifties sitting up against cushions in a dark chamber, a hand of attendants steadying him, a jade box on the couch beside him, hollow eyes, candlelight low on the walls, intimate and uneasy"
+ },
+ "D17": {
+  "en": "Dusk at the north Sima Gate of Zhaoling on Jiuzhong mountain, the six great stone warhorses of the tomb standing in a row and throwing long shadows across the slope, the last sun behind them, vast and silent"
+ },
+ "D18": {
+  "en": "Close on one of the Zhaoling Six Steeds stone carvings, the great stone horse in profile with its rider, arrows and wounds still visible in the stone, a spur an arrow struck long ago still lodged, raking sunset light revealing every chisel mark"
+ },
+ "D19": {
+  "en": "Night at Jinyang city during the final years of the Sui dynasty, men secretly casting coins over a crude furnace in a courtyard, glowing metal and stacked coin blanks, a soldier's silhouette watching the gate, the conspiracy that armed a rebellion, firelight only"
+ },
+ "D20": {
+  "en": "The Xuanwu Gate of the Tang imperial palace at dawn, its great vermilion doors, a single arrow in armour embedded in the timber beside the gate, a dropped gauntlet on the steps, mist on the stone, the moment after the most famous killing in Chinese history"
+ },
+ "D21": {
+  "en": "A weathered stone stele recently dug from the ground, a single short line of incised characters, soil still clinging to the base, a fragment of an erased record held up to the light by a worker's rough hand, mud, scratches, and a name that was meant to be lost"
+ },
+ "D22": {
+  "en": "A night raid on a Tang palace gate, men in dark clothing forcing the heavy doors with a battering ram, torches guttering, defenders' spears thrust down from above, chaos in the doorway, the same manoeuvre repeated generation after generation"
+ },
+ "D23": {
+  "en": "A Tang court eunuch in a dark corridor, a drawn blade held low, a courtier's silk robe slipping from his shoulder, a row of fallen courtiers' tablets scattered on the floor, a single lamp, cold dread"
+ },
+ "D24": {
+  "en": "The great vermilion Xuanwu Gate doors closed, the weathered bronze studs in a long grid filling the frame, patina and chipped paint, cold flat light, no people, the most loaded surface in Tang history"
+ },
+ "D25": {
+  "en": "A dark palace corridor at night in the Tang eastern palace, silk curtains half drawn, a single lamp on a stand, a guard's shadow falling across the floor, cold blue night beyond the lattice window, still and suspicious"
+ },
+ "D26": {
+  "en": "Close on an inkstone and a wolf-hair brush on a lacquered desk, a half-written character abandoned mid-stroke, an official's seal beside it, one lamp burning low, the quiet before an irreversible decision"
+ },
+ "D27": {
+  "en": "A vast Tang frontier army camp seen from a rise at dawn, thousands of tents in ordered rows stretching to the horizon, cook-fires sending thin columns of smoke into cold air, banner poles, the scale of a failed expedition, blue-grey light"
+ },
+ "D28": {
+  "en": "A long shadow of a Tang dynasty arrowhead cast alone on bare grey stone, enormous, the arrow itself out of frame, raking low light, the simplest possible image of a shot that echoed for two hundred years"
+ },
+ "D29": {
+  "en": "A young Tang prince in his forties on horseback in a dusty courtyard, facing the gates of his own father's palace, a drawn sabre held low, guards waiting at the gate, daylight and a decision already made"
+ },
+ "D30": {
+  "en": "A medicine and alchemists' workbench in a dim palace chamber, a bronze tripod over low heat, dried herbs and mineral powders in small dishes, a mortar and pestle, one candle burned to a stub, cluttered and disreputable"
+ }
+}
