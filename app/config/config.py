@@ -298,7 +298,9 @@ class ImageEngineConfig(BaseModel):
     timeout_s: int | None = 300
     max_reference_images: int | None = 16
     concurrency: int | None = 6
-    requires_upscale: bool | None = True
+    # 注：requires_upscale 已删（2026-10-13）。它在全仓零消费者——超分实际在
+    # compose/motion 内部由 app/services/upscale.py 惰性完成并带缓存，shots/
+    # 里本来就没有 @2x 文件。留着只会让人以为有独立产物（同坑 #38）。
     supports_seed: bool | None = False
     supports_character_id: bool | None = False
     strict_param_validation: bool | None = False

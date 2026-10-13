@@ -27,9 +27,9 @@ def enqueue(batch_id, episodes, options, *, timeout=3600, retries=2, folder=None
     if not episodes or len(set(episodes)) != len(episodes): raise ValueError('episodes must be nonempty and unique')
     for eid in episodes:
         paths.episode_dir(eid); paths.episode_json(eid)
-    if set(options)-{'max_requests','max_characters','max_images'}:
+    if set(options)-{'max_requests','max_characters','max_images','max_image_retries'}:
         raise ValueError('unsupported unattended options')
-    limits = {key:options.get(key, 0) for key in ('max_requests','max_characters','max_images')}
+    limits = {key:options.get(key, 0) for key in ('max_requests','max_characters','max_images','max_image_retries')}
     if any(type(v) is not int or v < 0 for v in limits.values()): raise ValueError('invalid budget')
     if not 1 <= timeout <= 14400 or not 0 <= retries <= 3: raise ValueError('invalid worker bounds')
     spec = dict(batch_id=batch_id, episodes=list(episodes), options=limits, timeout=timeout, retries=retries)

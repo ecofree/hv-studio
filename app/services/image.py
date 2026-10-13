@@ -494,8 +494,14 @@ def _generate_many_worker(
                     _install_response(job, ImageGenResponse.model_validate(saved['response']), request_fp, saved['channel'])
                     result[job.id] = str(job.out)
                 except Exception as exc:
+                    # The receipt is paid evidence: the message must say what is
+                    # wrong, not just that recovery is needed. Measured 2026-10-13
+                    # on XL22b1: a bare "ValueError" hid "provider returned
+                    # 1086x1448 for a 1080x1920 request".
                     result[job.id] = None
-                    result[f'{job.id}__error'] = f'saved response requires recovery: {type(exc).__name__}'
+                    result[f'{job.id}__error'] = (
+                        f'saved response requires recovery: {type(exc).__name__}: {exc} '
+                        f'(receipt {response_path}, see bin/quarantine_image_receipt.py)')
                 continue
             if job._channel_idx is not None:
                 # 从 worker 钉住的渠道开始
@@ -528,7 +534,9 @@ def _generate_many_worker(
                             f"{ch.name}: {type(e).__name__} {str(e)[:120]}")
                         if response_received or response_path.exists():
                             response_received = True
-                            job._last_err = 'saved response requires recovery: '+type(e).__name__
+                            job._last_err = (
+                                f'saved response requires recovery: {type(e).__name__}: {e} '
+                                f'(receipt {response_path}, see bin/quarantine_image_receipt.py)')
                             break
                         # 瞬时故障先原地重试（不换路）；非瞬时或重试耗尽才换路
                         if (is_transient_error(e)
@@ -551,6 +559,54 @@ def _generate_many_worker(
             if prog is not None:
                 prog.tick(ok=bool(result.get(job.id)))
             jobq.task_done()
+
+
+def quarantine_saved_response(response_path, reason):
+    """Move a paid-but-unusable saved response out of the way, without deleting it.
+
+    A receipt that fails `_install_response` (e.g. provider returned 1086x1448
+    for a 1080x1920 request, xlc-01 XL22b1 2026-10-13) blocks its job forever,
+    because the recovery path refuses to issue another request while the receipt
+    exists. Deleting the receipt would destroy paid evidence, so this moves the
+    whole candidate directory to `images/_quarantine/<fingerprint>/` and writes
+    an event record with the reason. After quarantine the job is simply missing
+    again and the next run re-requests it against the retry allowance.
+    """
+    import shutil
+    from datetime import datetime, timezone
+    from app.services.narration_pipeline import read
+    from app.services.provenance import atomic_json, file_sha256
+
+    response_path = Path(response_path)
+    if response_path.suffix != ".json" or not response_path.name.endswith(".response.json"):
+        raise ValueError(f"not a saved image response: {response_path}")
+    if not response_path.is_file():
+        raise FileNotFoundError(f"saved response not found: {response_path}")
+    if not (reason or "").strip():
+        raise ValueError("a quarantine reason is required; paid evidence is never moved silently")
+    saved = read(response_path)
+    fp = saved.get("request_fingerprint") or "unknown"
+    src_dir = response_path.parent
+    if src_dir.name == "_quarantine" or src_dir.parent.name == "_quarantine":
+        raise ValueError("response is already quarantined")
+    dst_dir = src_dir.parent / "_quarantine" / fp
+    if dst_dir.exists():
+        raise ValueError(f"quarantine target already exists: {dst_dir}")
+    dst_dir.mkdir(parents=True)
+    moved = []
+    for p in sorted(src_dir.iterdir()):
+        shutil.move(str(p), str(dst_dir / p.name))
+        moved.append(p.name)
+    try:
+        src_dir.rmdir()
+    except OSError:
+        pass
+    event = dict(request_fingerprint=fp, channel=saved.get("channel"),
+                 reason=reason.strip(), moved_files=moved,
+                 response_sha256=file_sha256(dst_dir / response_path.name),
+                 quarantined_at=datetime.now(timezone.utc).isoformat())
+    atomic_json(dst_dir / "quarantine.json", event)
+    return dst_dir
 
 
 def _install_response(job, response, request_fp, channel):
@@ -692,7 +748,10 @@ def generate_many(
                 recovered[job.id] = str(job.out)
             except Exception as exc:
                 recovered[job.id] = None
-                recovered[job.id+'__error'] = 'saved response requires recovery: '+type(exc).__name__
+                recovered[job.id+'__error'] = (
+                    f'saved response requires recovery: {type(exc).__name__}: {exc} '
+                    f'(receipt {job.out.with_suffix(job.out.suffix+".response.json")}, '
+                    f'see bin/quarantine_image_receipt.py)')
         remaining = [j for j in jobs if j.id not in recovered]
         if remaining: recovered.update(generate_many(remaining,force,workers,progress,budget))
         return recovered

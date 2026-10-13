@@ -147,3 +147,34 @@ def test_gc_command_lists_until_apply(monkeypatch, capsys):
     assert captured["dry_run"] is False
     with pytest.raises(SystemExit):
         cli.cmd_gc(SimpleNamespace(older_than=7, apply=True, dry_run=True))
+
+
+def test_candidate_advice_names_the_review_commands():
+    advice = advise("xlc-01", {
+        "status": "CANDIDATE",
+        "candidate_path": "episodes/xlc-01/production/v2/renders/x/candidate.mp4",
+    })
+    text = "\n".join(advice["notes"])
+    assert "hv narration review-quality" in text
+    assert "hv narration review-audio" in text
+    assert "hv narration review-video" in text
+    assert "hv narration publish" in text
+    assert advice["command"] == ".\\webui.bat"
+
+
+def test_quality_advice_names_the_cli_alternative():
+    advice = advise("xlc-01", {
+        "status": "CANDIDATE",
+        "candidate_path": "episodes/xlc-01/out.mp4",
+        "quality_pending_units": ["narr-a"],
+    })
+    assert advice["command"] == ".\\webui.bat"
+    assert "hv narration review-quality" in "\n".join(advice["notes"])
+
+
+def test_retry_allowance_is_documented_next_to_the_budget_error():
+    advice = advise("xlc-01", {
+        "status": "BLOCKED",
+        "blockers": ["provider budget exhausted: image_requests (27/27)"],
+    })
+    assert "--max-image-retries" in "\n".join(advice["notes"])

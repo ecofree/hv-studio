@@ -33,7 +33,10 @@ def validate_job(job, path):
     if not isinstance(rows,dict) or set(rows)!=set(ids): raise ValueError('episode records do not match specification')
     options=spec.get('options')
     keys={'max_requests','max_characters','max_images'}
-    if not isinstance(options,dict) or set(options)!=keys: raise ValueError('invalid budget options')
+    # max_image_retries is optional (absent on old queue files); when present
+    # it must be the only extra key.
+    if not isinstance(options,dict) or set(options)-keys not in (set(), {'max_image_retries'}) \
+            or not keys.issubset(set(options)): raise ValueError('invalid budget options')
     for value in options.values(): integer(value)
     integer(spec.get('timeout'),1);integer(spec.get('retries'))
     if spec['timeout']>14400 or spec['retries']>3: raise ValueError('invalid worker bounds')
@@ -43,6 +46,8 @@ def validate_job(job, path):
         raise ValueError('budget path is not bound to this batch')
     ledger=read(expected)
     limits=dict(tts_requests=options['max_requests'],characters=options['max_characters'],image_requests=options['max_images'])
+    if options.get('max_image_retries'):
+        limits['image_retries'] = options['max_image_retries']
     if not isinstance(ledger,dict) or ledger.get('limits')!=limits: raise ValueError('budget ledger limits changed')
     used=ledger.get('used')
     if not isinstance(used,dict) or set(used)!=set(limits) or not isinstance(ledger.get('attempts'),list):

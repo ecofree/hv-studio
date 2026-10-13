@@ -66,9 +66,18 @@ def ledger_lock(path):
 
 
 class ProviderBudget:
-    def __init__(self, path, *, tts_requests=0, characters=0, image_requests=0):
+    def __init__(self, path, *, tts_requests=0, characters=0, image_requests=0,
+                 image_retries=0):
         self.path = Path(path)
         self.limits = dict(tts_requests=tts_requests, characters=characters, image_requests=image_requests)
+        # Retry allowance is a separate, explicit cap: without it a 400-policy
+        # rejection plus its retries consume the success quota and starve the
+        # plates behind it (xlc-01, 2026-10-13: 27/27 exhausted, 4 plates lost).
+        # The key is only present when nonzero so old ledgers keep their shape.
+        if type(image_retries) is not int or image_retries < 0:
+            raise ValueError('invalid budget limits')
+        if image_retries:
+            self.limits['image_retries'] = image_retries
         if any(type(v) is not int or v < 0 for v in self.limits.values()): raise ValueError('invalid budget limits')
         with ledger_lock(self.path):
             if self.path.exists():
@@ -83,8 +92,14 @@ class ProviderBudget:
         with ledger_lock(self.path):
             state = read(self.path)
             for key, value in charge.items():
-                if state['used'][key]+value > self.limits[key]:
-                    raise BudgetExceeded(f'provider budget exhausted: {key} ({state["used"][key]}/{self.limits[key]})')
+                cap = self.limits[key]
+                if key == 'image_requests':
+                    cap += self.limits.get('image_retries', 0)
+                if state['used'][key]+value > cap:
+                    raise BudgetExceeded(
+                        f'provider budget exhausted: {key} '
+                        f'({state["used"][key]}/{self.limits[key]}'
+                        f'{("+"+str(self.limits.get("image_retries", 0))+" retries") if key == "image_requests" and self.limits.get("image_retries", 0) else ""})')
             for key, value in charge.items(): state['used'][key] += value
             token = uuid.uuid4().hex
             state['attempts'].append(dict(id=token, kind=kind, request_fingerprint=request_fingerprint,
@@ -112,4 +127,5 @@ class ProviderBudget:
 def for_run(root, identifier, options):
     return ProviderBudget(Path(root)/'budgets'/(fingerprint(identifier)+'.json'),
                           tts_requests=options.get('max_requests', 0), characters=options.get('max_characters', 0),
-                          image_requests=options.get('max_images', 0))
+                          image_requests=options.get('max_images', 0),
+                          image_retries=options.get('max_image_retries', 0))

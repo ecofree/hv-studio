@@ -204,7 +204,8 @@ image:
     timeout_s: 300                          # 实测 33s，留 9× 余量
     max_reference_images: 16
     concurrency: 6
-    requires_upscale: true
+    # 注：requires_upscale 已删——它在全仓零消费者，超分由 compose/motion 内部
+    # 经 app/services/upscale.py 惰性完成。不要加回来（同坑 #38）。
     supports_seed: false
     supports_character_id: false
     # ★ 严格模式：subrouter 会静默忽略非法 size/quality 并真去生成

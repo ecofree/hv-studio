@@ -70,7 +70,8 @@ def cmd_episode(args):
         # 默认降级是为了「跑得完」，但代价是一部片子里混两种声音且无声无息；
         # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
         options = dict(max_requests=args.max_requests, max_characters=args.max_characters,
-                       max_images=args.max_images, timeline=args.timeline, timeout=args.timeout, budget_id=args.budget_id)
+                       max_images=args.max_images, timeline=args.timeline, timeout=args.timeout, budget_id=args.budget_id,
+                       max_image_retries=args.max_image_retries)
         if args.image_key:
             # Consumed on BOTH pipelines. It used to be wired only inside the
             # legacy-preview branch below, so `--pipeline v2 --image-key LGT01`
@@ -479,7 +480,10 @@ def main():
     p.add_argument("--allow-edge-fallback", action="store_true", help="仅旧预览允许显式换人声")
     p.add_argument("--max-requests", type=int, default=0, help="本轮最多新增 TTS 请求，默认 0")
     p.add_argument("--max-characters", type=int, default=0)
-    p.add_argument("--max-images", type=int, default=0, help="实际图片调用上限，包含失败、重试，默认 0")
+    p.add_argument("--max-images", type=int, default=0, help="实际图片调用上限（成功落盘数），默认 0")
+    p.add_argument("--max-image-retries", type=int, default=0,
+                   help="失败/重试的额外调用额度。失败会挤掉正常图（xlc-01 实测 27/27 耗尽丢 4 张），"
+                        "放宽重试时用它而不是虚增 --max-images。默认 0 即沿用旧行为")
     p.add_argument("--image-key", action="append", default=None,
                    help="只生成这些 image key（可重复）。补单张图时用，"
                         "避免把其余缺图一起拉进来抢预算。v2 与 legacy-preview 均生效")

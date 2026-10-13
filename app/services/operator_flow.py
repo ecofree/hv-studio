@@ -119,6 +119,8 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
             "在控制台里点开每段，听原音后填写审核人和发现。",
             "识别错了选「音频正确，识别有误」；真有口误选「确有口误，需要重做」。",
             "重做配音需要另外的额度，程序不会自动调用。",
+            "命令行同样有效：hv narration review-quality <quality报告> <unit_id> "
+            "--reviewer <姓名> --findings <结论> --decision asr_false_positive|spoken_error",
         ]
         if code == "STALE":
             notes.append("候选片已和当前输入脱节。先写下这些语音结论，再从 script 阶段更新候选。")
@@ -129,7 +131,9 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
         )
 
     if status.get("delivery_pending"):
-        notes = ["听完对应片段后，接受当前效果，或标明仍要调整。未处置完不能当作已审核。"]
+        notes = ["听完对应片段后，接受当前效果，或标明仍要调整。未处置完不能当作已审核。",
+                 "命令行：hv narration review-direction <manifest> <cue_id> "
+                 "--reviewer <姓名> --findings <结论> --decision accepted_existing|needs_revision"]
         if code == "STALE":
             notes.append("候选片已和当前输入脱节。先处置这些提示，再更新候选。")
         return finish(
@@ -187,6 +191,11 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
                 "先处理完语音疑点和导演提示，再听完整片、看画面。",
                 f"候选文件：{status['candidate_path']}",
                 "结论要用真实审核人和真实发现来记。机器对齐不能代替听审。",
+                "命令行同样有效（审核人/发现必须逐条手写）：",
+                "hv narration review-quality <quality报告> <unit_id> --reviewer <姓名> --findings <结论> --decision asr_false_positive|spoken_error",
+                "hv narration review-audio <manifest> --reviewer <姓名> --findings <结论> --decision approved|rejected",
+                "hv narration review-video <candidate.json> --reviewer <姓名> --findings <结论> --decision approved|rejected",
+                "hv narration publish <candidate.json> <听审记录> <视审记录> <published.json>",
             ],
         )
 
@@ -212,7 +221,8 @@ def _blocked(episode_id: str, joined: str) -> dict:
                 episode_id, "--max-requests", "N", "--max-characters", "C",
                 "--max-images", "I", "--budget-id", "<新的授权标识>",
             ),
-            "notes": ["续跑同一轮授权时沿用原来的 --budget-id。改额度必须换新标识。失败和超时也计入已用额度。"],
+            "notes": ["续跑同一轮授权时沿用原来的 --budget-id。改额度必须换新标识。失败和超时也计入已用额度；"
+                      "要给失败留重试空间时加 --max-image-retries N（不挤占 --max-images 的成功额度）。"],
         }
     if any(token in joined for token in ("voice asset", "compiled narration", "run stage tts", "missing v2 narration")):
         return {
@@ -230,7 +240,7 @@ def _blocked(episode_id: str, joined: str) -> dict:
                 episode_id, "--stage", "images", "--max-images", "N",
                 "--budget-id", "<本次授权>",
             ),
-            "notes": ["N 含失败和重试。没有图片授权就不要执行。"],
+            "notes": ["N 是成功落盘数；失败/重试走单独的 --max-image-retries R，不挤占 N。没有图片授权就不要执行。"],
         }
     if any(token in joined for token in ("alignment", "local unavailable", "local-whisper", "ASR")):
         return {

@@ -44,7 +44,7 @@ def check_narration_binding(manifest, plan, *, voice_asset=None):
 @production_storage
 def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         max_images=0, timeline=None, voice_asset=None, timeout=300, budget=None, budget_id=None,
-        image_keys=None, external_master=None):
+        image_keys=None, external_master=None, max_image_retries=0):
     import os, time
     from app.managers import load
     from app.orchestrator import _episode_dir, _load_script_md, _episode_lock, _check_disk_space
@@ -57,7 +57,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         raise ValueError(f"v2 stages must be unique and chosen from {sorted(allowed)}")
     if requested != sorted(requested, key=order.index):
         raise ValueError('stages must follow '+', '.join(order)+' order')
-    if min(max_requests, max_characters, max_images) < 0:
+    if min(max_requests, max_characters, max_images, max_image_retries) < 0:
         raise ValueError("generation budgets cannot be negative")
     verify_only = requested == ["verify"]
     with _episode_lock(ep_id):
@@ -120,7 +120,8 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         try:
             if not verify_only and budget is None:
                 from app.services.provider_budget import for_run
-                limits = dict(max_requests=max_requests, max_characters=max_characters, max_images=max_images)
+                limits = dict(max_requests=max_requests, max_characters=max_characters, max_images=max_images,
+                              max_image_retries=max_image_retries)
                 budget = for_run(root, budget_id or [source_sha, limits], limits)
             if budget: state['budget_path'] = str(budget.path.resolve())
             for stage in requested:
