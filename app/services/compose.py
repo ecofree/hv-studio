@@ -126,6 +126,91 @@ def reset_subtitle_cfg() -> None:
     _SUB_CFG = None
 
 
+# ---------------------------------------------------------------------------
+# 时间轴叠加层（标题卡 / 幕卡）—— 与字幕**分层**，见 app/services/overlay.py
+# ---------------------------------------------------------------------------
+# 为什么不能复用字幕那条路：subtitle_fidelity 要求每条 cue 的文本逐字等于剧本
+# 原文，而标题不是剧本文字，放进 cue 表会被门禁正确地打回。字幕还要满足
+# 0.8~4s / 两行 / 字数上限（要在旁白速度下读完），标题要的恰好相反：大、短、居中。
+#
+# 缺席即无操作：没有 episodes/{id}/overlays.json 时计划为空，渲染分支不进循环，
+# 段指纹也不加 overlays 键 —— 产物与本文件改动前字节等价，旧段不会重渲。
+_OVERLAY_PLAN = None
+
+
+def overlay_plan(ep_id: str | None = None):
+    """载入并缓存当前集的叠加层计划（惰性，与 _SUB_CFG 同风格）。
+
+    ``ep_id`` 省略时只取当前计划。加载失败**抛错而非静默跳过** —— 写坏的
+    overlays.json 若被吞掉，观众看到的是「我明明配了标题卡怎么没有」。
+    """
+    global _OVERLAY_PLAN
+    from app.services import overlay as _ov
+    if ep_id is not None:
+        try:
+            plan = _ov.load(ep_id)
+        except (ValueError, OSError) as exc:
+            raise ValueError(f"{ep_id} 的 overlays.json 无效：{exc}") from exc
+        _OVERLAY_PLAN = plan
+        if plan.specs:
+            print(f"  [overlay] 载入 {len(plan.specs)} 条叠加层"
+                  f"（指纹 {plan.fingerprint()}）")
+    return _OVERLAY_PLAN if _OVERLAY_PLAN is not None else _ov.EMPTY
+
+
+def reset_overlay_plan() -> None:
+    """清缓存（测试/热更新用）。"""
+    global _OVERLAY_PLAN
+    if _OVERLAY_PLAN is not None:
+        _OVERLAY_PLAN.close()
+    _OVERLAY_PLAN = None
+
+
+# ---------------------------------------------------------------------------
+# 逐词高亮（卡拉OK 字幕）—— 同样可选、同样缺席即无操作
+# ---------------------------------------------------------------------------
+_WORD_PLAN = None
+
+
+def word_plan(ep_id: str | None = None):
+    from app.services import word_timing as _wt
+    global _WORD_PLAN
+    if ep_id is not None:
+        try:
+            plan = _wt.load(ep_id)
+        except (ValueError, OSError) as exc:
+            raise ValueError(f"{ep_id} 的 word_timing.json 无效：{exc}") from exc
+        _WORD_PLAN = plan
+        if plan.words:
+            print(f"  [karaoke] 载入 {len(plan.words)} 帧字级时间戳，逐词高亮开启")
+    return _WORD_PLAN if _WORD_PLAN is not None else _wt.EMPTY
+
+
+def reset_word_plan() -> None:
+    global _WORD_PLAN
+    if _WORD_PLAN is not None:
+        _WORD_PLAN.close()
+    _WORD_PLAN = None
+
+
+def _highlight_span(wp, frame_id, source, ms):
+    """(start, end) in display coords for the word spoken at ``ms``, else None."""
+    if not wp or not wp.words:
+        return None
+    ws = wp.words.get(frame_id)
+    if not ws:
+        return None
+    from app.services import word_timing as _wt
+    display = subtitle_display_text(source)
+    spans = _wt.map_words(display, source, ws)
+    if spans is None:
+        return None
+    for w, sp in zip(ws, spans):
+        if w.ms_start <= ms < w.ms_end:
+            return sp
+    return None
+
+
 def _sub_font_path() -> str:
     """config.subtitle.font → 本机字体路径。"""
     cfg = _subtitle_cfg()
@@ -320,7 +405,18 @@ def _wrap(draw, text: str, font, max_w: int) -> list[str]:
     return lines
 
 
-def _draw_subtitle(img: Image.Image, text: str) -> None:
+SUB_FILL = (255, 255, 255)
+HILITE = (255, 214, 102)      # 与标题卡的第 N 集同色，一套视觉语言
+
+
+def _draw_subtitle(img: Image.Image, text: str, hl: tuple[int, int] | None = None) -> None:
+    """Burn one cue into ``img``.
+
+    ``hl`` is an optional ``(start, end)`` range in **display** coordinates (see
+    ``word_timing.cover``). The word inside it is drawn in the accent colour;
+    everything else stays white. Without it this is byte-for-byte the previous
+    behaviour, which is why existing segments keep their fingerprints.
+    """
     d = ImageDraw.Draw(img)
     font = _get_font(_sub_font_size())
     # 标点 → 空格（2026-09-25 用户规则）；尾部仍整体剥掉，避免孤标点占位
@@ -329,19 +425,39 @@ def _draw_subtitle(img: Image.Image, text: str) -> None:
         t = text
     lines = _wrap(d, t, font, TEXT_W)
     heights = [d.textbbox((0, 0), ln, font=font)[3] for ln in lines]
-    total_h = sum(heights) + LINE_GAP * (len(lines) - 1)
+    total_h = sum(heights) + LINE_GAP * (len(heights) - 1)
     # 字幕块底边对齐 config subtitle.margin_bottom，多行字幕从底边向上生长，
     # 永远不越过底栏安全区。
     stroke = _sub_stroke()
     # Include outline and the four-pixel shadow in the bottom safe margin.
     y = _sub_bottom() - total_h - stroke - 4
+    # 折行后每行在整句显示文本里的起止偏移，高亮区间才能落到正确的行上。
+    # _wrap 把原文切成 seg[:cut]/seg[cut:]，各行字符数之和恰好等于原串长度
+    # ——折行处**不占字符**，所以这里只累加 len(ln)。
+    starts, acc = [], 0
+    for ln in lines:
+        starts.append((acc, acc + len(ln)))
+        acc += len(ln)
     for i, ln in enumerate(lines):
         w = d.textbbox((0, 0), ln, font=font)[2]
         x = (W - w) // 2
-        d.text((x + 3, y + 4), ln, font=font, fill=(0, 0, 0),
-               stroke_width=stroke, stroke_fill=(0, 0, 0))
-        d.text((x, y), ln, font=font, fill=(255, 255, 255),
-               stroke_width=stroke, stroke_fill=(16, 16, 16))
+        base, end = starts[i]
+        segs = [(ln, SUB_FILL)]
+        if hl and hl[0] < end and hl[1] > base:
+            a, b = max(hl[0], base) - base, min(hl[1], end) - base
+            segs = ([(ln[:a], SUB_FILL)] if a else []) + \
+                   [(ln[a:b], HILITE)] + \
+                   ([(ln[b:], SUB_FILL)] if b < len(ln) else [])
+        cx = x
+        for seg, fill in segs:
+            if not seg:
+                continue
+            sw = d.textbbox((0, 0), seg, font=font)[2]
+            d.text((cx + 3, y + 4), seg, font=font, fill=(0, 0, 0),
+                   stroke_width=stroke, stroke_fill=(0, 0, 0))
+            d.text((cx, y), seg, font=font, fill=fill,
+                   stroke_width=stroke, stroke_fill=(16, 16, 16))
+            cx += sw
         y += heights[i] + LINE_GAP
 
 
@@ -537,6 +653,8 @@ def _encode_video_span_once(
     timeout_sec: float = 0,
     plan_frames=None,
     transitions: dict[str, tuple[int, int]] | None = None,
+    overlays=None,
+    karaoke=None,
 ) -> int:
     """把一段 timeline 逐镜出帧喂 ffmpeg，编码成 **无音轨** 的视频 mp4。
 
@@ -560,13 +678,15 @@ def _encode_video_span_once(
         "-f", "mp4", str(out_mp4),
     ]
     pf = plan_frames or _plan_frames
+    ov = overlays if overlays is not None else overlay_plan()
+    kk = karaoke if karaoke is not None else word_plan()
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     _start_stderr_reader(proc)
     import threading
-    watchdog=threading.Timer(timeout_sec,lambda:_kill_proc(proc)) if timeout_sec>0 else None
+    watchdog = threading.Timer(timeout_sec, lambda: _kill_proc(proc)) if timeout_sec > 0 else None
     if watchdog:
-        watchdog.daemon=True
+        watchdog.daemon = True
         watchdog.start()
     expected = expected_frames(timeline_slice)
     n_total = 0
@@ -605,8 +725,21 @@ def _encode_video_span_once(
                     elif fout and n >= n_frames - fout:
                         frame = _fade_to_black(frame, (n - (n_frames - fout) + 1) / max(1, fout))
                     g_ms = s0 - sh.audio_start_ms + n * 1000.0 / FPS
+                    # 叠加层在换图黑场**之后**合成：片头黑场淡入时标题保持全亮，
+                    # 而不是跟着底图一起变暗。dim 压暗的是**底图**，字幕最后画、
+                    # 始终在最上层保持满对比度。
+                    if ov:
+                        _d = ov.dim_at(g_ms)
+                        if _d > 0.0:
+                            frame = _fade_to_black(frame, _d)
+                        for _tile, _box in ov.layers_at(g_ms):
+                            frame.paste(_tile, _box, _tile)
                     if s0 <= g_ms <= s1:
-                        _draw_subtitle(frame, sh.subtitle_text)
+                        # 字级高亮用**帧内相对毫秒**（= n/FPS），而不是 g_ms：
+                        # word_timing 存的就是相对本帧音频的偏移。
+                        _hl = (_highlight_span(kk, sh.frame_id, sh.subtitle_text, n * 1000.0 / FPS)
+                               if kk else None)
+                        _draw_subtitle(frame, sh.subtitle_text, _hl)
                     proc.stdin.write(frame.tobytes())
                     n_total += 1
                 del img, frame
@@ -832,6 +965,20 @@ def _ffmpeg_version() -> str:
         return "unavailable"
 
 
+def _layer_sha(name: str) -> str | None:
+    """Source hash of an overlay-layer module, or None if it is absent.
+
+    A new layer that does not exist yet must not change the fingerprint -- that
+    would invalidate every segment for a file nobody added.
+    """
+    import importlib.util
+    spec = importlib.util.find_spec(f'app.services.{name}')
+    if spec is None or not spec.origin:
+        return None
+    p = Path(spec.origin)
+    return file_sha256(p) if p.is_file() else None
+
+
 def _seg_params_fingerprint(timeline, vcodec, mode: str, segs,
                             transition_frames: int = 0) -> str:
     """成片内容指纹（G 批）：一切「改了就该重编」的参数。
@@ -854,7 +1001,14 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs,
             "motion": str(m) if m else "",   # pan/zoom/ease 等整份运镜 spec
         })
     payload = {
-        "renderer_version": "legacy-render-v2",
+        "renderer_version": "legacy-render-v4",
+        # 叠加层的**源码哈希**必须进指纹。此前只有硬编码常量 renderer_version,
+        # 改 overlay.py 的绘制逻辑不会改变指纹：加了 overlay.json 会重编一次（但
+        # 那一版有 bug 什么都没画），之后无论怎么修代码，段都被判为"像素未变"直接
+        # 复用 —— 修复永远到不了成片。transition_frames / 标点集合进指纹是同一个道理：
+        # 凡是改像素的东西都要能被察觉。沿用 forced_alignment 的 adapter_sha256 做法。
+        "layer_src": {name: _layer_sha(name) for name in
+                      ('overlay', 'word_timing')},
         "ffmpeg": _ffmpeg_version(),
         "transition_frames": int(transition_frames or 0),
         "grade_values": __import__("app.services.motion",fromlist=["GRADE_MAP"]).GRADE_MAP,
@@ -866,6 +1020,23 @@ def _seg_params_fingerprint(timeline, vcodec, mode: str, segs,
                      _sub_stroke(), _sub_strip_punct(), _sub_space_punct()],
         "shots": shots,
     }
+    # 叠加层按**时间窗**过滤后入指纹：片头加一张标题卡只会作废真正包含它的那一段，
+    # 而不是全部 11 段。无叠加层时整键缺席 —— 这样「本次改动前的成片」指纹不变，
+    # 已验收四集的旧段不会被无谓重渲。
+    _ov = overlay_plan()
+    if _ov and timeline:
+        _spans = [(s0, s1) for _sh, s0, s1 in timeline]
+        _win = (min(a for a, _b in _spans), max(b for _a, b in _spans))
+        _fp = _ov.fingerprint(_win)
+        if any(s.start_ms < _win[1] and s.end_ms > _win[0] for s in _ov.specs):
+            payload["overlays"] = _fp
+    # 逐词高亮同样按窗口过滤：highlight 只在 cue 自己的跨度内改变像素。
+    _wt = word_plan()
+    if _wt and timeline:
+        _win = (min(a for _sh, a, _b in timeline), max(b for _sh, _a, b in timeline))
+        _hit = [k for k, ws in _wt.words.items() if ws and ws[-1].ms_end]
+        if _hit:
+            payload["karaoke"] = _wt.fingerprint(_win)
     return hashlib.md5(
         json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
         .encode("utf-8")).hexdigest()[:16]
@@ -927,6 +1098,57 @@ def _run_audio_mux(video_src: Path, audio_src: Path, out_path: Path,
     os.replace(tmp, out_path)
 
 
+def build_timeline(shots, frames, disk_ms=None, head_of=None, tail_of=None):
+    """Compose the render timeline: ``[(shot, audio_start_ms, audio_end_ms)]`` + total_ms.
+
+    Extracted verbatim out of ``compose_episode`` so tooling that needs absolute
+    timeline positions (act-card placement, the opening-audit strip) reads the
+    *same* numbers as the renderer instead of re-deriving them. A second
+    implementation of this arithmetic is a second thing to keep in sync, and a
+    drift between them would silently misplace overlays.
+
+    Mutates ``shot.audio_start_ms`` / ``duration_ms`` / ``audio_end_ms`` — the
+    timing gate and the audio mux read those fields back, so this is not a pure
+    function by design.
+
+    ``head_of`` / ``tail_of`` / ``disk_ms`` are optional inputs; omitting them
+    recomputes them from ``shots``. ``compose_episode`` passes its own so the
+    wavs are read once.
+    """
+    if head_of is None:
+        head_of = {}
+        prev_g = None
+        for sh in shots:
+            g = _group_of(sh.frame_id)
+            head_of[sh.id] = HEAD_MS if (prev_g is not None and g != prev_g) else 0
+            prev_g = g
+    if tail_of is None:
+        tail_of = {}
+        for i, sh in enumerate(shots):
+            nxt = shots[i + 1] if i + 1 < len(shots) else None
+            tail_of[sh.id] = TAIL_MS if (nxt is None or
+                                         _group_of(nxt.frame_id) != _group_of(sh.frame_id)) else 0
+    if disk_ms is None:
+        disk_ms = {}
+        for sh in shots:
+            f = frames.get(sh.frame_id)
+            if f and f.audio_path and Path(f.audio_path).exists():
+                disk_ms[sh.id] = _disk_wav_duration_ms(Path(f.audio_path))
+
+    timeline, t = [], 0
+    for sh in shots:
+        a_dur = disk_ms.get(sh.id)
+        if a_dur is None:                      # 无 shots 的空集路径，保持旧口径
+            a_dur = frames[sh.frame_id].audio_duration_ms or 0
+        sh.audio_start_ms = head_of[sh.id]
+        sh.duration_ms = sh.audio_start_ms + a_dur + tail_of[sh.id]
+        sh.audio_end_ms = sh.audio_start_ms + a_dur
+        s0 = t + sh.audio_start_ms
+        timeline.append((sh, s0, s0 + a_dur))
+        t += sh.duration_ms
+    return timeline, t
+
+
 def compose_episode(ep_id: str, plan_frames=None, render=None,
                     run_timing_gate: bool = True) -> Path:
     """
@@ -955,6 +1177,11 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
     # 都可能没有。此前只在「逐帧烧字幕」时才抛 —— 那时可能已经跑了几十分钟的
     # 渲染与编码，失败成本极高。这里在合成入口先试载一次，把晚失败变早失败。
     check_font_available()
+
+    # 叠加层计划在此载入：与字体自检同理，早失败远好于渲了几十分钟才发现
+    # overlays.json 写坏。段指纹（下文 _sync_segment_params）与逐帧编码都读这一份。
+    overlay_plan(ep_id)
+    word_plan(ep_id)
 
     shots = sorted(ep.shots.values(), key=lambda s: s.index)
     frames = {f.id: f for f in ep.frames}
@@ -994,17 +1221,7 @@ def compose_episode(ep_id: str, plan_frames=None, render=None,
             disk_ms[sh.id] = _disk_wav_duration_ms(p)
         _verify_audio_vs_disk(shots, frames)
 
-    timeline, t = [], 0
-    for sh in shots:
-        a_dur = disk_ms.get(sh.id)
-        if a_dur is None:                      # 无 shots 的空集路径，保持旧口径
-            a_dur = frames[sh.frame_id].audio_duration_ms or 0
-        sh.audio_start_ms = head_of[sh.id]
-        sh.duration_ms = sh.audio_start_ms + a_dur + tail_of[sh.id]
-        sh.audio_end_ms = sh.audio_start_ms + a_dur
-        s0 = t + sh.audio_start_ms
-        timeline.append((sh, s0, s0 + a_dur))
-        t += sh.duration_ms
+    timeline, t = build_timeline(shots, frames, disk_ms, head_of, tail_of)
     total_ms = t
 
     # ---------- 1.4) 图可达性预检（防跨集删图 → 渲染到那一镜才炸） ----------

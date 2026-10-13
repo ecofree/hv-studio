@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "overlays": [
+    {
+      "kind": "title_card",
+      "start_ms": 0,
+      "end_ms": 3400,
+      "title": "公摊面积 75%",
+      "subtitle": "都说大唐白送 100 亩地",
+      "episode": "第 2 集",
+      "fade_ms": 400,
+      "dim": 0.32,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 287899,
+      "end_ms": 289699,
+      "title": "自费打工人",
+      "subtitle": "",
+      "episode": "",
+      "fade_ms": 350,
+      "dim": 0.22399999999999998,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 538404,
+      "end_ms": 540204,
+      "title": "辽东破产倒计时",
+      "subtitle": "",
+      "episode": "",
+      "fade_ms": 350,
+      "dim": 0.22399999999999998,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 738744,
+      "end_ms": 740544,
+      "title": "勋官彩票与散伙",
+      "subtitle": "",
+      "episode": "",
+      "fade_ms": 350,
+      "dim": 0.22399999999999998,
+      "scrim": true
+    }
+  ]
+}

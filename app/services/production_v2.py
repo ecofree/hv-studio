@@ -108,11 +108,23 @@ def _probe_segment_frames(path):
         return -1
 
 
-def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout):
-    """Encode one v2 shot range and atomically publish its video-only segment."""
+def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout,
+                      overlays=None, karaoke=None):
+    """Encode one v2 shot range and atomically publish its video-only segment.
+
+    ``overlays`` is an ``overlay.Plan`` (absent when the episode has no
+    overlays.json) and ``karaoke`` a ``karaoke.Index``. Both are optional and
+    independently no-op, matching the other layers' contract.
+
+    The frame cache below is keyed on **everything that reaches the pixels**.
+    That is not an optimisation detail: the subtitle tile, the dim amount and the
+    overlay alpha all vary *within* a single cue and a constant camera box, so a
+    key of ``(box, cue_text)`` alone silently freezes the highlight on the first
+    word and never advances it.
+    """
     from PIL import Image
     from app.services.compose import (
-        _kill_proc, _read_stderr,
+        _fade_to_black, _kill_proc, _read_stderr,
         _safe_close, _safe_unlink, _start_stderr_reader, _wait_proc,
     )
     from app.services.motion import apply_grade, plan_frames
@@ -137,6 +149,10 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
     encoded = False
     subtitle_tile = None
     subtitle_key = None
+    # An 8-bit composite cannot show less than 1/255 of dim, so quantising here
+    # costs nothing visually and keeps the frame cache effective while a dim
+    # holds steady.
+    dim_key = lambda d: round(d * 255)
     try:
         for index, first, last in rows:
             shot = specs[index][0]
@@ -166,15 +182,30 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
                         cue = cues[cue_index]
                         if cue["sample_start"] <= sample < cue["sample_end"]:
                             cue_text = cue['text']
-                    key = (tuple(box), cue_text)
+                    hl = karaoke.span_for(cue_index, sample) if (karaoke and cue_text) else None
+                    # Overlay tiles are alpha-bucketed internally, so identity is
+                    # stable per bucket -- that plus a quantised dim is what makes
+                    # the cache usable during a fade without freezing it.
+                    tiles, dim = (), 0.0
+                    if overlays:
+                        g_ms = sample / sample_rate * 1000.0
+                        tiles = overlays.layers_at(g_ms)
+                        dim = overlays.dim_at(g_ms)
+                    ov_key = (tuple(id(t) for t, _b in tiles), dim_key(dim))
+                    key = (tuple(box), cue_text, hl, ov_key)
                     if key != previous_key:
                         frame = original.crop(box).resize((1080, 1920), Image.Resampling.LANCZOS)
+                        if overlays:
+                            if dim > 0.0:
+                                frame = _fade_to_black(frame, dim)
+                            for tile, at in tiles:
+                                frame.paste(tile, at, tile)
                         if cue_text:
-                            if subtitle_key != cue_text:
+                            if subtitle_key != (cue_text, hl):
                                 if subtitle_tile is not None: subtitle_tile.close()
                                 from app.services.subtitle_layout import overlay
-                                subtitle_tile, subtitle_box = overlay(cue_text)
-                                subtitle_key = cue_text
+                                subtitle_tile, subtitle_box = overlay(cue_text, hl)
+                                subtitle_key = (cue_text, hl)
                             frame.paste(subtitle_tile, subtitle_box[:2], subtitle_tile)
                         pixels = frame.tobytes()
                         frame.close()
@@ -243,6 +274,18 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
         inputs.update(require_evidence(manifest, timeline))
     bgm_path = timeline.get('bgm_path')
     if bgm_path: inputs[str(Path(bgm_path).resolve())] = file_sha256(bgm_path)
+    # The overlay sidecar changes pixels but lives outside app/, so hashing every
+    # module below would not catch an edit to it. Without this, tuning a title
+    # card would be declared "pixel-identical" and silently reuse the old render.
+    try:
+        ep_id = Path(manifest_path).resolve().relative_to((ROOT / 'episodes').resolve()).parts[0]
+    except ValueError:
+        ep_id = None
+    if ep_id:
+        from app.services import overlay as _ov_mod
+        sidecar = _ov_mod.path_for(ep_id)
+        if sidecar.is_file():
+            inputs[str(sidecar.resolve())] = file_sha256(sidecar)
     for dependency in list((ROOT / "app").rglob("*.py")) + list((ROOT / "app/config").glob("*.yaml")):
         inputs[str(dependency.resolve())] = file_sha256(dependency)
     for dependency in [ROOT / "bin/local_asr_worker.py", ROOT / "requirements.asr.lock.txt"]:
@@ -270,12 +313,12 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
         inputs[str(core_lock.resolve())] = file_sha256(core_lock)
         runtime['packages'] = runtime_versions(Path(sys.executable), core_lock)
     runtime['ffmpeg'] = subprocess.run(['ffmpeg','-version'],capture_output=True,text=True,timeout=10,check=True).stdout.splitlines()[0]
-    render_fp = fingerprint({"inputs": inputs, "runtime":runtime, "renderer": "v2-segmented-2"})
+    render_fp = fingerprint({"inputs": inputs, "runtime":runtime, "renderer": "v2-segmented-3"})
     target = Path(output_dir) / render_fp[:32]
     target.mkdir(parents=True, exist_ok=True)
     state_path = target / "render_state.json"
     state = read(state_path) if state_path.is_file() else {
-        "schema_version": "v2-segmented-2",
+        "schema_version": "v2-segmented-3",
         "render_fingerprint": render_fp,
         "inputs": inputs,
         "status": "incomplete",
@@ -283,7 +326,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     }
     if state.get("render_fingerprint") != render_fp or state.get("inputs") != inputs:
         state = {
-            "schema_version": "v2-segmented-2",
+            "schema_version": "v2-segmented-3",
             "render_fingerprint": render_fp,
             "inputs": inputs,
             "status": "incomplete",
@@ -335,6 +378,23 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     cues = timeline["subtitles"]
     state.update(encoder=vcodec, started_at=time.time(), last_error=None)
 
+    # Both layers are optional and absent-means-no-op, like every other layer.
+    # Loaded once per render: the overlay Plan caches rasterised tiles, and the
+    # karaoke index is a flat precomputed table.
+    from app.services import karaoke as _karaoke
+    overlay_plan = None
+    karaoke_index = _karaoke.EMPTY
+    if ep_id:
+        try:
+            from app.services import compose as _C
+            _C.overlay_plan(ep_id)
+            overlay_plan = _C.overlay_plan()
+        except (ValueError, OSError) as exc:
+            raise ValueError(f'{ep_id} overlays.json 无效：{exc}') from exc
+    alignment_path = timeline.get('alignment_evidence_path')
+    if alignment_path and Path(alignment_path).is_file():
+        plan_doc = read(manifest['plan_path'])
+        karaoke_index = _karaoke.load(timeline, plan_doc, alignment_path)
     try:
         for i, rows in enumerate(ranges):
             record = state["segments"][i]
@@ -361,14 +421,16 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             atomic_json(state_path, state)
             started = time.monotonic()
             try:
-                _encode_v2_segment(rows, specs, cues, sr, path, vcodec, timeout)
+                _encode_v2_segment(rows, specs, cues, sr, path, vcodec, timeout,
+                                   overlays=overlay_plan, karaoke=karaoke_index)
             except RuntimeError:
                 if not use_nvenc: raise
                 use_nvenc = False
                 vcodec = _build_vcodec(False)
                 state['encoder'] = vcodec
                 state['encoder_fallback'] = 'hardware encode failed; continued with software'
-                _encode_v2_segment(rows, specs, cues, sr, path, vcodec, timeout)
+                _encode_v2_segment(rows, specs, cues, sr, path, vcodec, timeout,
+                                   overlays=overlay_plan, karaoke=karaoke_index)
             actual = _probe_segment_frames(path)
             if actual != expected:
                 raise RuntimeError(f"segment {record['id']} frame count {actual} != {expected}")

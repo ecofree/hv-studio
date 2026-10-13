@@ -1,0 +1,49 @@
+{
+  "version": 1,
+  "overlays": [
+    {
+      "kind": "title_card",
+      "start_ms": 0,
+      "end_ms": 3400,
+      "title": "一斗盐暴利翻 30 倍",
+      "subtitle": "逼死大唐的是一撮盐",
+      "episode": "第 4 集",
+      "fade_ms": 400,
+      "dim": 0.32,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 227701,
+      "end_ms": 229501,
+      "title": "私盐集团的武装崛起",
+      "subtitle": "",
+      "episode": "",
+      "fade_ms": 350,
+      "dim": 0.22399999999999998,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 405700,
+      "end_ms": 407500,
+      "title": "落榜生的复仇檄文",
+      "subtitle": "",
+      "episode": "",
+      "fade_ms": 350,
+      "dim": 0.22399999999999998,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 632272,
+      "end_ms": 634072,
+      "title": "帝国的葬礼",
+      "subtitle": "",
+      "episode": "",
+      "fade_ms": 350,
+      "dim": 0.22399999999999998,
+      "scrim": true
+    }
+  ]
+}

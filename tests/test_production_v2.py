@@ -306,7 +306,7 @@ def test_v2_render_segments_resume_from_state(tmp_path, monkeypatch):
     monkeypatch.setattr(P, "_probe_segment_frames", lambda path: 50)
     encoded = []
 
-    def encode(rows, specs, cues, sample_rate, out_path, vcodec, timeout):
+    def encode(rows, specs, cues, sample_rate, out_path, vcodec, timeout, **layers):
         encoded.append(Path(out_path).name)
         Path(out_path).write_bytes(b"segment")
         return sum(last - first for _, first, last in rows)

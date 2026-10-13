@@ -53,11 +53,17 @@ def validate_cues(cues, sample_rate):
     return metrics
 
 
-def overlay(text):
-    """Rendered once per cue, not measured/drawn for every video frame."""
+def overlay(text, hl=None):
+    """Rendered once per cue, not measured/drawn for every video frame.
+
+    ``hl`` is an optional ``(start, end)`` range in **display** coordinates (the
+    same contract ``compose._draw_subtitle`` takes) marking the word currently
+    being spoken. Callers that animate it must re-render per highlight state --
+    the tile is no longer constant for the cue.
+    """
     from app.services.compose import _draw_subtitle
     canvas = Image.new('RGBA', (1080, 1920), (0, 0, 0, 0))
-    _draw_subtitle(canvas, text)
+    _draw_subtitle(canvas, text, hl)
     box = canvas.getbbox()
     tile = canvas.crop(box) if box else Image.new('RGBA', (1, 1))
     canvas.close()
