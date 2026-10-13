@@ -331,6 +331,15 @@ MD_HR = re.compile(r"^([-*_])(?:\s*\1){2,}\s*$")       # --- / *** / ___ 水平�
 MD_BOLD_LINE = re.compile(r"^\*\*.*\*\*$")             # 整行只有加粗（时长预估/情绪基调）
 MD_EMPHASIS = re.compile(r"\*\*(.+?)\*\*")             # 行内 **强调** → 去掉星号留文本
 MD_PARA_SPLIT = re.compile(r"\n\s*\n")
+# ⚠️ 代码围栏。writing-DNA 的「Gemini TTS 专属工程文档」把口播正文整块包在
+# ```text 围栏里，而这几个反引号**不是口播内容**。此前没有这条规则，围栏
+# 标记会原样进入 v2 unit 文本（2026-10-13 xlc-01 实测：159 个 unit 里首尾
+# 两个 unit 的 approved_spoken_text 分别以 ```` ```text ```` 开头、以 ```` ``` ````
+# 结尾）。ASR 不可能"听出"反引号，于是 asr_check 必然报 insertion，而**所有
+# 门禁都照样绿灯**——帧文本确实等于"清洗后的剧本"，只是那份剧本本身被污染了。
+# 只在**整行就是围栏**时删除；行内残留的反引号交给 MD_INLINE_FENCE 清理。
+MD_FENCE = re.compile(r"^\s*(?:```|~~~)")
+MD_INLINE_FENCE = re.compile(r"`{2,}")
 
 # 括号式表演/音效提示的**唯一白名单真源**。script_document.parse_document 那边
 # 用同一份常量把这些形态记为 direction cue（不进旁白源文本），strip_script_markdown
@@ -370,6 +379,8 @@ def strip_script_markdown(text: str) -> str:
             s = line.strip()
             if not s:
                 continue
+            if MD_FENCE.match(s):
+                continue                              # 整行是代码围栏 → 删
             if MD_HEADING.match(s) or MD_QUOTE.match(s) or MD_HR.match(s) \
                     or MD_BOLD_LINE.match(s):
                 continue                              # 整行是结构/元数据 → 删
@@ -378,6 +389,7 @@ def strip_script_markdown(text: str) -> str:
             s = NARR_PAUSE.sub("。", s)               # [停顿N秒] → 。
             s = NARR_BRACKET.sub("", s)               # [重音] 等
             s = NARR_PAREN.sub("", s)                 # （微混响）（叹气）等表演提示
+            s = MD_INLINE_FENCE.sub("", s)            # 行内残留的 ``` 反引号
             lines.append(s)
         if not lines:
             continue

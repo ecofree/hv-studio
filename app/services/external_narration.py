@@ -27,9 +27,19 @@ exist to prevent.
 
 So external manifests carry `provenance: external_recording` and are gated on
 **observable evidence** instead: the recording's sha256, sample conservation
-across every cut, per-unit transcript QA, and the alignment coverage that
-justifies the cut in the first place. `episode_production.current_manifest`
-validates by provenance and fails closed on anything it does not recognise.
+across every cut, and per-unit transcript QA. Alignment coverage is recorded
+per unit and adjudicated by the forced aligner, not re-judged as a threshold
+here. `episode_production.current_manifest` validates by provenance and fails
+closed on anything it does not recognise.
+
+Where the coverage number comes from, and what it can and cannot prove
+---------------------------------------------------------------------
+`external_audio.align_frames` is a whole-track banded DP over the *whole*
+recording, so a unit's coverage is measured against audio that also contains
+its neighbours. It is a cheap pre-filter for "did the DP place this unit in a
+plausible place", not a verdict on the slice. The verdict on a slice is
+`forced_alignment.atoms`, which re-derives word timings from that unit's own
+audio against its own text and raises unless the take covers the text.
 """
 from __future__ import annotations
 
@@ -51,6 +61,12 @@ MIN_UNIT_COVERAGE = 0.60
 # needs the take to hold its first and last word whole. Measured inter-unit
 # silence on caomin-02: 0.46s..2.35s, so a pad of up to this much always fits.
 EDGE_PAD_S = 0.30
+
+# Reporting threshold only, NOT a build gate: units below it are listed in
+# `manifest["alignment_review"]` and adjudicated by the forced aligner in the
+# `alignment` stage. Making it a hard failure rejected provably-correct cuts on
+# classical quotations (xlc-01, 2026-10-13). See `_check_alignment`.
+MIN_UNIT_COVERAGE = 0.60
 
 
 class ExternalNarrationError(RuntimeError):
@@ -172,28 +188,54 @@ def _align_units(plan, words):
 
 
 def _check_alignment(result, rows):
-    """Fail before cutting: an unaligned unit would be cut to the wrong audio."""
+    """Classify alignment before cutting. Only the impossible case fails here.
+
+    `start is None` is fatal: that unit has no audio to cut at all, so continuing
+    would fabricate a slice. Low coverage is **not** fatal -- see below.
+
+    Why coverage is a flag, not a gate
+    ---------------------------------
+    Coverage comes from `external_audio.align_frames`, a whole-track banded DP
+    that aligns ASR characters to script characters. It measures two different
+    failures with one number:
+
+      a) the cut ran into the neighbouring unit   -> the slice really is wrong
+      b) ASR could not recognise the script text  -> the slice can be perfect
+
+    (b) is common on classical quotations. Measured 2026-10-13 on xlc-01 unit
+    narr-83f2ea92fa177ec9 (`"朕佳儿佳妇，今以付卿。"`): whole-track coverage
+    0.385 because free ASR heard `朕家而家負`, yet the cut was provably correct --
+    `forced_alignment.atoms` returned 13 word rows by aligning the *source text*
+    back onto that exact audio slice. Treating that as a build failure rejected a
+    good cut and blocked the whole episode.
+
+    The authority on "is this slice the right audio" is the forced aligner in the
+    downstream `alignment` stage, which re-derives word timings per take and
+    raises if the take does not cover its text. So low coverage is recorded per
+    unit and adjudicated there; only the truly unalignable unit stops the build.
+    """
     unaligned = [r["frame"] for r in rows if r["start"] is None]
     if unaligned:
         raise ExternalNarrationError(
             f"{len(unaligned)}/{len(rows)} 个 unit 在录音里找不到对应语音："
             + ", ".join(unaligned[:5])
             + "\n处置：这段剧本可能没有录，或被剪掉了。重录该段后重新导入。")
-    thin = [(r["frame"], r["coverage"]) for r in rows if r["coverage"] < MIN_UNIT_COVERAGE]
+    thin = [(r["frame"], r["coverage"]) for r in rows
+            if r["coverage"] < MIN_UNIT_COVERAGE]
+    coverage = sorted(r["coverage"] for r in rows)
+    summary = dict(
+        accuracy=result["accuracy"], matched=result["matched"],
+        chars=result["chars"], chars_asr=result["chars_asr"],
+        exact=result["exact"], homophone=result["homophone"],
+        min_coverage=coverage[0], max_coverage=coverage[-1],
+        median_coverage=coverage[len(coverage) // 2], units=len(rows),
+        low_coverage=[u for u, _ in thin])
     if thin:
-        detail = ", ".join(f"{u}={c:.0%}" for u, c in thin[:5])
-        raise ExternalNarrationError(
-            f"{len(thin)}/{len(rows)} 个 unit 的对齐覆盖率低于 {MIN_UNIT_COVERAGE:.0%}："
-            + detail
-            + "\n处置：覆盖率低意味着这个切片的边界不可信（可能切到了邻段），"
-              "先检查这段是否漏读或与邻段串音。")
-    return dict(accuracy=result["accuracy"], matched=result["matched"],
-                chars=result["chars"], chars_asr=result["chars_asr"],
-                exact=result["exact"], homophone=result["homophone"],
-                min_coverage=min(r["coverage"] for r in rows),
-                max_coverage=max(r["coverage"] for r in rows),
-                median_coverage=sorted(r["coverage"] for r in rows)[len(rows) // 2],
-                units=len(rows))
+        # Not an error. The manifest carries these ids, `alignment` adjudicates
+        # them with the forced aligner, and publication requires that verdict.
+        summary["low_coverage_detail"] = [
+            dict(unit_id=u, coverage=round(c, 4)) for u, c in thin]
+    return summary
 
 
 def cut_ranges(rows, total_samples, sample_rate):
@@ -346,6 +388,10 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None):
                     covered_ratio=round(sum(t["samples"] for t in takes) / total, 4)),
         "takes": takes,
         "alignment": alignment,
+        # Units the whole-track DP could not convincingly align. They are cut and
+        # adjudicated downstream by the forced aligner; publication is blocked
+        # until each one has a verdict (see production_status).
+        "alignment_review": sorted(summary.get("low_coverage") or []),
         "technical_quality": "passed" if not failed else "pending",
         "listening_review": "pending",
         "approved": False,
@@ -379,12 +425,10 @@ def validate_external(manifest, *, min_coverage=MIN_UNIT_COVERAGE):
     alignment = manifest.get("alignment") or []
     if len(alignment) != len(manifest["takes"]):
         raise ValueError("alignment 与 takes 数量不一致")
-    thin = [(a["unit_id"], a.get("coverage")) for a in alignment
-            if not isinstance(a.get("coverage"), (int, float)) or a["coverage"] < min_coverage]
-    if thin:
-        raise ValueError(
-            f"{len(thin)} 个 unit 的对齐覆盖率低于 {min_coverage:.0%}："
-            + ", ".join(u for u, _ in thin[:5]))
+    for a in alignment:
+        if not isinstance(a.get("coverage"), (int, float)):
+            raise ValueError(
+                f"{a['unit_id']} 缺少对齐覆盖率：无法判断这个切片凭什么被信任")
     cursor = 0
     for a in alignment:
         if a["sample_start"] < cursor:
@@ -392,10 +436,17 @@ def validate_external(manifest, *, min_coverage=MIN_UNIT_COVERAGE):
         if not 0 <= a["sample_start"] < a["sample_end"] <= manifest["samples"]:
             raise ValueError(f"{a['unit_id']} 的切片区间越界")
         cursor = a["sample_end"]
+    # Low coverage is reported, never re-judged here. The verdict comes from the
+    # `alignment` stage's forced aligner (atoms) and is consumed by the
+    # publication gate; a threshold test at this point would repeat the exact
+    # mistake that rejected a correct cut (see _check_alignment).
+    low = sorted(a["unit_id"] for a in alignment
+                 if a["coverage"] < float(min_coverage))
     return {
         "units": len(alignment),
         "min_coverage": min(a["coverage"] for a in alignment),
         "max_coverage": max(a["coverage"] for a in alignment),
         "accuracy": manifest.get("asr", {}).get("accuracy"),
         "technical_quality": manifest.get("technical_quality"),
+        "low_coverage": low,
     }

@@ -93,14 +93,21 @@ def test_unaligned_unit_stops_the_build():
                              "chars_asr": 1, "exact": 1, "homophone": 0}, rows)
 
 
-def test_thin_coverage_stops_the_build():
-    """A low-coverage cut means the boundary is not trustworthy -- typically the
-    neighbouring unit bleeding in. Cutting anyway would ship that as a subtitle."""
+def test_thin_coverage_is_flagged_not_fatal():
+    """A weak whole-track alignment is a review item, not a build failure.
+
+    Measured 2026-10-13 on xlc-01 unit narr-83f2ea92fa177ec9
+    (`"朕佳儿佳妇，今以付卿。"`): coverage 0.385 because free ASR heard
+    `朕家而家負`, yet `forced_alignment.atoms` returned 13 word rows for that
+    exact slice. The cut was correct; rejecting it blocked the episode.
+    """
     rows = _rows(2, [(0.0, 2.0), (3.0, 5.0)])
     rows[0]["coverage"] = 0.41
-    with pytest.raises(EN.ExternalNarrationError, match="覆盖率"):
-        EN._check_alignment({"accuracy": 0.9, "matched": 1, "chars": 1,
-                             "chars_asr": 1, "exact": 1, "homophone": 0}, rows)
+    summary = EN._check_alignment(
+        {"accuracy": 0.9, "matched": 1, "chars": 1, "chars_asr": 1,
+         "exact": 1, "homophone": 0}, rows)
+    assert summary["low_coverage"] == ["narr-0"]
+    assert summary["low_coverage_detail"] == [dict(unit_id="narr-0", coverage=0.41)]
 
 
 def test_alignment_summary_is_measured_not_assumed():
@@ -170,11 +177,14 @@ def test_validate_external_rejects_out_of_bounds_cuts(tmp_path):
         EN.validate_external(m)
 
 
-def test_validate_external_rejects_thin_coverage(tmp_path):
+def test_validate_external_reports_low_coverage_without_blocking(tmp_path):
+    """Downstream must not re-judge with a threshold: the verdict belongs to the
+    forced aligner in the alignment stage, which is consumed by the gate."""
     m = _manifest(tmp_path)
     m["alignment"][0]["coverage"] = 0.10
-    with pytest.raises(ValueError, match="覆盖率"):
-        EN.validate_external(m)
+    report = EN.validate_external(m)
+    assert report["low_coverage"] == ["narr-0"]
+    assert report["units"] == 2
 
 
 def test_validate_external_requires_a_delivered_recording(tmp_path):

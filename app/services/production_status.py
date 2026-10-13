@@ -63,6 +63,14 @@ def get_status(ep_id):
             if 'delivery_dispositions' not in manifest: result['blockers'].append('delivery cues have not been processed')
         if result['quality_pending_units']: result['blockers'].append('audio findings await disposition')
         if result['delivery_pending']: result['blockers'].append('delivery directions await review or revision')
+        # External narration only: units the whole-track alignment could not
+        # convince. They are cut, but each one's slice still needs the forced
+        # aligner's verdict before the film can be published -- the same
+        # "unadjudicated finding blocks approval" rule as quality and delivery.
+        result['alignment_review_units'] = alignment_review_pending(state)
+        if result['alignment_review_units']:
+            result['blockers'].append(
+                f"{len(result['alignment_review_units'])} unit 的切片边界待强制对齐裁决")
         published = root/'published.json'
         approved = False
         if published.exists() and result.get('candidate_path'):
@@ -72,7 +80,8 @@ def get_status(ep_id):
                 visual, audio = read(pointer['review']), read(pointer['listening_review'])
                 approved = (visual.get('decision')=='approved' and visual.get('receipt_sha256')==file_sha256(state['receipt_path'])
                             and audio.get('decision')=='approved' and audio.get('manifest_sha256')==file_sha256(state['manifest_path'])
-                            and not result['quality_pending_units'] and not result['delivery_pending'])
+                            and not result['quality_pending_units'] and not result['delivery_pending']
+                            and not result['alignment_review_units'])
         result['approved'] = approved
         result['delivery_ready'] = approved
         if approved: result['status']='APPROVED'
@@ -272,3 +281,47 @@ def _quality_pending(path):
 def _delivery_pending(path):
     from app.services.delivery import pending
     return pending(path)
+
+
+def alignment_review_pending(state):
+    """External-narration units whose cut still needs a forced-alignment verdict.
+
+    A unit lands here when the whole-track banded DP aligned it weakly. That is
+    not proof of a bad cut -- it also happens when ASR simply cannot recognise
+    classical or rare script text -- so the verdict comes from the only judge
+    that looks at the slice itself: `forced_alignment.build`, which raises if a
+    take does not cover its unit's text.
+
+    So a unit is cleared exactly when the current alignment evidence contains
+    word timings for it AND that evidence is still bound to the current manifest.
+    A manifest with no `alignment_review` (every TTS-provenance manifest) is
+    empty and costs nothing.
+    """
+    manifest_path = state.get('manifest_path')
+    alignment_path = state.get('alignment_path')
+    if not manifest_path or not alignment_path:
+        return []
+    try:
+        manifest = read(manifest_path)
+        wanted = set(manifest.get('alignment_review') or [])
+        if not wanted:
+            return []
+        evidence = read(alignment_path)
+    except (OSError, ValueError, KeyError, TypeError):
+        # Unreadable manifest or evidence is not a verdict. Be conservative:
+        # anything the manifest asked for stays pending.
+        try:
+            wanted = set(read(manifest_path).get('alignment_review') or [])
+        except (OSError, ValueError, KeyError, TypeError):
+            return []
+        return sorted(wanted)
+    if evidence.get('method') != 'acoustic_source_alignment_v1':
+        return sorted(wanted)
+    if evidence.get('manifest_content_sha256') != fingerprint(manifest):
+        return sorted(wanted)
+    from app.services.provenance import file_sha256
+    if any(file_sha256(p) != sha for p, sha in evidence.get('inputs', {}).items()):
+        return sorted(wanted)
+    # Evidence that does not cover every unit with word timings cannot clear any.
+    timed = set(evidence.get('words') or {})
+    return sorted(wanted - timed)

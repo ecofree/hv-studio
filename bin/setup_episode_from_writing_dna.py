@@ -42,7 +42,13 @@ from app.services.script import strip_script_markdown   # noqa: E402
 
 BRACKET = re.compile(r'\[([^\]]{1,12})\]')
 BOLD_LINE = re.compile(r'^\*\*(.*)\*\*$')
-ACT_HEAD = re.compile(r'^###\s*【第.幕[：:]', re.M)
+# 幕标头。写作 DNA 的成稿格式演进过两轮：
+#   《大唐草民录》  ### 【第一幕：古代最狠的公摊面积】
+#   《大唐修罗场》  ### 【第一幕 (A段)：翠微宫遗诏与帝王隐忍】（字数：943 字）
+# 后者在「幕」与「：」之间插了括号分块标签，旧正则 `【第.幕[：:]` 直接失配，
+# 工具以「找不到幕标头」退出 —— 新格式的剧本一条都建不了档（2026-10-13 实测）。
+# 这里容许幕名与冒号之间存在一段非 】 非换行的标签。
+ACT_HEAD = re.compile(r'^###\s*【第.幕[^】\n]{0,14}[：:]', re.M)
 # script_document 认识的方括号标注：这两个必须留在旁白源里
 KEEP_BRACKET = re.compile(r'^(重音|停顿[\d.]*秒)$')
 
