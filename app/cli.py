@@ -77,6 +77,12 @@ def cmd_episode(args):
             # was accepted and then ignored -- the parameter existed, appeared in
             # --help, and changed nothing (同坑 #38).
             options["image_keys"] = set(args.image_key)
+        if args.external_master:
+            # Only v2 can narrate from a recording. legacy-preview retires its
+            # paid stages, so accepting this there would be another silent no-op.
+            if args.pipeline != "v2":
+                raise SystemExit("--external-master 需要 --pipeline v2")
+            options["external_master"] = args.external_master
         if args.pipeline == "legacy-preview":
             # ⚠️ 这里原来**整份替换** options，max_images/budget_id 被静默丢弃 ——
             #   后果是 legacy 路径拿不到生图预算，CLI 参数形同虚设（同坑 #38：
@@ -478,6 +484,10 @@ def main():
                    help="只生成这些 image key（可重复）。补单张图时用，"
                         "避免把其余缺图一起拉进来抢预算。v2 与 legacy-preview 均生效")
     p.add_argument("--budget-id", default=None, help="显式新授权的预算标识；续跑复用同一标识")
+    p.add_argument("--external-master", default=None,
+                   help="[produce] 用这条外部解说母带代替 CosyVoice 配音。"
+                        "仅 v2 生效：整轨 ASR 定位每个 unit，按 unit 切片并产出 "
+                        "provenance=external_recording 的 manifest，不消耗 TTS 预算。")
     p.add_argument("--timeline", default=None, help="v2 样本时间轴 JSON")
     p.add_argument("--timeout", type=int, default=300)
     p.add_argument("--plan", default=None,

@@ -6,10 +6,45 @@ from app.services.voice_assets import resolve_voice_asset
 from app.services.production_storage import production_storage
 
 
+def check_narration_binding(manifest, plan, *, voice_asset=None):
+    """Gate a narration manifest by how its takes were produced. Fails closed.
+
+    A synthesized take is only meaningful against the request that produced it
+    and the voice asset it was rendered with, so both are re-derived here. A take
+    cut out of a recording has neither -- no voice asset, and no compile_request
+    was ever issued for it -- so it is held to evidence that can actually be
+    measured instead (see `external_narration.validate_external`).
+
+    Writing a CosyVoice fingerprint onto an external take to satisfy the
+    synthesized branch would make the manifest assert something untrue, which is
+    the one failure mode this repo's gates exist to prevent. Hence the explicit
+    `provenance` field and the fail-closed default.
+    """
+    provenance = manifest.get("provenance", "tts")
+    if provenance == "external_recording":
+        from app.services.external_narration import validate_external
+        validate_external(manifest)
+        if len(manifest["takes"]) != len(plan["units"]):
+            raise ValueError("external narration does not cover every plan unit; run stage tts")
+        if [t["unit_id"] for t in manifest["takes"]] != [u["unit_id"] for u in plan["units"]]:
+            raise ValueError("external narration unit order differs from the plan; run stage tts")
+        return
+    if provenance != "tts":
+        raise ValueError(f"unknown narration provenance {provenance!r}; refusing to continue")
+    _, asset = resolve_voice_asset(path=voice_asset)
+    if any(t["voice_asset_version"] != asset["version"] for t in manifest["takes"]):
+        raise ValueError("voice asset changed; run stage tts")
+    from app.services.delivery import effective_unit
+    if len(manifest['takes']) != len(plan['units']) or any(
+            t['request_fp'] != fingerprint(N.compile_request(effective_unit(u, plan, asset), asset))
+            for u, t in zip(plan['units'], manifest['takes'])):
+        raise ValueError('compiled narration request changed; run stage tts')
+
+
 @production_storage
 def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         max_images=0, timeline=None, voice_asset=None, timeout=300, budget=None, budget_id=None,
-        image_keys=None):
+        image_keys=None, external_master=None):
     import os, time
     from app.managers import load
     from app.orchestrator import _episode_dir, _load_script_md, _episode_lock, _check_disk_space
@@ -66,14 +101,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
             N.require_usable(manifest)
             if manifest["plan_sha256"] != file_sha256(plan_path):
                 raise ValueError("narration plan changed; run stage tts")
-            _, asset = resolve_voice_asset(path=voice_asset)
-            if any(t["voice_asset_version"] != asset["version"] for t in manifest["takes"]):
-                raise ValueError("voice asset changed; run stage tts")
-            from app.services.delivery import effective_unit
-            if len(manifest['takes'])!=len(plan['units']) or any(
-                t['request_fp']!=fingerprint(N.compile_request(effective_unit(u,plan,asset),asset))
-                for u,t in zip(plan['units'],manifest['takes'])):
-                raise ValueError('compiled narration request changed; run stage tts')
+            check_narration_binding(manifest, plan, voice_asset=voice_asset)
             return path, manifest
 
         def current_candidate():
@@ -137,7 +165,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     dispatch = [j for j in missing if not j.out.with_suffix(j.out.suffix+'.response.json').exists()]
                     if len(dispatch) > max_images:
                         raise ValueError(f"image budget exceeded: {len(dispatch)} jobs need generation, budget {max_images}")
-                    if 'tts' in requested:
+                    if 'tts' in requested and not external_master:
                         asset_path, _ = resolve_voice_asset(path=voice_asset)
                         quote = N.generation_quote(plan_path, asset_path)
                         if quote['requests'] > max_requests or quote['characters'] > max_characters:
@@ -145,7 +173,14 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                         if get_settings().get_profile().voice.engine != 'cosyvoice':
                             raise ValueError('production requires CosyVoice before paid generation')
                         budget.check_capacity(tts_requests=quote['requests'], characters=quote['characters'], image_requests=len(dispatch))
-                    elif budget: budget.check_capacity(image_requests=len(dispatch))
+                    elif budget:
+                        # With an external master the TTS stage issues zero synthesis
+                        # requests, so quoting (and reserving) TTS budget here would
+                        # block a run that cannot spend a cent on speech. Image
+                        # budget is still preflighted; the skip is recorded, not hidden.
+                        budget.check_capacity(image_requests=len(dispatch))
+                        if external_master:
+                            result['tts_budget_not_quoted'] = 'external master: no synthesis requests will be issued'
                     if any(s in requested for s in ('tts','alignment','timeline','compose')): preflight_media()
                     generated = generate_many([j for j in selected if not getattr(j,'imported',False)], budget=budget)
                     generated.update({j.id:str(j.out) for j in selected if getattr(j,'imported',False) and j.is_done()})
@@ -172,32 +207,62 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     state['scene_plan_path'] = str(scene_path.resolve())
                     artifacts.append(str(scene_path.resolve()))
                 elif stage == "tts":
-                    if get_settings().get_profile().voice.engine != "cosyvoice":
-                        raise ValueError("v2 requires the configured CosyVoice engine; no fallback is allowed")
-                    asset_path, _ = resolve_voice_asset(path=voice_asset)
+                    # ASR is required either way: TTS checks each take's
+                    # transcript, and external assembly needs it to locate the
+                    # units inside the recording at all.
                     from app.services.asr_check import enabled as asr_enabled
                     if asr_enabled() and get_settings().get_profile().asr.backend == 'local-whisper':
                         from app.services.local_asr import preflight
                         preflight()
+                    asset_path = None
+                    if not external_master:
+                        if get_settings().get_profile().voice.engine != "cosyvoice":
+                            raise ValueError("v2 requires the configured CosyVoice engine; no fallback is allowed")
+                        asset_path, _ = resolve_voice_asset(path=voice_asset)
                     try:
                         manifest_path, manifest = current_manifest()
                     except (ValueError, OSError, KeyError):
-                        manifest_path = N.synthesize(plan_path, asset_path, max_requests=max_requests,
-                                                     max_characters=max_characters, budget=budget)
+                        if external_master:
+                            # A delivered recording is not a synthesis request, so
+                            # it consumes no TTS budget and needs no voice asset.
+                            # Every other stage downstream is unchanged.
+                            from app.services.external_narration import build as build_external
+                            def _progress(message):
+                                state["narration_progress"] = message
+                                save()
+                            manifest_path = build_external(
+                                plan_path, external_master, root / "assemblies",
+                                cache_dir=root / "assemblies" / "asr-cache",
+                                progress=_progress)
+                        else:
+                            manifest_path = N.synthesize(plan_path, asset_path, max_requests=max_requests,
+                                                         max_characters=max_characters, budget=budget)
                         state["manifest_path"] = str(Path(manifest_path).resolve())
                         state.pop("receipt_path", None)
+                        state.pop("narration_progress", None)
                         manifest = N.validate_assembly(manifest_path)
-                    artifacts.extend([str(Path(manifest_path).resolve()), manifest["master_path"], str(asset_path)])
+                    artifacts.extend([str(Path(manifest_path).resolve()), manifest["master_path"]])
+                    if asset_path is not None:
+                        artifacts.append(str(asset_path))
                     result["technical_quality"] = manifest["technical_quality"]
+                    result["narration_provenance"] = manifest.get("provenance", "tts")
                 elif stage == 'delivery':
                     from app.services.delivery import apply
-                    manifest_path, _ = current_manifest()
-                    _, asset = resolve_voice_asset(path=voice_asset)
-                    new_manifest = apply(manifest_path, asset)
-                    if str(new_manifest.resolve()) != str(Path(manifest_path).resolve()):
-                        state['manifest_path'] = str(new_manifest.resolve())
-                        for key in ('receipt_path','alignment_path','quality_path'): state.pop(key, None)
-                    artifacts.extend([str(new_manifest.resolve()), N.read(new_manifest)['master_path']])
+                    manifest_path, manifest = current_manifest()
+                    if manifest.get('provenance') == 'external_recording':
+                        # `apply` exists to insert planned pauses into a synthesized
+                        # master. A recording already contains the pauses the
+                        # director actually took, so running it would stack a
+                        # second silence on top of each one. Recorded, not silent.
+                        result['delivery_skipped'] = (
+                            'external recording: pauses are already in the delivered master')
+                    else:
+                        _, asset = resolve_voice_asset(path=voice_asset)
+                        new_manifest = apply(manifest_path, asset)
+                        if str(new_manifest.resolve()) != str(Path(manifest_path).resolve()):
+                            state['manifest_path'] = str(new_manifest.resolve())
+                            for key in ('receipt_path','alignment_path','quality_path'): state.pop(key, None)
+                        artifacts.extend([str(new_manifest.resolve()), N.read(new_manifest)['master_path']])
                 elif stage == 'quality':
                     from app.services.production_quality import build, pending
                     manifest_path, _ = current_manifest()
