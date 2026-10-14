@@ -12,6 +12,10 @@ _META = re.compile(r"^(?:作品类型|预估时长|时长预估|核心切口|格
 # 作者恰好用了那几种措辞，本集就因为「新稿写的是『核心命题』而没命中」踩过坑
 # （见下方 quote 分支的长注释）。`标签：值` 是这类头部块的稳定结构。
 _META_LABEL = re.compile(r"^[^：:]{1,12}\s*[：:]")
+# 代码围栏：Gemini TTS 专版把口播正文包在 ```text 围栏里，反引号不是口播内容。
+# 与 script.strip_script_markdown 的 MD_FENCE 同口径。xlc-01 靠手工删围栏绕过，
+# xlc-02 实测围栏标记直接进了 unit 文本（ASR 不可能听出反引号）。
+_FENCE = re.compile(r"^\s*(?:```|~~~)")
 _CUE = re.compile(r"【[^】]*】|[\[［](?:停顿|重音|语气|叹息|音效|画面|转场)[^\]］]*[\]］]")
 # 括号式表演/音效提示：（微混响）（叹气）（回响）（气音）等。这些不是口播内容——
 # split_script 侧 strip_script_markdown 已把它们排除在字幕之外，若这里仍计入
@@ -82,6 +86,8 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
         clean_label = re.sub(r"^[>\s（(]+|[）)]+$", "", stripped.replace("**", "").replace("__", ""))
         if stripped.startswith("#"):
             block["kind"] = "heading"
+        elif _FENCE.match(stripped):
+            block["kind"] = "metadata"
         elif _META.match(clean_label) or re.fullmatch(r"[-*_]{3,}",stripped):
             block["kind"] = "metadata"
         elif stripped.startswith(">"):

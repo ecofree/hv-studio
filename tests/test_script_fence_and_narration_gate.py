@@ -216,3 +216,22 @@ def test_alignment_review_clears_only_when_the_forced_aligner_spoke():
     state = {"manifest_path": "nope.json", "alignment_path": "nope2.json"}
     # unreadable -> conservative, nothing clears
     assert alignment_review_pending(state) == []
+
+
+def test_parse_document_excludes_fence_lines_from_units():
+    """v2 的 parse_document 必须和 strip_script_markdown 同口径排除围栏。
+
+    xlc-02 实测：围栏标记直接进了 unit 文本（ASR 不可能听出反引号）。
+    xlc-01 当时是手工删围栏绕过的，本测试把豁口钉死。
+    """
+    from app.services.script_document import parse_document
+
+    doc = parse_document(FENCED_SCRIPT, "probe.md")
+    assert doc["units"], "fenced script must still yield units"
+    for u in doc["units"]:
+        assert "```" not in u["source_text"], u["unit_id"]
+        assert "```" not in u["approved_spoken_text"], u["unit_id"]
+        assert "```" not in u["display_text"], u["unit_id"]
+    texts = [u["source_text"] for u in doc["units"]]
+    assert any("翠微宫" in x for x in texts)
+    assert any("托孤" in x for x in texts)
