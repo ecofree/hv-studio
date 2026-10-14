@@ -93,6 +93,13 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
 
     def finish(**fields):
         advice.update(fields)
+        changed = status.get("renderer_changed") or []
+        if changed and all("渲染器源码" not in (n or "") for n in advice.get("notes", [])):
+            advice["notes"] = list(advice.get("notes", [])) + [
+                f"渲染器源码自该候选渲染后有 {len(changed)} 处变化（{', '.join(Path(p).name for p in changed[:5])}"
+                + ("……" if len(changed) > 5 else "")
+                + "），成片字节与已有评审不受影响；下次重渲会用新代码并需要重新评审。",
+            ]
         return advice
 
     if code == "RUNNING":

@@ -40,12 +40,26 @@ def get_status(ep_id):
         except (psutil.Error, ValueError): alive=False
         result['status'] = 'RUNNING' if alive else 'INTERRUPTED'
     if last.get('error'): result['blockers'].append(last['error'])
+    # Scene plates live outside every receipt: a built episode whose plates are
+    # gone cannot be rebuilt, so this is checked before (and independently of)
+    # the receipt validation below, which aborts early on any drift.
+    result['scene_images_missing'] = missing_scene_images(
+        ep_id, only_when_built=bool(state.get('receipt_path') or (root / 'published.json').exists()))
     try:
         if fingerprint(_load_script_md(load(ep_id))) != state['source_sha256']: raise ValueError('source changed')
         result['source_current'] = True
         if state.get('receipt_path'):
             receipt = read(state['receipt_path'])
-            if not artifacts_current(receipt['inputs']): raise ValueError('candidate inputs changed; rebuild required')
+            from app.services.production_identity import artifacts_current, split_receipt_drift
+            if not artifacts_current(receipt['inputs']):
+                content_drift, renderer_drift = split_receipt_drift(receipt['inputs'])
+                if content_drift:
+                    raise ValueError('candidate inputs changed; rebuild required')
+                # Renderer-only drift: the approved bytes and their reviews are
+                # untouched (a source edit cannot rewrite a file). The candidate
+                # stands; the next rebuild renders with new code and needs a
+                # fresh review. Recorded, not hidden.
+                result['renderer_changed'] = renderer_drift
             from app.services.provenance import file_sha256
             if file_sha256(receipt['candidate_path']) != receipt['candidate_sha256']: raise ValueError('candidate is missing or changed')
             result['candidate_path'] = receipt['candidate_path']
@@ -89,6 +103,14 @@ def get_status(ep_id):
     except (OSError, ValueError, KeyError) as exc:
         if result['status'] != 'RUNNING': result['status'] = 'STALE'
         result['blockers'].append(str(exc))
+    # Missing scene plates block regardless of which path above was taken: a
+    # receipt drift must not hide the fact that the episode cannot be rebuilt.
+    if result.get('scene_images_missing'):
+        result['blockers'].append(
+            f"scene images missing ({len(result['scene_images_missing'])}): "
+            + ", ".join(result['scene_images_missing'][:8])
+            + (" ..." if len(result['scene_images_missing']) > 8 else "")
+            + " —— 底图丢失，该集无法重建")
     # An outdated candidate must not hide independent review queues. These
     # readers validate their own audio/source bindings, separately from render.
     for dimension, key, reader, output in (
@@ -281,6 +303,59 @@ def _quality_pending(path):
 def _delivery_pending(path):
     from app.services.delivery import pending
     return pending(path)
+
+
+def missing_scene_images(ep_id, *, only_when_built=True):
+    """Scene image keys that do not resolve to a file on disk.
+
+    Returns a sorted list (empty when everything resolves, or when there is
+    nothing to check). `only_when_built=False` also reports plates that were
+    never generated; the status reader keeps it True so a fresh episode is
+    never blamed for ungenerated plates.
+    """
+    from app.orchestrator import _episode_dir
+    from app.services.narration_pipeline import read
+    from app.services.shot_builder import _resolve_image
+
+    plan_path = _episode_dir(ep_id) / "scene_plan.json"
+    if not plan_path.is_file():
+        return []
+    try:
+        plan = read(plan_path)
+    except (OSError, ValueError):
+        return []
+    images = plan.get("images", {})
+    rows = plan.get("scenes", []) or plan.get("unit_scenes", [])
+    if only_when_built and not rows:
+        return []
+    # v2 episodes keep plates under production/v2/images/<fingerprint>/, not at
+    # the `shots/` path the scene plan declares. run.json's image_assets is the
+    # authority for what was actually generated; the scene-plan path is only the
+    # fallback for legacy layouts.
+    generated = {}
+    try:
+        from app.orchestrator import _episode_dir as _dir
+        state_path = _dir(ep_id) / "production" / "v2" / "run.json"
+        if state_path.is_file():
+            assets = read(state_path).get("image_assets") or {}
+            generated = {k: v for k, v in assets.items() if Path(v).is_file()}
+    except (OSError, ValueError):
+        generated = {}
+    # A key absent from the images map is missing, not a crash: _resolve_image
+    # raises KeyError for unknown keys (correct for the composer, which must
+    # fail closed), while this reader must report.
+    missing = set()
+    for r in rows:
+        key = r.get("image")
+        if not key or key in generated:
+            continue
+        try:
+            exists = _resolve_image(images, key).exists()
+        except (KeyError, ValueError, TypeError, AttributeError):
+            exists = False
+        if not exists:
+            missing.add(key)
+    return sorted(missing)
 
 
 def alignment_review_pending(state):

@@ -74,3 +74,51 @@ def artifacts_current(receipt):
         return bool(receipt) and all(file_sha256(p) == sha for p, sha in receipt.items())
     except OSError:
         return False
+
+
+# Renderer paths: their change cannot alter already-rendered bytes (the
+# renderer itself, its pinned runtime, its configuration). Everything else
+# (episode media, plans, bindings, fonts, voice assets) is content: if it
+# drifted, the bytes on disk may no longer be what the inputs describe.
+# NOTE: RENDERER_PARTS is documentation, not logic; _is_renderer decides.
+RENDERER_PARTS = ("app/", "requirements", "bin/local_asr_worker.py",
+                  "bin/local_alignment_worker.py", "app/config/")
+
+
+def _is_renderer(path: str) -> bool:
+    try:
+        rel = str(Path(path).resolve().relative_to(ROOT)).replace("\\", "/")
+    except ValueError:
+        return False
+    if rel.startswith("app/") and rel.endswith(".py"):
+        return True
+    name = rel.rsplit("/", 1)[-1]
+    if name.startswith("requirements") or name.endswith(".lock.txt"):
+        return True
+    if rel in ("bin/local_asr_worker.py", "bin/local_alignment_worker.py"):
+        return True
+    if rel in ("app/config/config.yaml", "app/config/voices.yaml",
+               "app/config/polyphone.yaml"):
+        return True
+    return False
+
+
+def split_receipt_drift(receipt):
+    """Split drifted receipt inputs into content vs renderer paths.
+
+    Returns (content_drift, renderer_drift), each a sorted list of paths whose
+    recorded sha256 no longer matches the file (or which are unreadable).
+    An approval binds candidate bytes plus their reviews; renderer sources
+    cannot retroactively change bytes already on disk, so renderer-only drift
+    must not revoke an approval -- it only means the next rebuild will render
+    with new code and needs a fresh review. Content drift invalidates.
+    """
+    content, renderer = [], []
+    for p, sha in (receipt or {}).items():
+        try:
+            current = file_sha256(p)
+        except OSError:
+            current = None
+        if current != sha:
+            (renderer if _is_renderer(p) else content).append(p)
+    return sorted(content), sorted(renderer)

@@ -111,8 +111,16 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
             receipt = N.read(path)
             if receipt["manifest_path"] != str(Path(manifest_path).resolve()):
                 raise ValueError("candidate uses stale narration")
-            if not artifacts_current(receipt["inputs"]) or file_sha256(receipt["candidate_path"]) != receipt["candidate_sha256"]:
-                raise ValueError("candidate or its inputs changed; run stage compose")
+            from app.services.production_identity import split_receipt_drift
+            if not artifacts_current(receipt["inputs"]):
+                content_drift, renderer_drift = split_receipt_drift(receipt["inputs"])
+                if content_drift:
+                    raise ValueError("candidate or its inputs changed; run stage compose")
+                # Renderer-only drift: bytes and reviews intact; verify and later
+                # stages may proceed, and the drift is recorded on the result.
+                result["renderer_changed"] = renderer_drift
+            if file_sha256(receipt["candidate_path"]) != receipt["candidate_sha256"]:
+                raise ValueError("candidate is missing or changed; run stage compose")
             if state.get('timeline_path'): P.validate_timeline(manifest, N.read(state['timeline_path']))
             return path, receipt
 
