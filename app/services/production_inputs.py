@@ -29,9 +29,50 @@ def prepare(ep, plan_path, root):
         # Deterministic source-derived draft; semantic review remains explicit.
         # No added historical facts or silent LLM/provider calls.
         settings = get_settings(); style = settings.get_profile().image; primary = settings.image.primary
+        # The fallback used to skip every pre-spend gate: a placeholder narration
+        # or an illegal size/quality would burn quota before anyone noticed.
+        # Screen here with the same wordlists as build_image_jobs (length and
+        # placeholder rules do NOT transfer: narration is not a prompt, and
+        # short units are legitimate). Style-word hits block; text-request
+        # hints only warn.
+        from app.orchestrator import _word_hit, _STYLE_BANNED_LATIN, _STYLE_BANNED_CJK
+        from app.orchestrator import _TEXT_REQUEST_CJK, _TEXT_REQUEST_LATIN
+        from app.services.image import validate_image_params
+        bad_params = validate_image_params(primary.size, primary.quality,
+                                           primary.model or primary.engine)
+        if bad_params:
+            raise ValueError("image params invalid before any paid call: " + "; ".join(bad_params))
         storyboard = {'schema_version': 'source-storyboard-v1', 'source_sha256': plan['source_sha256'],
                       'review_required': True, 'unit_scenes': []}
         jobs, prompts = [], {}
+        blocked, warned = [], []
+        for i, unit in enumerate(plan['units']):
+            text = unit['source_text'] or ""
+            norm = " ".join(text.split())
+            if not norm:
+                blocked.append((f'unit-{i:03}', 'empty narration'))
+                continue
+            low = norm.lower()
+            hit = _word_hit(low, _STYLE_BANNED_LATIN) or next(
+                (w for w in _STYLE_BANNED_CJK if w in norm), None)
+            if hit:
+                blocked.append((f'unit-{i:03}', f'风格词疑似与 house look 冲突（{hit}）'))
+                continue
+            for w in _TEXT_REQUEST_CJK:
+                if w in norm:
+                    warned.append((f'unit-{i:03}', f'疑似要求图中渲染文字（{w}）'))
+                    break
+            else:
+                hit = _word_hit(low, _TEXT_REQUEST_LATIN)
+                if hit:
+                    warned.append((f'unit-{i:03}', f'疑似要求图中渲染文字（{hit}）'))
+        if blocked:
+            raise ValueError(
+                f"{len(blocked)} 个 unit 的旁白含风格词，不适合直接做生图主体（先写 scene_plan）： "
+                + ", ".join(f"{k}({r})" for k, r in blocked[:8]))
+        if warned:
+            print(f"  [production_inputs] {len(warned)} 个 unit 疑似要求图中文字，"
+                  f"已保留但请复核: {warned[:5]}")
         for i, unit in enumerate(plan['units']):
             key = f'unit-{i:03}'
             prompt = ('Historical documentary scene illustrating the following narration. '

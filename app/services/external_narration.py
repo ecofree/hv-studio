@@ -52,21 +52,18 @@ from app.services.provenance import atomic_json, file_sha256
 
 PROVENANCE = "external_recording"
 
-# A cut whose unit matched this little of its own characters cannot be trusted to
-# contain exactly that unit's words -- the neighbouring unit may be bleeding in.
-# Measured on caomin-02 (2026-10-13): min 0.786 / median 0.873 over 47 units.
+# Reporting threshold only, NOT a build gate: units below it are listed in
+# `manifest["alignment_review"]` and adjudicated by the forced aligner in the
+# `alignment` stage. Making it a hard failure rejected provably-correct cuts on
+# classical quotations (xlc-01, 2026-10-13; a whole-track coverage of 0.385 on
+# "朕佳儿佳妇，今以付卿。" cut correctly, atoms returned 13 rows).
+# Measured on caomin-02: min 0.786 / median 0.873 over 47 units.
 MIN_UNIT_COVERAGE = 0.60
 
 # Silence either side of a unit is not part of the unit, but the forced aligner
 # needs the take to hold its first and last word whole. Measured inter-unit
 # silence on caomin-02: 0.46s..2.35s, so a pad of up to this much always fits.
 EDGE_PAD_S = 0.30
-
-# Reporting threshold only, NOT a build gate: units below it are listed in
-# `manifest["alignment_review"]` and adjudicated by the forced aligner in the
-# `alignment` stage. Making it a hard failure rejected provably-correct cuts on
-# classical quotations (xlc-01, 2026-10-13). See `_check_alignment`.
-MIN_UNIT_COVERAGE = 0.60
 
 
 class ExternalNarrationError(RuntimeError):

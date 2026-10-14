@@ -68,7 +68,12 @@ def build(ep, manifest_path, alignment_path, image_assets, scene_plan_path, dest
     timeline = dict(schema_version='2.1', shots=shots, subtitles=evidence['subtitles'],
                     alignment_evidence_path=str(Path(alignment_path).resolve()), status='candidate',
                     inputs={str(Path(scene_plan_path).resolve()): file_sha256(scene_plan_path)},
-                    provenance='source_ranges_to_observed_acoustic_word_boundaries', review_required=True)
+                    provenance='source_ranges_to_observed_acoustic_word_boundaries',
+                    # Declarative only: no gate reads review_required. The real
+                    # publication bars are pending()/require_evidence upstream
+                    # and the dual human reviews at publish. Renaming it would
+                    # orphan every timeline on disk, so it stays with this note.
+                    review_required=True)
     bgm = pick_bgm(get_settings().profile_name)
     if bgm: timeline['bgm_path'] = str(bgm.resolve())
     if quality_path:

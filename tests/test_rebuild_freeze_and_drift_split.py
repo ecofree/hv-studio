@@ -91,3 +91,43 @@ def test_renderer_drift_is_surfaced_by_advise_but_blocks_nothing():
     })
     assert advice["status"] == "APPROVED"
     assert any("渲染器源码" in n for n in advice["notes"])
+
+
+def test_apply_scene_freeze_revokes_approval_but_keeps_evidence():
+    from app.services.production_status import apply_scene_freeze
+
+    result = {"status": "APPROVED", "approved": True, "delivery_ready": True,
+              "blockers": [], "scene_images_missing": ["LA01", "LA02"]}
+    out = apply_scene_freeze(result)
+    assert out["approved"] is False
+    assert out["delivery_ready"] is False
+    assert out["status"] == "STALE"
+    assert any("LA01" in b and "LA02" in b for b in out["blockers"])
+    # The missing list itself survives for the operator to act on.
+    assert out["scene_images_missing"] == ["LA01", "LA02"]
+
+
+def test_apply_scene_freeze_leaves_healthy_status_untouched():
+    from app.services.production_status import apply_scene_freeze
+
+    result = {"status": "APPROVED", "approved": True, "delivery_ready": True,
+              "blockers": [], "scene_images_missing": []}
+    out = apply_scene_freeze(result)
+    assert out["approved"] is True
+    assert out["status"] == "APPROVED"
+    assert out["blockers"] == []
+
+def test_old_receipts_read_as_uniform_encoder():
+    """Receipts predating encoder_mixed must not read as mixed."""
+    from app.services.production_status import get_status
+
+    s = get_status("laogongtuan")
+    assert s["dimensions"].get("encoder") == "uniform"
+
+
+def test_mixed_encoders_are_visible_not_blocking():
+    """A mixed-encoder film decodes fine; status must show it, not hide it."""
+    from app.services.production_status import get_status
+
+    s = get_status("xlc-01")
+    assert s["dimensions"].get("encoder") in ("uniform", "mixed")

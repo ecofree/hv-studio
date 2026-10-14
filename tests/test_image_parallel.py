@@ -40,9 +40,12 @@ def _make_channel(name: str, base_url: str = "https://mock.example") -> Channel:
     )
 
 
-def _gen_req() -> ImageGenRequest:
+def _gen_req(prompt: str = "test") -> ImageGenRequest:
+    # Distinct prompts per job unless a test passes the same text: since
+    # generate_many deduplicates identical requests (one bill), rotation and
+    # failover tests need distinct requests to exercise multiple calls.
     return ImageGenRequest(
-        model="gpt-image-2", prompt="test", size="1080x1920", n=1,
+        model="gpt-image-2", prompt=prompt, size="1080x1920", n=1,
     )
 
 
@@ -111,7 +114,7 @@ def test_every_channel_is_used(patch_generator, tmp_path):
     gen, channels, rec = patch_generator
     for ch in channels:
         rec.behavior[ch.name] = lambda c: _ok_resp()
-    jobs = [ImageJob(f"j{i}", _gen_req(), tmp_path / f"{i}.png") for i in range(6)]
+    jobs = [ImageJob(f"j{i}", _gen_req(f"scene {i}"), tmp_path / f"{i}.png") for i in range(6)]
     res = generate_many(jobs, budget=gen.offline_budget)
     assert all(res[j.id] is not None for j in jobs)
     used = set(rec.calls)
@@ -126,7 +129,7 @@ def test_failover_when_one_channel_down(patch_generator, tmp_path):
     rec.behavior["aicost"] = lambda c: (_ for _ in ()).throw(RuntimeError("429"))
     rec.behavior["qcyc"] = lambda c: _ok_resp()
     rec.behavior["cxk"] = lambda c: _ok_resp()
-    jobs = [ImageJob(f"j{i}", _gen_req(), tmp_path / f"{i}.png") for i in range(4)]
+    jobs = [ImageJob(f"j{i}", _gen_req(f"scene {i}"), tmp_path / f"{i}.png") for i in range(4)]
     res = generate_many(jobs, budget=gen.offline_budget)
     assert all(res[j.id] is not None for j in jobs), res
     # aicost 可能被失败尝试，但最终由 qcyc/cxk 承接

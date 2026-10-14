@@ -68,12 +68,17 @@ def build(timeline: dict, plan: dict, alignment: dict) -> Index:
     """-> Index for one episode's timeline.
 
     ``timeline`` needs ``subtitles``; ``plan`` supplies each unit's
-    ``source_text``; ``alignment`` supplies ``words`` keyed by unit_id.
+    ``display_text``; ``alignment`` supplies ``words`` keyed by unit_id.
+    display_text is the same string the subtitle gate
+    (``validate_timeline``: ``cue["text"]==unit["text"][i:j]``) compares
+    against -- indexing any other field would misalign highlight and cue
+    the moment the two diverge.
     """
     from app.services import compose as C
     from app.services import word_timing as WT
 
-    sources = {u['unit_id']: u.get('source_text', '') for u in plan.get('units', [])}
+    sources = {u['unit_id']: u.get('display_text') or u.get('source_text', '')
+               for u in plan.get('units', [])}
     by_unit = alignment.get('words') or {}
     cues: list[_Cue] = []
 
@@ -82,7 +87,8 @@ def build(timeline: dict, plan: dict, alignment: dict) -> Index:
         source = sources.get(unit_id)
         raw = by_unit.get(unit_id) or []
         entry = _Cue(int(cue['sample_start']), int(cue['sample_end']))
-        # Words index the unit's source text; the cue is a slice of it.
+        # Words index the unit's display text (the same string the subtitle
+        # gate compares cues against); the cue is a slice of it.
         if source and raw and cue.get('text'):
             unit_display = C.subtitle_display_text(source)
             # Punctuation tokens must go before mapping, not after.

@@ -39,6 +39,42 @@ def preflight(config=None):
     return model,runtime
 
 
+_BUST_HINTED = False
+
+
+def _hint_cache_miss_reason(request):
+    """One-line hint when perf params (not audio/model) busted the cache.
+
+    `threads`/`python` are part of the cache key, so retuning them silently
+    re-recognizes everything. Bounded scan (64 most-recent records), once per
+    process, read-only. Never blocks or alters the miss path.
+    """
+    global _BUST_HINTED
+    if _BUST_HINTED:
+        return
+    try:
+        from app import paths
+        cached = sorted(paths.state_dir().glob('local_asr/*.json'),
+                        key=lambda p: p.stat().st_mtime, reverse=True)[:64]
+        for path in cached:
+            try:
+                record = json.loads(path.read_text(encoding='utf-8'))
+            except (OSError, ValueError):
+                continue
+            other = record.get('request') or {}
+            if (other.get('audio_sha256') == request.get('audio_sha256')
+                    and other.get('model_manifest_sha256') == request.get('model_manifest_sha256')
+                    and other.get('threads') != request.get('threads')):
+                print(f"  [asr] 缓存未命中：同音频已有识别结果，但 threads "
+                      f"{other.get('threads')}->{request.get('threads')} 改变了缓存键；"
+                      f"改回即命中，无需重识别", flush=True)
+                break
+    except OSError:
+        pass
+    finally:
+        _BUST_HINTED = True
+
+
 def recognize(audio, *, config=None, context=None):
     from app import paths
     config=config or get_settings().get_profile().asr
@@ -57,6 +93,7 @@ def recognize(audio, *, config=None, context=None):
         record=json.loads(cache.read_text(encoding='utf-8'))
         if record.get('request')==request and record.get('result_sha256')==fingerprint(record['result']):
             return record['result'],cache
+    _hint_cache_miss_reason(request)
     with tempfile.TemporaryDirectory(prefix='hv-asr-') as tmp:
         output=Path(tmp)/'result.json'
         run=subprocess.run([str(resolve(config.python_executable)),str(worker),'--audio',str(Path(audio).resolve()),

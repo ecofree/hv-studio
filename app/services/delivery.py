@@ -18,6 +18,17 @@ def effective_unit(unit, plan, asset):
 
 
 def dispositions(plan, asset, insertions=None):
+    """Direction-cue states. Terminology map (three lenses, one cue):
+
+    - effective_unit (narrow): only a leading 语气 cue without 配乐 becomes a
+      TTS instruction; everything else is NOT synthesized, only recorded here.
+    - dispositions (middle): unit-bound -> request_compiled_audio_review_pending
+      or unsupported_needs_disposition; unbound -> visual_direction_needs_review.
+    - admission.inputs (wide): every non-pause cue is listed as
+      unsupported_cues/direction_cues and needs input approval.
+    A cue can therefore be "unsupported" for TTS, "pending" here, and
+    "needs approval" at admission -- all at once, without contradiction.
+    """
     rows = []
     for cue in plan.get('delivery_cues', []):
         row = dict(cue_id=cue['cue_id'], unit_id=cue.get('unit_id'), text=cue['raw_text'])

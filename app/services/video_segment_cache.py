@@ -14,6 +14,11 @@ DEPENDENCIES = (
     'app/services/compose.py', 'app/services/motion.py',
     'app/services/subtitle_layout.py', 'app/services/spec.py',
     'app/models/shot.py', 'app/config/config.py',
+    # The two v2 visual layers draw pixels inside _encode_v2_segment. Without
+    # them here, fixing their drawing code reuses stale segments and no frame
+    # count changes, so verify stays green (xlc-01 era gap, 2026-10-14).
+    'app/services/overlay.py', 'app/services/karaoke.py',
+    'app/services/word_timing.py',
 )
 
 
@@ -24,7 +29,8 @@ def context(root, runtime, subtitle, encoder, font):
                 implementation={p: file_sha256(root/p) for p in DEPENDENCIES})
 
 
-def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared):
+def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared,
+                        overlay_digest=None):
     first, last = rows[0][1], rows[-1][2]
     shots = []
     for index, start, stop in rows:
@@ -37,7 +43,10 @@ def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared):
     visible = [dict(text=c['text'], sample_start=c['sample_start'], sample_end=c['sample_end'])
                for c in cues if c['sample_end'] > first*sample_rate//25
                and c['sample_start'] <= (last-1)*sample_rate//25]
-    return fingerprint(dict(context=shared, shots=shots, cues=visible, sample_rate=sample_rate))
+    # Overlay content is windowed per segment (same principle as cues): a title
+    # card edit re-encodes only the segments it touches, instead of the film.
+    return fingerprint(dict(context=shared, shots=shots, cues=visible,
+                            overlay=overlay_digest, sample_rate=sample_rate))
 
 
 def reusable_records(output_dir):

@@ -122,6 +122,18 @@ def pack(unit, rows, sr):
     return best[0][1]
 
 
+def _align_take(args):
+    """Single take: recognize + forced align. Pure per-take work; the caller
+    merges results in unit order, so output is byte-identical to serial."""
+    from app.services.local_asr import recognize
+
+    unit, take, manifest, context = args
+    recognized, asr_path = recognize(take['audio_path'], context=context)
+    result, result_path = align(take['audio_path'], unit['text'], recognized,
+                                take['samples'] / manifest['sample_rate'], context)
+    return unit, take, recognized, asr_path, result, result_path
+
+
 def build(manifest_path, destination):
     from app.services.local_asr import recognize, preflight
     from app.services.subtitle_alignment import validate_cues
@@ -130,9 +142,19 @@ def build(manifest_path, destination):
     context = preflight()
     inputs = {str(Path(manifest_path).resolve()): file_sha256(manifest_path), str(Path(__file__).resolve()): file_sha256(__file__)}
     subtitles, words, issues = [], {}, []
-    for unit, take in zip(manifest['alignment'], manifest['takes']):
-        recognized, asr_path = recognize(take['audio_path'], context=context)
-        result, result_path = align(take['audio_path'], unit['text'], recognized, take['samples']/manifest['sample_rate'], context)
+    import concurrent.futures
+    import os
+    try:
+        workers = int((os.environ.get('HV_ALIGNMENT_WORKERS') or '').strip() or 0)
+    except ValueError:
+        workers = 0
+    if workers <= 0:
+        workers = max(1, min(4, os.cpu_count() or 2))
+    pairs = [(u, t, manifest, context)
+             for u, t in zip(manifest['alignment'], manifest['takes'])]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:
+        aligned = list(pool.map(_align_take, pairs))
+    for unit, take, recognized, asr_path, result, result_path in aligned:
         for path in (asr_path, result_path): inputs[str(path.resolve())] = file_sha256(path)
         rows = atoms(dict(unit, sample_end=unit['sample_start']+take['samples']), result, manifest['sample_rate'])
         # The delivered master can include exact, separately recorded pauses.

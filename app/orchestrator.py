@@ -208,6 +208,34 @@ _PROMPT_PLACEHOLDER = (
     "test", "测试", "示例", "sample", "n/a", "null", "none",
 )
 
+# 风格词黑名单：与 AGENTS.md「项目画风固定」同源。写进 en 会与 negative_clause
+# 正面冲突，模型择一后实际风格不可预期（caomin-01 全 36 张返工先例）。
+# 拉丁词用词界匹配，免得 "context" 被 "text" 误伤；CJK 词无需词界。
+_STYLE_BANNED_LATIN = (
+    r"cartoon", r"anime", r"ink-wash", r"infographic", r"photorealistic",
+    r"3d render", r"chiaroscuro", r"silk-scroll", r"photograph",
+    r"digital art", r"manga", r"comic",
+)
+_STYLE_BANNED_CJK = ("水墨", "插画", "写实", "油画", "水彩", "二次元", "厚涂")
+# 注意："flat" 不在表内——"flat daylight" 类正常英文会被误伤，已实测
+# （xlc-01 XL03/XL10/XL18）。真要写扁平风格请走配置，不得写进 en。
+
+# 疑似“要求图中渲染文字”：negative_clause 含 no text，进 en 等于自相矛盾。
+# 这类表述歧义大（画卷轴道具 vs 要可读标题），只提示、永不拦截。
+_TEXT_REQUEST_CJK = ("标题", "字幕", "标牌", "海报", "水印")
+_TEXT_REQUEST_LATIN = (
+    r"watermark", r"caption", r"label", r"title card", r"lettering",
+    r"readable text", r"legible",
+)
+
+
+def _word_hit(low: str, words) -> str | None:
+    import re as _re
+    for w in words:
+        if _re.search(r"(?<![a-z])" + w + r"(?![a-z])", low):
+            return w
+    return None
+
 
 def screen_prompt(key: str, prompt: str) -> tuple[bool, str, str]:
     """发请求前的 prompt 体检。返回 (ok, reason, normalized)。
@@ -234,6 +262,18 @@ def screen_prompt(key: str, prompt: str) -> tuple[bool, str, str]:
         return False, f"过短（{len(norm)} 字 < {PROMPT_MIN_CHARS}）", norm
     if len(norm) > PROMPT_MAX_CHARS:
         return True, f"超长已截断 {len(norm)}→{PROMPT_MAX_CHARS}", norm[:PROMPT_MAX_CHARS]
+    hit = _word_hit(low, _STYLE_BANNED_LATIN) or next(
+        (w for w in _STYLE_BANNED_CJK if w in norm), None)
+    if hit:
+        # 风格词进 en 会与 negative_clause 打架：默认 warn（老集不炸），
+        # strict/HV_PROMPT_PRESCREEN_STRICT 下由调用方升级为拦截。
+        return True, f"风格词疑似与 house look 冲突（{hit}），请走配置改画风", norm
+    for w in _TEXT_REQUEST_CJK:
+        if w in norm:
+            return True, f"疑似要求图中渲染文字（{w}），negative 含 no text", norm
+    hit = _word_hit(low, _TEXT_REQUEST_LATIN)
+    if hit:
+        return True, f"疑似要求图中渲染文字（{hit}），negative 含 no text", norm
     return True, "OK", norm
 
 
@@ -351,6 +391,12 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
             if not ok:
                 blocked.append((key, reason))
                 continue
+            if reason.startswith("风格词") and (strict or env_get("HV_PROMPT_PRESCREEN_STRICT") in (
+                    "1", "true", "yes")):
+                # 风格词在 strict 下升级为拦截：它与 negative_clause 的冲突是
+                # 确定性的，不是一次警告能对冲的。默认 warn 不炸老集。
+                blocked.append((key, reason))
+                continue
             if reason != "OK":
                 warned.append((key, reason))
             prompt = _compose_prompt(norm, suffix, neg)
@@ -401,6 +447,23 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
             raise RuntimeError(
                 f"episode {ep_id} 有 {len(blocked)} 条 prompt 未通过预筛，"
                 f"已按 HV_PROMPT_PRESCREEN_STRICT 拒绝生图: {blocked[:10]}")
+    # 同请求去重报告：generate_many 会按 request_fingerprint 只付一次钱，
+    # 这里只报告、不改 jobs（键与落盘路径仍一一对应）。
+    _fp_first: dict = {}
+    _dups: list = []
+    for job in jobs:
+        try:
+            _fp = job.request_fingerprint()
+        except Exception:
+            continue
+        if _fp in _fp_first:
+            _dups.append((_fp_first[_fp], job.id))
+        else:
+            _fp_first[_fp] = job.id
+    if _dups:
+        print(f"  [orchestrator] 重复请求 {len(_dups)} 组，生图时只付一次钱："
+              + ", ".join(f"{a}={b}" for a, b in _dups[:10])
+              + (" …" if len(_dups) > 10 else ""))
     return jobs
 
 

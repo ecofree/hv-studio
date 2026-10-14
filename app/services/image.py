@@ -762,21 +762,49 @@ def generate_many(
     pending = [j for j in jobs if force or not j.is_done()]
     if not pending:
         return {j.id: str(j.out) for j in jobs}
-    unsupported = sorted({j.req.model for j in pending
+    # Same request, one bill: jobs with an identical request_fingerprint would
+    # return byte-identical images. Generate once, copy to the rest. The copies
+    # go through ImageJob.install (same receipt/sha/validation path) and never
+    # touch the provider, so they consume no budget and write no cost ledger.
+    primaries: list = []
+    dup_of: dict = {}
+    _fp_seen: dict = {}
+    for j in pending:
+        try:
+            fp = j.request_fingerprint()
+        except Exception:
+            fp = None
+        if fp is None or fp not in _fp_seen:
+            if fp is not None:
+                _fp_seen[fp] = j.id
+            primaries.append(j)
+        else:
+            dup_of.setdefault(_fp_seen[fp], []).append(j)
+    if dup_of:
+        print(f"  [image] 去重 {sum(len(v) for v in dup_of.values())} 个重复请求 "
+              f"({len(dup_of)} 组)，只付一次钱", flush=True)
+    unsupported = sorted({j.req.model for j in primaries
                           if not any(c.supports(j.req.model) for c in channels)})
     if unsupported:
         raise ImageError(f"无可用渠道支持模型: {', '.join(unsupported)}；整批未发起请求")
-    channels = [c for c in channels if any(c.supports(j.req.model) for j in pending)]
+    channels = [c for c in channels if any(c.supports(j.req.model) for j in primaries)]
     capacity = sum(c.max_concurrency for c in channels)
     if workers is not None and workers < 1:
         raise ValueError("workers must be positive")
-    n_worker = min(workers or capacity, capacity, len(pending))
+    n_worker = min(workers or capacity, capacity, len(primaries))
     jobq: Queue = Queue()
-    for i, j in enumerate(jobs):
+    for i, j in enumerate(primaries):
         j._channel_idx = i  # Per-job rotation is applied after model filtering.
         jobq.put(j)
     result: dict = {}
     prog = _Progress(total=len(jobs))
+    # Jobs already done never enter the queue; record and count them here so
+    # progress totals and result shape match the pre-dedup behavior.
+    _pending_ids = {id(j) for j in pending}
+    for j in jobs:
+        if id(j) not in _pending_ids:
+            result[j.id] = str(j.out)
+            prog.tick(ok=True)
     stop = threading.Event()
     mon = None
     if progress and len(jobs) > 1:
@@ -800,6 +828,27 @@ def generate_many(
         stop.set()
         if mon is not None:
             mon.join(timeout=1.0)
+    # Fan out byte-identical results to the deduplicated jobs. Same install()
+    # path (receipt/sha/validation/lock), zero provider calls, zero budget.
+    for primary_id, dups in dup_of.items():
+        primary_out = result.get(primary_id)
+        for dup in dups:
+            if not primary_out:
+                result[dup.id] = None
+                result[f"{dup.id}__error"] = (
+                    result.get(f"{primary_id}__error", "unknown error")
+                    + "（重复请求，主任务失败）")
+                prog.tick(ok=False)
+                continue
+            try:
+                raw = Path(primary_out).read_bytes()
+                dup.install(raw, dup.request_fingerprint())
+                result[dup.id] = str(dup.out)
+                prog.tick(ok=True)
+            except Exception as exc:
+                result[dup.id] = None
+                result[f"{dup.id}__error"] = f"重复请求落盘失败: {type(exc).__name__}: {exc}"
+                prog.tick(ok=False)
     _, o, f, el, _ = prog.snap()
     print(f"  [image] 完成 {o}/{len(jobs)} 成功，{f} 失败，用时 {_fmt_dur(el)}",
           flush=True)

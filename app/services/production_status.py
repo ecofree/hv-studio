@@ -63,6 +63,11 @@ def get_status(ep_id):
             from app.services.provenance import file_sha256
             if file_sha256(receipt['candidate_path']) != receipt['candidate_sha256']: raise ValueError('candidate is missing or changed')
             result['candidate_path'] = receipt['candidate_path']
+            # Visibility only, never a blocker: a mid-render NVENC->software
+            # fallback leaves a mixed-encoder film that decodes and verifies
+            # fine. Old receipts predate the field and read as uniform.
+            result['dimensions']['encoder'] = (
+                'mixed' if receipt.get('encoder_mixed') else 'uniform')
         if state.get('quality_path'):
             from app.services.production_quality import pending
             result['quality_pending_units'] = pending(state['quality_path'])
@@ -106,11 +111,7 @@ def get_status(ep_id):
     # Missing scene plates block regardless of which path above was taken: a
     # receipt drift must not hide the fact that the episode cannot be rebuilt.
     if result.get('scene_images_missing'):
-        result['blockers'].append(
-            f"scene images missing ({len(result['scene_images_missing'])}): "
-            + ", ".join(result['scene_images_missing'][:8])
-            + (" ..." if len(result['scene_images_missing']) > 8 else "")
-            + " —— 底图丢失，该集无法重建")
+        apply_scene_freeze(result)
     # An outdated candidate must not hide independent review queues. These
     # readers validate their own audio/source bindings, separately from render.
     for dimension, key, reader, output in (
@@ -166,6 +167,10 @@ def delivered_approval(ep_id):
     from app.orchestrator import _episode_dir
     from app.services.provenance import file_sha256
     out = dict(approved=False, pipeline=None, output_sha256=None, approval_path=None)
+    # Same freeze as get_status: a delivery whose plates are gone cannot be
+    # rebuilt, so it is not a current approval on either pipeline.
+    if missing_scene_images(ep_id):
+        return out
     root = _episode_dir(ep_id) / 'production/v2'
     published, state_path = root / 'published.json', root / 'run.json'
     if published.is_file() and state_path.is_file():
@@ -246,6 +251,13 @@ def _legacy_status(ep_id):
         blockers.extend(out.get('fails', []))
     if not out.get('skipped') and not mp4.is_file():
         blockers.append('bound video is missing')
+    # Name the unbound window explicitly: skipped-ok means "no binding
+    # established yet", not "bytes verified". Approval-before-compose is
+    # legitimate (record_approval refuses to fabricate), but no caller should
+    # read this dimension as a byte guarantee.
+    dimensions['output_binding'] = (
+        'failed' if not out.get('ok')
+        else 'unbound' if out.get('skipped') else 'bound')
     try:
         ep = load(ep_id)
         if ep.frames and _narration_source(ep).strip():
@@ -303,6 +315,27 @@ def _quality_pending(path):
 def _delivery_pending(path):
     from app.services.delivery import pending
     return pending(path)
+
+
+def apply_scene_freeze(result):
+    """Revoke approval when scene plates are missing.
+
+    An approval for bytes that can never be rebuilt is not a deliverable.
+    Callers must not need to read blockers to learn this: the lamp itself
+    goes out. Returns the mutated result dict.
+    """
+    missing = result.get('scene_images_missing') or []
+    if not missing:
+        return result
+    result['blockers'].append(
+        f"scene images missing ({len(missing)}): "
+        + ", ".join(missing[:8])
+        + (" ..." if len(missing) > 8 else "")
+        + " —— 底图丢失，该集无法重建")
+    result.update(approved=False, delivery_ready=False)
+    if result.get('status') == 'APPROVED':
+        result['status'] = 'STALE'
+    return result
 
 
 def missing_scene_images(ep_id, *, only_when_built=True):

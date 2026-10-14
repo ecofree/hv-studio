@@ -121,7 +121,11 @@ class ProviderBudget:
         with ledger_lock(self.path):
             state=read(self.path)
             for key, count in requested.items():
-                if state['used'][key]+count>self.limits[key]: raise BudgetExceeded('remaining provider budget insufficient: '+key)
+                if state['used'][key]+count>self.limits[key]: raise BudgetExceeded(
+                    'remaining provider budget insufficient: '+key
+                    +f' ({state["used"][key]}/{self.limits[key]} used)'
+                    +(' (retries are drawn from the separate image_retries allowance, not from this preflight)'
+                       if key == 'image_requests' and self.limits.get('image_retries', 0) else ''))
 
 
 def for_run(root, identifier, options):

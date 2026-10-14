@@ -128,6 +128,7 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
             "重做配音需要另外的额度，程序不会自动调用。",
             "命令行同样有效：hv narration review-quality <quality报告> <unit_id> "
             "--reviewer <姓名> --findings <结论> --decision asr_false_positive|spoken_error",
+            "注：manifest 里的 technical_quality 只是装配快照，门禁只看上面的待处置数。",
         ]
         if code == "STALE":
             notes.append("候选片已和当前输入脱节。先写下这些语音结论，再从 script 阶段更新候选。")

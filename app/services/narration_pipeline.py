@@ -139,7 +139,7 @@ def generation_quote(plan_path, asset_path):
     if fingerprint(document['source']) != plan['source_sha256']: raise ValueError('plan/source mismatch')
     source_units = {u['unit_id']:u for u in document['units']}
     for unit in plan['units']:
-        if unit['unit_id'] not in source_units or any(unit[k]!=source_units[unit['unit_id']][k] for k in ('source_text','source_map','approved_spoken_text')):
+        if unit['unit_id'] not in source_units or any(unit[k]!=source_units[unit['unit_id']][k] for k in ('source_text','source_map','approved_spoken_text','display_text')):
             raise ValueError('plan text or mapping differs from source document')
     pending = []
     for unit in plan['units']:
@@ -168,7 +168,7 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
         raise ValueError("plan/source mismatch")
     actual={u["unit_id"]:u for u in document["units"]}
     for u in plan["units"]:
-        if u["unit_id"] not in actual or any(u[k]!=actual[u["unit_id"]][k] for k in ("source_text","source_map","approved_spoken_text")):
+        if u["unit_id"] not in actual or any(u[k]!=actual[u["unit_id"]][k] for k in ("source_text","source_map","approved_spoken_text","display_text")):
             raise ValueError("plan text or mapping differs from source document")
     from app.services.delivery import effective_unit
     requests=[compile_request(effective_unit(u,plan,asset),asset) for u in plan["units"]]

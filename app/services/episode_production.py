@@ -140,6 +140,11 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     save()
                 if stage == "script":
                     pass  # Preparation uses the source-preserving parser above, never legacy frames.
+                    # This stage is intentionally a no-op in v2 (not legacy's
+                    # stage_script, which really splits frames): the plan was
+                    # already built before the stage loop. Recorded so the
+                    # result does not look like work was done.
+                    result["script_noop"] = True
                 elif stage == "images":
                     from app.services.production_inputs import prepare, preflight_media
                     from app.services.image import generate_many

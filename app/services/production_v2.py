@@ -343,10 +343,23 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     compose_cfg = get_settings().compose
     from app.services import video_segment_cache as cache
     from app.services.compose import _probe_nvenc
-    use_nvenc = getattr(compose_cfg, 'video_encoder', None) == 'h264_nvenc' and _probe_nvenc()
+    use_nvenc = getattr(compose_cfg, 'video_encoder', None) == 'h264_nvenc' and _probe_nvenc('h264_nvenc')
     vcodec = _build_vcodec(use_nvenc)
     shared = cache.context(ROOT, runtime, get_settings().get_profile().subtitle.model_dump(mode='json'),
                            vcodec, _sub_font_path())
+    # Both visual layers are optional and absent-means-no-op. The overlay Plan
+    # is loaded here (not at encode time) so each segment fingerprint can carry
+    # only the overlays intersecting its own time window: editing one title
+    # card re-encodes one segment instead of the film.
+    from app.services import karaoke as _karaoke
+    overlay_plan = None
+    if ep_id:
+        try:
+            from app.services import compose as _C
+            _C.overlay_plan(ep_id)
+            overlay_plan = _C.overlay_plan()
+        except (ValueError, OSError) as exc:
+            raise ValueError(f'{ep_id} overlays.json 无效：{exc}') from exc
     reusable = cache.reusable_records(output_dir)
     max_seconds = getattr(compose_cfg, "v2_segment_max_sec", compose_cfg.segment_max_sec)
     ranges = _segment_ranges(timeline, sr, max_seconds)
@@ -356,13 +369,20 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     state["expected_frames"] = expected_frames
     state['segment_cache_schema'] = cache.SCHEMA
     previous = {s['id']: s for s in state.get('segments', [])}
+    def _overlay_digest(rows):
+        if overlay_plan is None:
+            return None
+        lo = rows[0][1] * 1000.0 / 25
+        hi = rows[-1][2] * 1000.0 / 25
+        return overlay_plan.fingerprint((lo, hi))
     state["segments"] = [
         {
             "id": f"seg-{i:03d}",
             "first_frame": rows[0][1],
             "last_frame": rows[-1][2],
             "expected_frames": sum(last - first for _, first, last in rows),
-            "input_fingerprint": cache.segment_fingerprint(rows, specs, timeline['subtitles'], sr, inputs, shared),
+            "input_fingerprint": cache.segment_fingerprint(rows, specs, timeline['subtitles'], sr, inputs, shared,
+                                                           overlay_digest=_overlay_digest(rows)),
             "path": str((seg_dir / f"seg-{i:03d}.mp4").resolve()),
             "status": "pending",
         }
@@ -378,19 +398,9 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     cues = timeline["subtitles"]
     state.update(encoder=vcodec, started_at=time.time(), last_error=None)
 
-    # Both layers are optional and absent-means-no-op, like every other layer.
-    # Loaded once per render: the overlay Plan caches rasterised tiles, and the
-    # karaoke index is a flat precomputed table.
-    from app.services import karaoke as _karaoke
-    overlay_plan = None
+    # The overlay Plan was already loaded (and validated) above for the segment
+    # fingerprints; reuse it here. Karaoke loads here as before.
     karaoke_index = _karaoke.EMPTY
-    if ep_id:
-        try:
-            from app.services import compose as _C
-            _C.overlay_plan(ep_id)
-            overlay_plan = _C.overlay_plan()
-        except (ValueError, OSError) as exc:
-            raise ValueError(f'{ep_id} overlays.json 无效：{exc}') from exc
     alignment_path = timeline.get('alignment_evidence_path')
     if alignment_path and Path(alignment_path).is_file():
         plan_doc = read(manifest['plan_path'])
@@ -429,6 +439,13 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
                 vcodec = _build_vcodec(False)
                 state['encoder'] = vcodec
                 state['encoder_fallback'] = 'hardware encode failed; continued with software'
+                # Visibility, not invalidation: already-complete NVENC segments
+                # stay as-is and the film concats mixed encoders (like legacy
+                # compose.py, which prints the same warning). A mixed film
+                # decodes and verifies fine; unifying encoders requires
+                # clearing segments and re-running compose.
+                print("  [compose] WARNING: NVENC failed mid-render; remaining segments "
+                      "use software encoding, the candidate mixes encoders", flush=True)
                 _encode_v2_segment(rows, specs, cues, sr, path, vcodec, timeout,
                                    overlays=overlay_plan, karaoke=karaoke_index)
             actual = _probe_segment_frames(path)
@@ -465,6 +482,12 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             "candidate_path": str(candidate.resolve()),
             "candidate_sha256": file_sha256(candidate),
             "inputs": inputs,
+            # Visibility only: segments keep the exact vcodec argv they were
+            # encoded with; a mid-render NVENC->software fallback leaves a
+            # mixed film (decodes and verifies fine). Unifying encoders means
+            # clearing segments and re-running compose.
+            "encoder_mixed": len({tuple(s.get('encoder') or [])
+                                  for s in state["segments"]}) > 1,
             "integrity": integrity,
             "manifest_path": str(Path(manifest_path).resolve()),
             "expected_frames": expected_frames,
