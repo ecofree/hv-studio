@@ -235,3 +235,43 @@ def test_parse_document_excludes_fence_lines_from_units():
     texts = [u["source_text"] for u in doc["units"]]
     assert any("翠微宫" in x for x in texts)
     assert any("托孤" in x for x in texts)
+
+def test_long_paragraph_splits_by_sentence():
+    """v2 是一句一镜：超长段落必须按句拆分，否则单镜头独占几十秒画面。
+
+    xlc-03 实测 36 unit 平均 24 秒、最长 86 秒，图再多也换不进去。
+    """
+    from app.services.script_document import (MAX_UNIT_CHARS, _MIN_TAIL_CHARS,
+                                             _CLAUSE_END, _SENT_END,
+                                             parse_document)
+
+    # 多分句长段落：句号优先，超长才在 ；：， 处兜底拆。
+    long_para = ("第一句。" + "甲分句写景至此结束；" + "乙" * 60 + "，乙分句至此结束；"
+                 + "丙" * 60 + "收尾。第二句短。")
+    doc = parse_document(long_para + "\n", "probe.md")
+    assert len(doc["units"]) >= 2
+    for u in doc["units"]:
+        n = len(u["source_text"])
+        assert len(u["source_map"]) == n
+        if n > MAX_UNIT_CHARS:
+            # 超限 chunk 必须是无句内边界的单句（病态文本兜底），不得硬切。
+            assert not _SENT_END.search(u["source_text"][:-1])
+            assert not _CLAUSE_END.search(u["source_text"][:-1])
+        assert n >= _MIN_TAIL_CHARS or n == len(long_para), "不得产生碎 unit"
+    assert "".join(u["source_text"] for u in doc["units"]) == long_para
+
+    # 单句超长且无分句边界：保持整句，不切碎。
+    one_sentence = "甲" * 200 + "。"
+    doc2 = parse_document(one_sentence + "\n", "probe.md")
+    assert len(doc2["units"]) == 1
+    assert doc2["units"][0]["source_text"] == one_sentence
+
+
+def test_short_paragraph_stays_whole_and_stub_merges():
+    from app.services.script_document import parse_document
+
+    doc = parse_document("短句。\n", "probe.md")
+    assert len(doc["units"]) == 1
+    doc2 = parse_document("前" * 100 + "。后十个字而已。\n", "probe.md")
+    assert len(doc2["units"]) == 1, "短尾必须并入上一 chunk，不得产生碎 unit"
+    assert doc2["units"][0]["source_text"] == "前" * 100 + "。后十个字而已。"

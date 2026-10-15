@@ -53,7 +53,7 @@ def build(manifest_path, destination):
     pairs = [(u, t, context, fingerprint(u['text']))
              for u, t in zip(manifest['alignment'], manifest['takes'])]
     with concurrent.futures.ThreadPoolExecutor(
-            max_workers=_workers('HV_QUALITY_WORKERS', 4)) as pool:
+            max_workers=_workers('HV_QUALITY_WORKERS', 2)) as pool:
         checked = list(pool.map(_check_take, pairs))
     for unit, take, quality in checked:
         transcript = quality.get('transcript', '')

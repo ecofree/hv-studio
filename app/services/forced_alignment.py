@@ -144,12 +144,14 @@ def build(manifest_path, destination):
     subtitles, words, issues = [], {}, []
     import concurrent.futures
     import os
+    # NOTE: each worker spawns a full model load in its own subprocess;
+    # 4 concurrent loads OOMed (mkl_malloc) on 2026-10-14. Default 2.
     try:
         workers = int((os.environ.get('HV_ALIGNMENT_WORKERS') or '').strip() or 0)
     except ValueError:
         workers = 0
     if workers <= 0:
-        workers = max(1, min(4, os.cpu_count() or 2))
+        workers = max(1, min(2, os.cpu_count() or 2))
     pairs = [(u, t, manifest, context)
              for u, t in zip(manifest['alignment'], manifest['takes'])]
     with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as pool:

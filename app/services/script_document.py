@@ -29,6 +29,16 @@ from app.services.script import PAREN_CUE_WORDS as _PAREN_WORDS  # noqa: E402
 
 _PAREN_CUE = re.compile(r"[（(][^（()）]{1,12}[)）]")
 _PAUSE = re.compile(r"停顿\s*(\d+(?:\.\d+)?)\s*秒")
+# 长段按句拆分的上限。v2 是"一句一镜"：段落即 unit 时，长段落独占几十秒
+# 画面，图再多也换不进去（xlc-03 实测 36 unit 平均 24 秒，最长 86 秒）。
+# 按句拆后 unit 粒度≈口播一句，plate 才能跟着解说走。只影响新 plan，
+# 已落盘 plan 不会重跑（plan_id  pinned）。
+MAX_UNIT_CHARS = 110
+_MIN_TAIL_CHARS = 25
+_SENT_END = re.compile(r"[。！？…]+")
+# 分句边界：；：，（不含顿号，枚举项拆开无意义）。仅超长单句兜底用。
+_CLAUSE_END = re.compile(r"[；：，]")
+
 
 
 def parse_document(source: str, source_name: str = "script.md") -> dict:
@@ -38,20 +48,76 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
     occurrences = {}
     narration_column = None
 
+    def _split_ranges(text):
+        """Split a long paragraph into ranges [(a, b)].
+
+        Two-level boundaries: sentence ends (。、！？…) first; clause ends
+        (；：，) only when no viable sentence cut fits the window. A chunk
+        must reach _MIN_TAIL_CHARS to be cut (no stub fragments); a single
+        oversized sentence without clauses stays whole rather than breaking
+        mid-sentence. A tiny tail merges into the previous chunk.
+        A paragraph without sentence punctuation or under the cap stays
+        whole (old behavior).
+        """
+        strong = [m.end() for m in _SENT_END.finditer(text)]
+        weak = [m.end() for m in _CLAUSE_END.finditer(text)]
+        if not strong or len(text) <= MAX_UNIT_CHARS:
+            return [(0, len(text))]
+        bounds = sorted(set(strong + weak))
+        strong_set = set(strong)
+        ranges, start = [], 0
+        n = len(text)
+        while start < n:
+            cands = [e for e in bounds
+                     if start < e <= start + MAX_UNIT_CHARS
+                     and e - start >= _MIN_TAIL_CHARS
+                     and e in strong_set]
+            if not cands:
+                cands = [e for e in bounds
+                         if start < e <= start + MAX_UNIT_CHARS
+                         and e - start >= _MIN_TAIL_CHARS]
+            if not cands:
+                beyond = [e for e in bounds if e > start + MAX_UNIT_CHARS]
+                end = beyond[0] if beyond else n
+            else:
+                end = max(cands)
+            if end < n and n - end <= _MIN_TAIL_CHARS and end - start <= MAX_UNIT_CHARS:
+                # Tiny tail merges -- but only into a chunk that is not
+                # already oversized, or one pathological sentence would glue
+                # the whole paragraph back together.
+                rem = [e for e in bounds if e > end]
+                end = rem[0] if rem else n
+            ranges.append((start, end))
+            start = end
+        return [(a, b) for a, b in ranges if b > a]
+
     def flush():
         if not paragraph:
             return
         text = "".join(b["text"] for b in paragraph)
+        # Block char spans in paragraph-text coordinates, for cue/block mapping.
+        spans, cursor = [], 0
+        for b in paragraph:
+            spans.append((cursor, cursor + len(b["text"])))
+            cursor += len(b["text"])
+        mapping_all = [i for b in paragraph for i in b["source_map"]]
         if text.strip():
-            occurrence = occurrences.get(text, 0)
-            occurrences[text] = occurrence + 1
-            uid = "narr-" + fingerprint([text, occurrence])[:16]
-            mapping = [i for b in paragraph for i in b["source_map"]]
-            units.append({"unit_id": uid, "source_text": text,
-                          "approved_spoken_text": text, "display_text": text,
-                          "source_map": mapping, "block_ids": [b["block_id"] for b in paragraph],
-                          "delivery": {"instruction": "", "intent": "neutral"},
-                          "cue_ids": [c["cue_id"] for c in cues if c["block_id"] in {b["block_id"] for b in paragraph}]})
+            for a, b in _split_ranges(text):
+                sub = text[a:b]
+                if not sub.strip():
+                    continue
+                occurrence = occurrences.get(sub, 0)
+                occurrences[sub] = occurrence + 1
+                uid = "narr-" + fingerprint([sub, occurrence])[:16]
+                overlap = {paragraph[i]["block_id"] for i, (s, e) in enumerate(spans)
+                           if s < b and e > a}
+                overlap_cues = [c["cue_id"] for c in cues if c["block_id"] in overlap]
+                units.append({"unit_id": uid, "source_text": sub,
+                              "approved_spoken_text": sub, "display_text": sub,
+                              "source_map": mapping_all[a:b],
+                              "block_ids": sorted(overlap),
+                              "delivery": {"instruction": "", "intent": "neutral"},
+                              "cue_ids": overlap_cues})
         paragraph.clear()
 
     for line in source.splitlines(keepends=True):
