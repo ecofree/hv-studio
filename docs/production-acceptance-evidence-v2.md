@@ -34,3 +34,20 @@ provider, inject a fault, or create a passing event. A missing scenario keeps
 production readiness blocked. Hashes detect later changes; they are integrity
 checks, not cryptographic signatures or proof that a trusted runner authored
 the original files. Independent execution and review remain required.
+
+
+## Ambiguous TTS requests
+
+When a CosyVoice WebSocket attempt fails after a task ID has been observed, the
+pipeline now copies only the provider task ID and local request-receipt path into
+the take's `attempt.json`. It does not copy narration text, credentials, or SDK
+exception payloads into that summary. This is diagnostic evidence for an
+operator; it is not a claim that the provider task can be queried or recovered.
+
+The current Python SDK integration is a blocking `SpeechSynthesizer.call()`
+path. The public Python SDK guide documents synthesis modes and returned audio,
+but this repository has not established a supported CosyVoice task-query/result
+retrieval endpoint for this specific WebSocket task ID. Until Alibaba documents
+and we validate such a retrieval path for the configured region/model, ambiguous
+requests remain blocked from automatic resubmission and require manual provider
+reconciliation.
