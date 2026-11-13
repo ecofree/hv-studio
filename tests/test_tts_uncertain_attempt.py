@@ -46,3 +46,27 @@ def test_corrupt_attempt_receipt_blocks_paid_retry(tmp_path):
     receipt.write_text("{", encoding="utf-8")
     with pytest.raises(ValueError, match="receipt is unreadable"):
         _assert_no_uncertain_attempt(base, "unit-000", request_fp)
+
+
+def test_failed_tts_attempt_retains_provider_request_identifier_without_payload():
+    from app.services.narration_pipeline import _provider_reconciliation_details
+
+    value = _provider_reconciliation_details({
+        "status": "failed_or_uncertain",
+        "provider_request_id": "task-123",
+        "provider_request_path": "/private/state/tts_requests/attempt.json",
+        "text": "must not be surfaced",
+        "api_key": "must not be surfaced",
+    })
+    assert value == {
+        "request_id": "task-123",
+        "request_path": "/private/state/tts_requests/attempt.json",
+    }
+
+
+def test_missing_provider_request_identifier_is_explicitly_unavailable():
+    from app.services.narration_pipeline import _provider_reconciliation_details
+
+    assert _provider_reconciliation_details({"status": "failed_or_uncertain"}) == {
+        "request_id": None, "request_path": None,
+    }

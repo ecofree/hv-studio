@@ -162,7 +162,20 @@ def _provider(request, raw):
         volume=request["volume"],instruction=request["instruction"],
         hot_fix=request["pronunciation"] or None,seed=request["seed"])
     svc.voice_asset_version=request["voice_asset_version"]
-    svc.synthesize(request["text"],raw)
+    try:
+        svc.synthesize(request["text"],raw)
+    except Exception as exc:
+        # Preserve the provider task identifier for human reconciliation when
+        # the WebSocket call fails after dispatch. Never copy credentials or
+        # request text into the attempt summary.
+        try:
+            receipt = read(svc.last_request_path) if svc.last_request_path else {}
+        except (OSError, ValueError, TypeError):
+            receipt = {}
+        setattr(exc, "hv_provider_request_id", receipt.get("request_id"))
+        setattr(exc, "hv_provider_request_path",
+                str(Path(svc.last_request_path).resolve()) if svc.last_request_path else None)
+        raise
     return read(svc.last_request_path)
 
 
@@ -194,6 +207,18 @@ def generation_quote(plan_path, asset_path):
                 reused = True; break
         if not reused: pending.append(request)
     return dict(requests=len(pending), characters=sum(len(r['text']) for r in pending))
+
+
+def _provider_reconciliation_details(attempt):
+    """Return only safe identifiers for operator-side provider reconciliation."""
+    if not isinstance(attempt, dict):
+        return {"request_id": None, "request_path": None}
+    request_id = attempt.get("provider_request_id")
+    request_path = attempt.get("provider_request_path")
+    return {
+        "request_id": request_id.strip() if isinstance(request_id, str) and request_id.strip() else None,
+        "request_path": request_path if isinstance(request_path, str) and request_path.strip() else None,
+    }
 
 
 def _assert_no_uncertain_attempt(base, unit_id, request_fp):
@@ -353,8 +378,15 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                     except (OSError, ValueError, TypeError):
                         reusable_response = False
                 status = "postprocess_failed" if reusable_response else "failed_or_uncertain"
-                atomic_json(take_dir/"attempt.json",{"status":status,"error_type":type(exc).__name__,
-                            "characters":len(request["text"]),"request_fp":key})
+                attempt_record = {"status":status,"error_type":type(exc).__name__,
+                                  "characters":len(request["text"]),"request_fp":key}
+                request_id = getattr(exc, "hv_provider_request_id", None)
+                request_path = getattr(exc, "hv_provider_request_path", None)
+                if isinstance(request_id, str) and request_id.strip():
+                    attempt_record["provider_request_id"] = request_id.strip()
+                if isinstance(request_path, str) and request_path.strip():
+                    attempt_record["provider_request_path"] = request_path
+                atomic_json(take_dir/"attempt.json", attempt_record)
                 raise
         if cached_take and checker is None:
             from app.config.config import get_settings
