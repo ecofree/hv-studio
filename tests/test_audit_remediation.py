@@ -74,6 +74,23 @@ def test_forced_alignment_packs_source_exactly_at_acoustic_boundaries():
     assert all(.8 <= (c['sample_end']-c['sample_start'])/24000 <= 4 for c in cues)
 
 
+
+def test_subtitle_does_not_extend_across_spoken_heading_after_source():
+    from app.services.forced_alignment import pack
+    from app.services.subtitle_alignment import validate_cues
+    source = '中央财政对地方武装失去控制。'
+    sr = 24000
+    unit = dict(unit_id='tail', text=source, sample_start=0, sample_end=12*sr)
+    rows = [dict(text_start=i, text_end=i+1, sample_start=i*6000,
+                 sample_end=(i+1)*6000) for i in range(len(source))]
+    cues = pack(unit, rows, sr)
+    validate_cues(dict(alignment=[unit]), cues)
+    assert ''.join(c['text'] for c in cues) == source
+    assert rows[-1]['sample_end'] <= cues[-1]['sample_end'] <= rows[-1]['sample_end']+sr//5
+    assert all(.8 <= (c['sample_end']-c['sample_start'])/sr <= 4 for c in cues)
+    assert unit['sample_end'] == 12*sr
+
+
 def test_pause_execution_preserves_every_original_pcm_sample(tmp_path, monkeypatch):
     from app.services import narration_pipeline as N, delivery
     from test_production_v2 import wav
@@ -150,7 +167,6 @@ def test_new_episode_full_entrypoint_builds_timeline_and_multiple_episodes_resum
     asset=tmp_path/'voice.json'; N.import_voice(cache,asset)
     monkeypatch.setattr(get_settings().get_profile().voice,'voice_asset',str(asset))
     monkeypatch.setattr('app.paths.state_dir',lambda:tmp_path/'state')
-    monkeypatch.setattr('app.services.production_inputs.preflight_media',lambda:None)
     monkeypatch.setattr(L,'preflight',lambda *a:('synthetic',{}))
     spoken = {}
     def provider(request,path):
@@ -183,6 +199,10 @@ def test_new_episode_full_entrypoint_builds_timeline_and_multiple_episodes_resum
         save(Episode(id=eid,title='Synthetic acceptance',episode_number=1))
         directory=tmp_episodes/eid;directory.mkdir(exist_ok=True)
         (directory/'script.md').write_text('甲军抵达城门。\n\n乙军守住大桥。',encoding='utf-8')
+        atomic_json(directory/'production/v2/source_image_briefs.json', dict(
+            source_sha256=fingerprint((directory/'script.md').read_text('utf-8')),
+            images={'unit-000': {'en': 'Soldiers arrive at a city gate at dawn.'},
+                    'unit-001': {'en': 'Soldiers guard a wooden bridge beside the river.'}}))
     result=hv_ops.run_batch(ids,batch_id='new-entry',production_options=dict(max_requests=4,max_characters=100,max_images=4))
     assert result['done']==ids and not result['failed'] and len(calls)==4
     for eid in ids:

@@ -36,6 +36,7 @@ def test_projection_tracks_only_affected_pixels_and_render_dependencies(tmp_path
     assert keys()[0] != changed[0]
 
 
+@pytest.mark.NEEDS_FFMPEG
 def test_maintenance_revalidates_candidate_and_reuses_real_video(tmp_path, monkeypatch):
     from app.config import config
     from app.services.production_identity import artifacts_current
@@ -70,3 +71,29 @@ def test_maintenance_revalidates_candidate_and_reuses_real_video(tmp_path, monke
     data['subtitles'][0]['text'] = 'wrong source text'; atomic_json(timeline,data)
     with pytest.raises(ValueError,match='differs from source'):
         P.render(manifest,timeline,tmp_path/'renders')
+
+
+def test_one_decode_witness_cannot_be_used_by_a_later_run(tmp_path,monkeypatch):
+    from app.services import media_integrity as media
+    from app.services.provenance import file_sha256
+    path=tmp_path/'fixture.bin';path.write_bytes(b'opaque test bytes')
+    contract=media.verification_contract(2,1920,24000)
+    receipt=dict(candidate_path=str(path),expected_frames=2,samples=1920,sample_rate=24000,candidate_sha256=file_sha256(path))
+    verified=dict(path=str(path),sha256=receipt['candidate_sha256'],status='passed',contract=contract)
+    receipt['integrity']=verified
+    calls=[]
+    monkeypatch.setattr(media,'verify_media',lambda *a,**kw:calls.append(a))
+    assert media.verify_for_run(receipt,dict(verified))=='full_decode_in_this_run' and not calls
+    assert media.verify_for_run(receipt)=='independent_full_decode' and len(calls)==1
+    receipt['samples']+=1
+    assert media.verify_for_run(receipt,verified)=='independent_full_decode' and len(calls)==2
+
+
+def test_highlight_change_invalidates_only_its_own_segment(tmp_path):
+    from app.services.karaoke import Index,_Cue
+    pic=tmp_path/'plate';inputs={str(pic.resolve()):'hash'}
+    specs=[(dict(sample_start=0,sample_end=48000,image_path=str(pic)),MotionSpec())]
+    index=Index([_Cue(0,24000,[(10,20,0,1)]),_Cue(24000,48000,[(24010,24020,0,1)])])
+    def keys():return [cache.segment_fingerprint([(0,i,i+25)],specs,[],24000,inputs,{},karaoke=index) for i in (0,25)]
+    first=keys();index.cues[1].words[0]=(24010,24021,0,1)
+    assert keys()[0]==first[0] and keys()[1]!=first[1]

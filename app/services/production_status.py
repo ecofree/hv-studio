@@ -39,17 +39,60 @@ def get_status(ep_id):
             alive = psutil.Process(state.get('owner_pid',-1)).create_time()==state.get('owner_created_at')
         except (psutil.Error, ValueError): alive=False
         result['status'] = 'RUNNING' if alive else 'INTERRUPTED'
-    if last.get('error'): result['blockers'].append(last['error'])
+    if last.get('error') and not state.get('running'): result['blockers'].append(last['error'])
+    if state.get('running'):result.update(progress=state.get('progress'),updated_at=state.get('updated_at'))
     # Scene plates live outside every receipt: a built episode whose plates are
     # gone cannot be rebuilt, so this is checked before (and independently of)
     # the receipt validation below, which aborts early on any drift.
     result['scene_images_missing'] = missing_scene_images(
         ep_id, only_when_built=bool(state.get('receipt_path') or (root / 'published.json').exists()))
+    # An outdated candidate must not hide independent review queues. These
+    # readers validate their own audio/source bindings, separately from render.
+    for dimension, key, reader, output in (
+        ('quality', 'quality_path', _quality_pending, 'quality_pending_units'),
+        ('delivery', 'manifest_path', _delivery_pending, 'delivery_pending'),
+    ):
+        if not state.get(key): continue
+        try:
+            result[output] = reader(state[key])
+            result['quality_report_path' if key=='quality_path' else key] = state[key]
+            result['dimensions'][dimension] = 'pending' if result[output] else 'passed'
+            if result[output]: result['blockers'].append('audio findings await disposition' if dimension=='quality' else 'delivery directions await review or revision')
+        except (OSError, ValueError, KeyError, TypeError) as exc:
+            result['dimensions'][dimension] = 'stale_or_invalid'
+            result['blockers'].append(dimension+': '+str(exc))
+            result.update(approved=False, delivery_ready=False)
     try:
         if fingerprint(_load_script_md(load(ep_id))) != state['source_sha256']: raise ValueError('source changed')
         result['source_current'] = True
+        if state.get('manifest_path'):
+            from app.services.studio_workflow import folder
+            workflow=folder(ep_id)/'workflow.json'
+            if workflow.is_file():
+                selected=Path(read(workflow)['voice'].get('master') or '.')
+                edit=selected.parent/'edit.json'
+                if selected.is_file() and edit.is_file() and read(edit).get('kind')=='external_pickup_v1':
+                    from app.services.provenance import file_sha256
+                    if read(state['manifest_path']).get('source_recording',{}).get('delivered_sha256')!=file_sha256(selected):
+                        raise ValueError('已选用局部补录，请制作当前旁白或视频以更新字幕时序')
+        from app.services.production_inputs import input_files
+        if 'image_inputs' in state and state['image_inputs'] != input_files(ep_id):
+            raise ValueError('visual inputs changed; rebuild images and timeline')
         if state.get('receipt_path'):
             receipt = read(state['receipt_path'])
+            if receipt.get('kind') == 'metadata_amendment_v1':
+                from app.services.production_revision import verify_amendment
+                verify_amendment(state['receipt_path'])
+                registration = state.get('full_episode_registration', {})
+                from app.services.studio_workflow import identity
+                if registration.get('source_identity') != identity(ep_id):
+                    raise ValueError('registered full episode design changed')
+                from app.services.provenance import file_sha256
+                if (registration.get('receipt_path') != state['receipt_path'] or
+                        registration.get('receipt_sha256') != file_sha256(state['receipt_path'])):
+                    raise ValueError('registered full episode receipt changed')
+                result['full_episode_registration'] = registration
+                result['audio_master_path'] = state.get('audio_master_path')
             from app.services.production_identity import artifacts_current, split_receipt_drift
             if not artifacts_current(receipt['inputs']):
                 content_drift, renderer_drift = split_receipt_drift(receipt['inputs'])
@@ -68,20 +111,16 @@ def get_status(ep_id):
             # fine. Old receipts predate the field and read as uniform.
             result['dimensions']['encoder'] = (
                 'mixed' if receipt.get('encoder_mixed') else 'uniform')
-        if state.get('quality_path'):
-            from app.services.production_quality import pending
-            result['quality_pending_units'] = pending(state['quality_path'])
-            result['quality_report_path'] = state['quality_path']
-        elif state.get('manifest_path'):
-            result['quality_pending_units'] = [t['unit_id'] for t in read(state['manifest_path'])['takes'] if t['quality']['status']!='passed']
         if state.get('manifest_path'):
             manifest = read(state['manifest_path'])
-            from app.services.delivery import pending as pending_directions
-            result['delivery_pending'] = pending_directions(state['manifest_path'])
-            result['manifest_path'] = state['manifest_path']
-            if 'delivery_dispositions' not in manifest: result['blockers'].append('delivery cues have not been processed')
-        if result['quality_pending_units']: result['blockers'].append('audio findings await disposition')
-        if result['delivery_pending']: result['blockers'].append('delivery directions await review or revision')
+            from app.services.audio_disposition import require_usable
+            require_usable(manifest)
+            if not state.get('quality_path'):
+                result['quality_pending_units'] = [t['unit_id'] for t in manifest['takes'] if t['quality']['status']!='passed']
+            if 'delivery_dispositions' not in manifest and manifest.get('provenance')!='external_recording':
+                result['blockers'].append('delivery cues have not been processed')
+        if not state.get('quality_path') and result['quality_pending_units']:
+            result['blockers'].append('audio findings await disposition')
         # External narration only: units the whole-track alignment could not
         # convince. They are cut, but each one's slice still needs the forced
         # aligner's verdict before the film can be published -- the same
@@ -100,7 +139,8 @@ def get_status(ep_id):
                 approved = (visual.get('decision')=='approved' and visual.get('receipt_sha256')==file_sha256(state['receipt_path'])
                             and audio.get('decision')=='approved' and audio.get('manifest_sha256')==file_sha256(state['manifest_path'])
                             and not result['quality_pending_units'] and not result['delivery_pending']
-                            and not result['alignment_review_units'])
+                            and not result['alignment_review_units']
+                            and 'stale_or_invalid' not in result['dimensions'].values())
         result['approved'] = approved
         result['delivery_ready'] = approved
         if approved: result['status']='APPROVED'
@@ -112,22 +152,11 @@ def get_status(ep_id):
     # receipt drift must not hide the fact that the episode cannot be rebuilt.
     if result.get('scene_images_missing'):
         apply_scene_freeze(result)
-    # An outdated candidate must not hide independent review queues. These
-    # readers validate their own audio/source bindings, separately from render.
-    for dimension, key, reader, output in (
-        ('quality', 'quality_path', _quality_pending, 'quality_pending_units'),
-        ('delivery', 'manifest_path', _delivery_pending, 'delivery_pending'),
-    ):
-        if not state.get(key): continue
-        try:
-            result[output] = reader(state[key])
-            result['quality_report_path' if key=='quality_path' else key] = state[key]
-            result['dimensions'][dimension] = 'pending' if result[output] else 'passed'
-            if result[output]: result['blockers'].append(dimension+' findings await disposition')
-        except (OSError, ValueError, KeyError, TypeError) as exc:
-            result['dimensions'][dimension] = 'stale_or_invalid'
-            result['blockers'].append(dimension+': '+str(exc))
-            result.update(approved=False, delivery_ready=False)
+    result['alignment'] = alignment_summary(state)
+    if result['alignment']['status']=='stale_or_invalid':
+        result.update(approved=False,delivery_ready=False)
+        result['blockers'].append('subtitle timing evidence: '+result['alignment']['error'])
+        if result['status']=='APPROVED':result['status']='STALE'
     if state.get('budget_path'):
         try:
             budget = read(state['budget_path']); result['budget'] = dict(limits=budget['limits'], used=budget['used'])
@@ -138,7 +167,7 @@ def get_status(ep_id):
     # narrow (this v2 candidate), `content_approved` answers "is there a current
     # hash-bound approval for a delivered video by either pipeline".
     try:
-        delivery = delivered_approval(ep_id)
+        delivery = delivered_approval(ep_id, current=result)
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         delivery = dict(approved=False, pipeline=None, output_sha256=None, approval_path=None)
     result['delivered_approval'] = delivery
@@ -146,7 +175,7 @@ def get_status(ep_id):
     return result
 
 
-def delivered_approval(ep_id):
+def delivered_approval(ep_id, *, current=None):
     """The strongest currently-valid approval for a delivered video, across pipelines.
 
     An episode can carry a hash-bound legacy delivery *and* a newer v2 attempt
@@ -164,37 +193,19 @@ def delivered_approval(ep_id):
     v2 is preferred when both are valid because its evidence model is stronger
     (published pointer + two hash-bound human reviews on top of the receipt).
     """
-    from app.orchestrator import _episode_dir
-    from app.services.provenance import file_sha256
-    out = dict(approved=False, pipeline=None, output_sha256=None, approval_path=None)
-    # Same freeze as get_status: a delivery whose plates are gone cannot be
-    # rebuilt, so it is not a current approval on either pipeline.
-    if missing_scene_images(ep_id):
-        return out
-    root = _episode_dir(ep_id) / 'production/v2'
-    published, state_path = root / 'published.json', root / 'run.json'
-    if published.is_file() and state_path.is_file():
-        try:
-            state, pointer = read(state_path), read(published)
-            receipt_path = state.get('receipt_path')
-            if pointer.get('approved') and receipt_path and pointer.get('receipt') == receipt_path:
-                receipt = read(receipt_path)
-                candidate = receipt['candidate_path']
-                if (Path(candidate).is_file()
-                        and file_sha256(candidate) == receipt['candidate_sha256'] == pointer.get('sha256')
-                        and file_sha256(receipt_path) == read(pointer['review']).get('receipt_sha256')
-                        and read(pointer['listening_review']).get('decision') == 'approved'):
-                    out.update(approved=True, pipeline='production_v2',
-                               output_sha256=pointer['sha256'],
-                               approval_path=str(published.resolve()))
-                    return out
-        except (OSError, ValueError, KeyError, TypeError, AttributeError):
-            pass
-    legacy = _legacy_status(ep_id)
-    if legacy and legacy.get('approved'):
-        out.update(approved=True, pipeline='legacy_preview_v1',
-                   output_sha256=legacy.get('output_sha256'),
-                   approval_path=legacy.get('approval_path'))
+    if current is None:
+        current = get_status(ep_id)
+    out = dict(approved=False,pipeline=None,output_sha256=None,approval_path=None)
+    if current.get('approved') and current.get('candidate_path'):
+        from app.services.provenance import file_sha256
+        from app import paths
+        return dict(approved=True,pipeline='production_v2',output_sha256=file_sha256(current['candidate_path']),
+                    approval_path=str(paths.episode_dir(ep_id)/'production/v2/published.json'))
+    # A valid legacy delivery remains available when there is no current v2 candidate.
+    if not current.get('candidate_path'):
+        legacy=_legacy_status(ep_id)
+        if legacy and legacy.get('approved'):
+            return dict(approved=True,pipeline='legacy_preview_v1',output_sha256=legacy.get('output_sha256'),approval_path=legacy.get('approval_path'))
     return out
 
 
@@ -407,8 +418,10 @@ def alignment_review_pending(state):
     """
     manifest_path = state.get('manifest_path')
     alignment_path = state.get('alignment_path')
-    if not manifest_path or not alignment_path:
+    if not manifest_path:
         return []
+    if not alignment_path:
+        return sorted(read(manifest_path).get('alignment_review') or [])
     try:
         manifest = read(manifest_path)
         wanted = set(manifest.get('alignment_review') or [])
@@ -433,3 +446,24 @@ def alignment_review_pending(state):
     # Evidence that does not cover every unit with word timings cannot clear any.
     timed = set(evidence.get('words') or {})
     return sorted(wanted - timed)
+
+
+def alignment_summary(state):
+    """Separate acoustic timing evidence from the transcript listening queue."""
+    out = dict(status='not_started', timing_issues=[], transcript_review_units=[])
+    if not state.get('alignment_path'): return out
+    try:
+        evidence = read(state['alignment_path'])
+        manifest = read(state['manifest_path'])
+        from app.services.forced_alignment import require_evidence
+        require_evidence(manifest, dict(alignment_evidence_path=state['alignment_path'],
+                                       subtitles=evidence['subtitles']))
+        issues = evidence.get('issues', [])
+        out.update(status=evidence['status'], source_coverage_complete=evidence.get('source_coverage_complete',False),
+                   subtitle_count=len(evidence['subtitles']),
+                   timing_issues=[x for x in issues if x.get('kind')!='transcript_quality_pending'],
+                   transcript_review_units=evidence.get('transcript_review_units',
+                       [x['unit_id'] for x in issues if x.get('kind')=='transcript_quality_pending']))
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        out.update(status='stale_or_invalid', error=str(exc))
+    return out

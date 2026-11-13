@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services.provider_budget import ProviderBudget, BudgetExceeded, for_run
 
 pytestmark = pytest.mark.production

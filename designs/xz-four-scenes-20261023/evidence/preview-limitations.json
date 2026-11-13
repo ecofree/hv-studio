@@ -1,0 +1,12 @@
+{
+  "background_check_and_http_server": {
+    "status": "rejected_before_process_start",
+    "reason": "blocked by policy"
+  },
+  "browser_file_preview": {
+    "status": "rejected",
+    "reason": "file protocol is not allowed; only http and https are allowed"
+  },
+  "workarounds_attempted_after_browser_rejection": false,
+  "candidate_rendered": false
+}

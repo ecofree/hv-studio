@@ -1,0 +1,43 @@
+旁白音量修复与母带交接（2026-10-19）
+
+当前实现
+app/services/narration_leveling.py 是音量处理的唯一实现。
+Writing-DNA/scripts/level_narration.py 只提供命令行入口，不保留另一套均衡算法。
+处理包含：句块基础音量匹配、缓慢的局部 RMS 动态处理、接缝强侧衰减、统一增益与峰值余量保护。
+它不重新合成、不重采样、不改变语速，不把停顿填成音频。输出样本数、采样率、数字静音与源轨保持一致。
+原始文件及已存在的输出禁止覆盖。
+
+单条录音修复
+使用 .venv-core/Scripts/python.exe，先把 tools/ffmpeg/bin 加入 PATH。
+调用 resource/风趣历史.writing-DNA/scripts/level_narration.py SOURCE NEW_OUTPUT
+可用 --boundaries 指定 JSON：source_sha256 必须匹配 SOURCE；boundaries 是严格递增的整数采样点。
+--no-loudnorm 保持源录音实测整体响度，适合前后公平对比。
+需要新的倍速版本时，应先另行生成倍速文件，再对那条文件修复；修复入口拒绝 --tempo 不等于 1。
+输出 NEW_OUTPUT.wav 和 NEW_OUTPUT.level.json；后者包含源与输出哈希、增益曲线、采样时钟、响度和接缝测量。
+响度目标受峰值余量约束，loudness_target_reached 明确记录是否真正达到，不把配置值当作测量值。
+短窗口中有效语音不足 40% 时标为不可直接比较，进入听审，不能强行抬高呼吸或低声起段。
+
+接入项目
+app.services.narration_master.select(production_root, plan_path, repair_receipt_path)
+会逐样本重建增益变换（容许 JSON 序列化带来的 1 LSB 舍入差），验证样本时钟及数字静音。
+修复录音复制到 production/v2/narration-revisions/<内容版本>/master.wav；external-master.json 指定当前版本。
+生产入口自动读取该指针；计划、音频或修复回执变动即拒绝静默继续。
+随后只运行 episode produce EPISODE --stage tts，TTS/字符/图片预算保持 0；此分支导入外部音频，不重新配音。
+若已有旧 manifest，必须比较其交付母带哈希。母带不同则重新导入，禁止“存在 manifest 就直接复用”。
+ASR 缓存以母带内容哈希隔离，不能拿另一条音轨的 part00.json 当作新录音的结果。
+导入后的字幕、内容质量或人工审核状态仍按真实结果记录；音量修复不能代替事实、发音、字幕或听感审批。
+
+后续逐幕配音
+generate_chutang_emotional.py 默认建立版本目录，不覆盖原来的分幕与整轨文件。
+每个句块保存原始 WAV、文本、实际情绪指令、声线、请求指纹、音量测量和尝试编号。
+开篇、誓言、绝食日数等重音只附加到相关句块；统一要求整体音量稳定。
+缓存必须同时具备请求回执与音频哈希。缺失或冲突要检查，不能仅凭文件存在或时长判断成功。
+发起新请求前必须通过 --budget、--max-requests 和 --max-characters 明确持久预算。
+失败或不确定结果消耗一次尝试，不自动重试；缓存命中不消耗预算，也不切换声线。
+原始整轨与均衡整轨分别保存，narration-result.json 只指出候选文件，不声明人工批准。
+
+本次玄奘修复
+用户选择的输入：初唐异人传_第一集_情版完整音轨_1.2x.wav。
+本次实际模型调用数为 0；保留原始 Dylan 表演，只调整正值标量增益。
+完整试听与检查证据：state/audio-repairs/ytrm-01-20261019/。
+该集修复前没有正式 SRT、时间线或成片；严格保留的是现有录音的完整采样时钟，旧 ASR 缓存也保持不变。

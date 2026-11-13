@@ -61,6 +61,19 @@ def test_unsalvageable_overflow_is_rejected_loudly():
         O.validate([_spec(title='标' * 25)])
 
 
+def test_anchor_y_override_moves_the_block():
+    """A two-shot at an act boundary needs a lower card than the sky default."""
+    default = O.measure(_spec(kind=O.KIND_ACT, title='第二幕', subtitle='荒原深处的试探'))
+    lower = O.measure(_spec(kind=O.KIND_ACT, title='第二幕', subtitle='荒原深处的试探', anchor_y=0.66))
+    assert not lower['errors']
+    assert lower['top'] > default['top']
+
+
+def test_anchor_y_outside_range_rejected():
+    with pytest.raises(ValueError, match='anchor'):
+        O.validate([_spec(anchor_y=1.2)])
+
+
 @pytest.mark.parametrize('bad,match', [
     (dict(start_ms=0, end_ms=100), f'shorter than {O.MIN_MS}ms'),
     (dict(start_ms=0, end_ms=9000), f'longer than {O.MAX_MS}ms'),
@@ -159,13 +172,15 @@ def test_roundtrip_through_json(tmp_path, monkeypatch):
         'version': O.SCHEMA_VERSION,
         'overlays': [{'kind': 'title_card', 'start_ms': 0, 'end_ms': 3400,
                       'title': '均田制', 'subtitle': '大唐草民的三件小事',
-                      'episode': '第 2 集', 'dim': 0.35, 'scrim': False}],
+                      'episode': '第 2 集', 'dim': 0.35, 'scrim': False,
+                      'anchor_y': 0.62}],
     }, ensure_ascii=False), encoding='utf-8')
     monkeypatch.setattr(O, 'path_for', lambda ep_id: p)
     plan = O.load('caomin-02')
     assert len(plan.specs) == 1
     s = plan.specs[0]
     assert s.dim == 0.35 and s.scrim is False and s.title == '均田制'
+    assert s.anchor_y == 0.62
     plan.close()
 
 

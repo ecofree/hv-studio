@@ -1,46 +1,4 @@
-"""External narration recording -> a v2 narration manifest.
-
-Why this module exists
-----------------------
-`narration_pipeline.synthesize` can only produce takes from CosyVoice. Every
-delivered episode in this repo is narrated by an **externally recorded master**:
-one continuous WAV of the whole script. v2 (`production_v2`) needs that master
-split into per-`unit` takes, because `forced_alignment.build` re-derives word
-timings by aligning each unit's own audio, and `validate_timeline` binds subtitle
-text to `unit['display_text'][i:j]`.
-
-The two segmentation systems are not the same thing and must never be conflated:
-
-  legacy `ep.frames`   295 slices of ~3.5s, from `script.split_script`
-  v2 `plan['units']`    47 whole-utterance units of ~21s (caomin-02, measured)
-
-So the cut is *recomputed*, never forwarded. The recording is recognised with
-ASR, ASR words are aligned to the units, and each unit is cut at its own bounds.
-
-Provenance is the whole point of this module
---------------------------------------------
-A take cut from a recording is NOT a TTS take. It has no voice asset, and its
-`request_fp` does not identify a synthesis request that was ever issued. Writing
-a CosyVoice `voice_asset_version` and a `compile_request` fingerprint onto an
-external take would make the manifest lie in exactly the way this repo's gates
-exist to prevent.
-
-So external manifests carry `provenance: external_recording` and are gated on
-**observable evidence** instead: the recording's sha256, sample conservation
-across every cut, and per-unit transcript QA. Alignment coverage is recorded
-per unit and adjudicated by the forced aligner, not re-judged as a threshold
-here. `episode_production.current_manifest` validates by provenance and fails
-closed on anything it does not recognise.
-
-Where the coverage number comes from, and what it can and cannot prove
----------------------------------------------------------------------
-`external_audio.align_frames` is a whole-track banded DP over the *whole*
-recording, so a unit's coverage is measured against audio that also contains
-its neighbours. It is a cheap pre-filter for "did the DP place this unit in a
-plausible place", not a verdict on the slice. The verdict on a slice is
-`forced_alignment.atoms`, which re-derives word timings from that unit's own
-audio against its own text and raises unless the take covers the text.
-"""
+"""Bind an external recording to narration units, retaining verified PCM across edits."""
 from __future__ import annotations
 
 import subprocess
@@ -48,6 +6,7 @@ import uuid
 import wave
 from pathlib import Path
 
+from app.services.acoustic_session import job_session
 from app.services.provenance import atomic_json, file_sha256
 
 PROVENANCE = "external_recording"
@@ -287,7 +246,8 @@ def _write_cut(data, start, end, path, sample_rate):
     return end - start
 
 
-def build(plan_path, master, destination, *, cache_dir=None, progress=None):
+@job_session()
+def build(plan_path, master, destination, *, cache_dir=None, progress=None, previous_manifest=None):
     """Assemble one external recording into a v2 narration manifest.
 
     Returns the manifest path. Everything it writes is bound by sha256, so the
@@ -314,7 +274,17 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None):
     asr_source = assembly / "asr16k.wav"
     EA.resample_to_16k(master, asr_source)
     cache = Path(cache_dir) if cache_dir else assembly / "asr-cache"
-    asr = EA.recognize_track(str(asr_source), cache_dir=cache, progress=say)
+    from app.services import recording_revision as revision
+    from app.services.recording_input import parts_receipt
+    from app.services.production_metrics import count
+    prior_path,parent=revision.find_parent(destination,master,previous_manifest)
+    with wave.open(str(asr_source),'rb') as h: n16=h.getnframes()
+    parts=parts_receipt(master)
+    if parts:recording['numbered_parts']=parts
+    anchors=revision.prior_chunk_bounds(parent,prior_path.parent/'asr16k.wav',asr_source,n16) if parent else ()
+    if not anchors and parts:
+        anchors=[round(x['start_sample']*16000/rate) for x in parts['spans'][1:]]
+    asr = EA.recognize_track(str(asr_source), cache_dir=cache, progress=say,anchors=anchors)
     say(f"ASR {len(asr['words'])} 词，语音止于 {asr['speech_end']}s")
 
     say("把 ASR 词对齐到 v2 unit …")
@@ -326,10 +296,36 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None):
     ranges = cut_ranges(rows, total, rate)
     _, data = _read_pcm16(assembly / "master.wav")
 
+    ranges,reused=revision.reuse_cuts(parent,data,plan['units'],ranges,rows,rate)
+    count('unchanged_take_ranges',len(reused))
     takes, alignment, failed = [], [], []
-    for unit, row, (start, end) in zip(plan["units"], rows, ranges):
+    checks={}
+    indexed=list(zip(plan["units"], rows, ranges))
+    for i,(unit,row,(start,end)) in enumerate(indexed):
+        if unit['unit_id'] not in summary.get('low_coverage',[]):continue
+        from app.services.forced_alignment import align,atoms,pack
+        from app.services.local_asr import recognize
+        cut=takes_dir/f"{unit['unit_id']}.wav"
+        _write_cut(data,start,end,cut,rate)
+        say(f"优先核对低覆盖段 {unit['unit_id']}，{start/rate:.2f}–{end/rate:.2f} 秒")
+        observed,_=recognize(cut)
+        result,_=align(cut,unit['display_text'],observed,(end-start)/rate,prior_audio=reused.get(i))
+        probe=dict(unit_id=unit['unit_id'],text=unit['display_text'],sample_start=start,sample_end=end)
+        try:pack(probe,atoms(probe,result,rate),rate)
+        except ValueError as exc:
+            raise ExternalNarrationError(f"{unit['unit_id']} {start/rate:.2f}–{end/rate:.2f} 秒：{exc}") from exc
+        checks[i]=cut
+    for i,(unit,row,(start,end)) in enumerate(indexed):
         take_path = takes_dir / f"{unit['unit_id']}.wav"
-        samples = _write_cut(data, start, end, take_path, rate)
+        if i in checks:
+            samples=end-start
+        elif i in reused:
+            import shutil
+            shutil.copyfile(reused[i],take_path)
+            samples=end-start
+        else:
+            samples = _write_cut(data, start, end, take_path, rate)
+        say(f"本地切分与检查：{len(takes)+1}/{len(plan['units'])}")
         audio_sha = file_sha256(take_path)
         quality = check(take_path, unit["approved_spoken_text"]).to_dict()
         if quality.get("status") != "passed":
@@ -345,6 +341,7 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None):
             "quality": quality,
             "listening_review": "pending",
         })
+        if i in reused:takes[-1]['prior_audio_path']=reused[i]
         alignment.append({
             "unit_id": unit["unit_id"],
             "sample_start": start, "sample_end": start + samples,
@@ -377,9 +374,9 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None):
                     duration_s=asr["duration"],
                     speech_end_s=asr["speech_end"],
                     words=len(asr["words"]),
-                    cache_dir=str(cache.resolve()),
+                    cache_dir=asr.get("cache_dir") or str(cache.resolve()),
                     **summary),
-        "cut": dict(pad_s=EDGE_PAD_S,
+        "cut": dict(prior_manifest=str(prior_path) if prior_path else None,reused_pcm_slices=len(reused),pad_s=EDGE_PAD_S,
                     min_unit_coverage=MIN_UNIT_COVERAGE,
                     speech_samples=sum(t["samples"] for t in takes),
                     covered_ratio=round(sum(t["samples"] for t in takes) / total, 4)),
@@ -411,6 +408,10 @@ def validate_external(manifest, *, min_coverage=MIN_UNIT_COVERAGE):
     recording = manifest.get("source_recording")
     if not isinstance(recording, dict) or not recording.get("delivered_sha256"):
         raise ValueError("外部母带缺少交付来源记录，无法核验是哪一条录音")
+    if recording.get('numbered_parts'):
+        from app.services.recording_input import parts_receipt
+        if parts_receipt(recording['delivered_path']) != recording['numbered_parts']:
+            raise ValueError('编号旁白来源已变化')
     master = Path(manifest["master_path"])
     if file_sha256(master) != manifest["master_sha256"]:
         raise ValueError("母带字节已变")

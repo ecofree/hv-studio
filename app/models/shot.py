@@ -60,9 +60,6 @@ class CharacterRefPack(BaseModel):
     anchor_face_path: str | None = None  # 标准锚脸（人脸相似度比对基准）
     face_embedding: list[float] | None = None  # 预计算的特征向量
 
-    def to_paths(self) -> list[str]:
-        return [img.path for img in self.images]
-
 
 class Shot(BaseModel):
     id: str                              # shot-001
@@ -115,13 +112,6 @@ class Shot(BaseModel):
     # ---------- 运镜 ----------
     motion: MotionSpec = Field(default_factory=MotionSpec)
 
-    @property
-    def image_done(self) -> bool:
-        return bool(self.image_path and Path(self.image_path).exists())
-
-    @property
-    def motion_done(self) -> bool:
-        return bool(self.motion_path and Path(self.motion_path).exists())
 
     # C3（2026-09-05）：needs_regen() 已删——全仓零调用点，且判据之一 face_sim
     # 属于随 character_lock.py / face.py 一并删除的人脸一致性能力。

@@ -1,0 +1,521 @@
+{
+ "episode": "xlc-07",
+ "images": {
+  "unit-000": {
+   "path": "episodes/xlc-07/production/v2/images/1b6192b05b2de192ff328a1dd4d75ee1177218ef8fb86a7ef5fbc9341224287f/unit-000.png"
+  },
+  "unit-001": {
+   "path": "episodes/xlc-07/production/v2/images/adfcb77dc90693793eeb5bd39108a86a2055b59a5b07b8346f206052120b8d4b/unit-001.png"
+  },
+  "unit-002": {
+   "path": "episodes/xlc-07/production/v2/images/9396c5a74ec305d08749afc72dd2edb332a722b262ad2f2d2d267a97652318b9/unit-002.png"
+  },
+  "unit-003": {
+   "path": "episodes/xlc-07/production/v2/images/ea88a41b03a03ed61af66f12c2a728aca8b241ef012bb71ceed3285f35377c37/unit-003.png"
+  },
+  "unit-004": {
+   "path": "episodes/xlc-07/production/v2/images/4fb1d03a1b5b53badc81882b0ab25be08979ca9c2e95a67a5550d2fa4c1fe6f6/unit-004.png"
+  },
+  "unit-005": {
+   "path": "episodes/xlc-07/production/v2/images/129700297cf8f0c13635f377c523e088b7acc036afb65bbdb75b068e0ceca252/unit-005.png"
+  },
+  "unit-006": {
+   "path": "episodes/xlc-07/production/v2/images/48bb15e781087794ca89c7ca3e73f7fc802511c2fa85a098b097138ea25c4701/unit-006.png"
+  },
+  "unit-007": {
+   "path": "episodes/xlc-07/production/v2/images/ed3a9fd837ba504835aa9a7f14d36a954db858a1e9cdc416f4e92f182c943ab7/unit-007.png"
+  },
+  "unit-008": {
+   "path": "episodes/xlc-07/production/v2/images/59fda06d20b2cc435852e9480fcda625b594e090e29d0cd8f2078ac44ac18b0e/unit-008.png"
+  },
+  "unit-009": {
+   "path": "episodes/xlc-07/production/v2/images/3f10de037d461f31d60195df5d07091bcee2635e0c2747773413f8752b7b15da/unit-009.png"
+  },
+  "unit-010": {
+   "path": "episodes/xlc-07/production/v2/images/4f75a37c6369a3e9fe32e49d6cf16a412c14a663210e1306dc6fce521957664b/unit-010.png"
+  },
+  "unit-011": {
+   "path": "episodes/xlc-07/production/v2/images/eda1fae3845de5ddd9cc125007ae0569ffa0b8e89964846c2acb3d5feb269f60/unit-011.png"
+  },
+  "unit-012": {
+   "path": "episodes/xlc-07/production/v2/images/b5cd3d39b7694bf3f466d1253d43ee08498b8d2317932d8eb25c3ec16e21071e/unit-012.png"
+  },
+  "unit-013": {
+   "path": "episodes/xlc-07/production/v2/images/7ac5c9b16c89592ccbe35c8db7e99fbec3cbc566225ba9b68f97c31d170f2bb9/unit-013.png"
+  },
+  "unit-014": {
+   "path": "episodes/xlc-07/production/v2/images/8b26644e4129d39bd956f44ddba3007301b8c8d8590dfe401daad777e7b510e4/unit-014.png"
+  },
+  "unit-015": {
+   "path": "episodes/xlc-07/production/v2/images/869dd4b84a29773615f0ca6e265499c00ef23ad620e275dcf2bbdb3e454f9862/unit-015.png"
+  },
+  "unit-016": {
+   "path": "episodes/xlc-07/production/v2/images/5c7a98199ce712fb50cb39b1358a372a2a942dcc9e2091d1e2f96ae1b33e0906/unit-016.png"
+  },
+  "unit-017": {
+   "path": "episodes/xlc-07/production/v2/images/150181a90817602da0dc071a87f77ab1511b3432e1b9e64034af108081dbdee2/unit-017.png"
+  },
+  "unit-018": {
+   "path": "episodes/xlc-07/production/v2/images/663f0f0cdcf1728eb617b20a6662a2bc8ed859b6e52dda40de70ea6875629cf6/unit-018.png"
+  },
+  "unit-019": {
+   "path": "episodes/xlc-07/production/v2/images/ddabe3ae447690cf2f5ca1e86c307b9bdb4145a07a929d81ccd1488b1fcafe22/unit-019.png"
+  },
+  "unit-020": {
+   "path": "episodes/xlc-07/production/v2/images/9c187d65a38ebfa2948f90c39cdcf295f567c92b0a58a82f6a0a953f4350a8fe/unit-020.png"
+  },
+  "unit-021": {
+   "path": "episodes/xlc-07/production/v2/images/bf34b3970609c156b8fc408c389a1c3ec5f7909112ec330ffe35f47be85a1653/unit-021.png"
+  },
+  "unit-022": {
+   "path": "episodes/xlc-07/production/v2/images/7018af3a1af369d87735e8d559917b73bef5c1cbef61bb973dc978df1543caaf/unit-022.png"
+  },
+  "unit-023": {
+   "path": "episodes/xlc-07/production/v2/images/fed12154d2f659a5e25b2d5032ec280e0e1ef54aaf1dc33ce9c3699b979679cb/unit-023.png"
+  },
+  "unit-024": {
+   "path": "episodes/xlc-07/production/v2/images/ea8ee2ed5356835bb03d1163f8c8ef3e60a02be99233863e0c9a29d4036ee899/unit-024.png"
+  },
+  "unit-025": {
+   "path": "episodes/xlc-07/production/v2/images/dd0f8d4a86a05f915c4ca2070857df62379a9ed746c94e29666ccb4569e88409/unit-025.png"
+  },
+  "unit-026": {
+   "path": "episodes/xlc-07/production/v2/images/6b384e1e59262ba53958c8c117142e5ddd8c9a7050e13cdb8011667e11dd09ff/unit-026.png"
+  },
+  "unit-027": {
+   "path": "episodes/xlc-07/production/v2/images/b80536bf6e780b79285c25e290139d029aaa45d4561407eb86c13870c6b31cd1/unit-027.png"
+  },
+  "unit-028": {
+   "path": "episodes/xlc-07/production/v2/images/f17ff9f3a19d02768e03e015908596fe4ff9e0803fb331e8592dddd2cc93ebd7/unit-028.png"
+  },
+  "unit-029": {
+   "path": "episodes/xlc-07/production/v2/images/09a403f3316a7d40d5f14e3b8665c10a1e2f751df51554b35bdab26c94f4df4d/unit-029.png"
+  },
+  "unit-030": {
+   "path": "episodes/xlc-07/production/v2/images/cad7e011de75fb7178b88e10637cd12eeed78f2dd344b244b883d17af1526822/unit-030.png"
+  },
+  "unit-031": {
+   "path": "episodes/xlc-07/production/v2/images/ff2052ebabb6ea3a0cb86cf0c0de08c41ad22d1fd17e23217c0ae5ccbe06ffa0/unit-031.png"
+  },
+  "unit-032": {
+   "path": "episodes/xlc-07/production/v2/images/1ca8901b24661bd81d8204f886163cafdbc74262af199502155a3032a6ace843/unit-032.png"
+  },
+  "unit-033": {
+   "path": "episodes/xlc-07/production/v2/images/ed58a7b3be2a604f5697ea212ce83dd2b6c34a00b57b59612d9722e519f2146f/unit-033.png"
+  },
+  "unit-034": {
+   "path": "episodes/xlc-07/production/v2/images/7a905acd26013a1313af250b654605943bc630688314141b8136647a5ebd4f1c/unit-034.png"
+  },
+  "unit-035": {
+   "path": "episodes/xlc-07/production/v2/images/401991e88fbc412dfbf460689de2629130b29674b3a67f54489633879302c0dc/unit-035.png"
+  },
+  "unit-036": {
+   "path": "episodes/xlc-07/production/v2/images/a2369c863dd62cc886face9774b61b3c64f2b32a5d705fd99a6405ef16873cd4/unit-036.png"
+  },
+  "unit-037": {
+   "path": "episodes/xlc-07/production/v2/images/40897abbda4fac0a00fa473d75ade48b36e271b749fe5e89c6d0200235b40ad2/unit-037.png"
+  },
+  "unit-038": {
+   "path": "episodes/xlc-07/production/v2/images/fa8f6385cbdab8928c8d3e2d8789021c93244b229f4c32e1c75a674da05a1b78/unit-038.png"
+  },
+  "unit-039": {
+   "path": "episodes/xlc-07/production/v2/images/8260a3d14b404c2a183cea02129df112755ee64a6301b93fe8f4d2a53c8e0b0c/unit-039.png"
+  },
+  "unit-040": {
+   "path": "episodes/xlc-07/production/v2/images/0ef33d05c127f22753df94d355cc5979a67b5d1439d6de3c4a1c7ce114b18b1d/unit-040.png"
+  },
+  "unit-041": {
+   "path": "episodes/xlc-07/production/v2/images/8273f5988c32b8d979ff50047b7ffaef39677ae1d6d2d6779917f36ef12bca93/unit-041.png"
+  },
+  "unit-042": {
+   "path": "episodes/xlc-07/production/v2/images/4cff1519287a9a4b4bf0e130e85240c2f08450fae862b0d8431bbc1402c66381/unit-042.png"
+  },
+  "unit-043": {
+   "path": "episodes/xlc-07/production/v2/images/bd09dbb625b59da90ddf203a65c8b622352a4e6e1cd93ae2b30d96e70d6b26e6/unit-043.png"
+  },
+  "unit-044": {
+   "path": "episodes/xlc-07/production/v2/images/dd583beb5f4a75e6c134fda126b8bce7ad6e8b0a237b34c8937187072b4733c8/unit-044.png"
+  },
+  "unit-045": {
+   "path": "episodes/xlc-07/production/v2/images/56cf19724f8e14cc210eab93f7d15bc7e3fbe486d1e9b62aee7bddfc4d8a2ab1/unit-045.png"
+  },
+  "unit-046": {
+   "path": "episodes/xlc-07/production/v2/images/72598704ec23d1499a40d6bdc298093d49a256ed990bb2d494680fb820d96e78/unit-046.png"
+  },
+  "unit-047": {
+   "path": "episodes/xlc-07/production/v2/images/1807ffcf526c169d872c77b23f700a3a4ad2ae4e742f0ab0e5f3d444186b1bc7/unit-047.png"
+  },
+  "unit-048": {
+   "path": "episodes/xlc-07/production/v2/images/e43784b3439db131874761c93964220b17c46d8eaf5508bce17fb8a8bdb48451/unit-048.png"
+  },
+  "unit-049": {
+   "path": "episodes/xlc-07/production/v2/images/ddce4b92e71f4dd76de6206482500e0b5e6223dbfd043776426829bb4df26cca/unit-049.png"
+  },
+  "unit-050": {
+   "path": "episodes/xlc-07/production/v2/images/a5bd3d6ab7c9dff66e5510648ec08991af8062c6795c13f9fc905de166dd0b02/unit-050.png"
+  },
+  "unit-051": {
+   "path": "episodes/xlc-07/production/v2/images/8847b9000f607fa70babe025479b59e17b129f4fd1c04cddd437d4e2fc8dc43f/unit-051.png"
+  },
+  "unit-052": {
+   "path": "episodes/xlc-07/production/v2/images/102897174da17a72a07193e2ede409190094c61da7be414a87e6c85b35753bb5/unit-052.png"
+  },
+  "unit-053": {
+   "path": "episodes/xlc-07/production/v2/images/8c37e7a1e6c9687d3580d2f2e9e45b8161b317755bedc53e4754977c82a50139/unit-053.png"
+  },
+  "unit-054": {
+   "path": "episodes/xlc-07/production/v2/images/398c308acd161981b29adec19197e30cd23375f54fe09fa305fd9c2a70663a0b/unit-054.png"
+  },
+  "unit-055": {
+   "path": "episodes/xlc-07/production/v2/images/c0fd0ed6081620df97592eb276cbfb6a1e8596f59e5e0fe16ab74b025c524d4f/unit-055.png"
+  },
+  "unit-056": {
+   "path": "episodes/xlc-07/production/v2/images/2e9a2f904c17c50db0d8949e8c4ded2701bd034631484855f81d8f5b118c93c6/unit-056.png"
+  },
+  "unit-057": {
+   "path": "episodes/xlc-07/production/v2/images/30fa2f88d2277ff9082735785d06a017b591d0229d3887d9367ef0315bf06fe0/unit-057.png"
+  },
+  "unit-058": {
+   "path": "episodes/xlc-07/production/v2/images/2e2defb24aa0c8275cf9b7557e6c1a99ac329fe6cbc6578d5406a6dc5cee0105/unit-058.png"
+  },
+  "unit-059": {
+   "path": "episodes/xlc-07/production/v2/images/d4b0151d3b8ee930fbff06a4f1f974208dac4cd3a23f33b241fb69afa1539fe3/unit-059.png"
+  },
+  "unit-060": {
+   "path": "episodes/xlc-07/production/v2/images/ecd648ab6130e2e4c53ef5ec9f65030f1813e2f6caa61366789a786dd1ea2fdd/unit-060.png"
+  },
+  "unit-061": {
+   "path": "episodes/xlc-07/production/v2/images/a14a810af80416f4daace5fad8597c453c7e2a8d7ee33dcf7581ec03951626bf/unit-061.png"
+  },
+  "unit-062": {
+   "path": "episodes/xlc-07/production/v2/images/9ddfbf535a8e668ec7b9b3135415980e61b1cbf26e3919e89d6e0ab59ed7b51e/unit-062.png"
+  },
+  "unit-063": {
+   "path": "episodes/xlc-07/production/v2/images/d2d9b5e2e4bcf5b263fb7ca03539b3db6e4a33e39de9246615cf8be9831d5347/unit-063.png"
+  },
+  "unit-064": {
+   "path": "episodes/xlc-07/production/v2/images/d97e0ac55ee4de3aa48ebd339a8b8ddea728bed2d13702e26ad635e839bf998e/unit-064.png"
+  },
+  "unit-065": {
+   "path": "episodes/xlc-07/production/v2/images/91314223990511941bbe2efd051afffc28bfc8d89d7f964a0182e13f82e05af2/unit-065.png"
+  },
+  "unit-066": {
+   "path": "episodes/xlc-07/production/v2/images/8b4b8c0dbb61a1e869e6225a495b035d35636e09943d17fdf80b262e5c10848b/unit-066.png"
+  },
+  "unit-067": {
+   "path": "episodes/xlc-07/production/v2/images/d22a91e0cc5645f89bc901737ec137e2fe59462e3376461e7bf11d1046ba84da/unit-067.png"
+  },
+  "unit-068": {
+   "path": "episodes/xlc-07/production/v2/images/de9b601698facbf37b53cdeef71267551d1e49515136ecaf668b3d3463f26919/unit-068.png"
+  },
+  "unit-069": {
+   "path": "episodes/xlc-07/production/v2/images/795ef1c47b38ae156efa2e1d7a9f8b77abff09a8c5959a3058da87213cda6e0b/unit-069.png"
+  },
+  "unit-070": {
+   "path": "episodes/xlc-07/production/v2/images/484268e2226c2338eb57cb059c57def33ad440a915fb88ee977ac6535fa30ddd/unit-070.png"
+  },
+  "unit-071": {
+   "path": "episodes/xlc-07/production/v2/images/0104e8792b0271df458994b66b5aca8bd2bcb1d981dc809d0eb722c5b0877cdc/unit-071.png"
+  },
+  "unit-072": {
+   "path": "episodes/xlc-07/production/v2/images/6d4be8d10369674198c37509c9158a33da2ae9dc2e8ffec7662d7c1567231cd6/unit-072.png"
+  }
+ },
+ "unit_scenes": [
+  {
+   "image": "unit-000",
+   "unit_id": "narr-31e52b8f0cb43673"
+  },
+  {
+   "image": "unit-001",
+   "unit_id": "narr-8ed5e463b9d55fa4"
+  },
+  {
+   "image": "unit-002",
+   "unit_id": "narr-c229fd4de946885b"
+  },
+  {
+   "image": "unit-003",
+   "unit_id": "narr-047d367b7787fc90"
+  },
+  {
+   "image": "unit-004",
+   "unit_id": "narr-0ccd6d1465ab58d2"
+  },
+  {
+   "image": "unit-005",
+   "unit_id": "narr-841f39c9adb4f34f"
+  },
+  {
+   "image": "unit-006",
+   "unit_id": "narr-e93fd7b90a00d4d7"
+  },
+  {
+   "image": "unit-007",
+   "unit_id": "narr-546a2f1ce038cd72"
+  },
+  {
+   "image": "unit-008",
+   "unit_id": "narr-695b7312aeece832"
+  },
+  {
+   "image": "unit-009",
+   "unit_id": "narr-a06318a7be3bb7ec"
+  },
+  {
+   "image": "unit-010",
+   "unit_id": "narr-91947fd72a8ee6c4"
+  },
+  {
+   "image": "unit-011",
+   "unit_id": "narr-f6e712d05c118c78"
+  },
+  {
+   "image": "unit-012",
+   "unit_id": "narr-749e6c43e1931fa2"
+  },
+  {
+   "image": "unit-013",
+   "unit_id": "narr-42d44724e9e0fffd"
+  },
+  {
+   "image": "unit-014",
+   "unit_id": "narr-34c4397355a9f21c"
+  },
+  {
+   "image": "unit-015",
+   "unit_id": "narr-08ed2a798a8dbcd2"
+  },
+  {
+   "image": "unit-016",
+   "unit_id": "narr-59c41241bba386e2"
+  },
+  {
+   "image": "unit-017",
+   "unit_id": "narr-7d6b979a47cdcde4"
+  },
+  {
+   "image": "unit-018",
+   "unit_id": "narr-66bf5c0924cdd305"
+  },
+  {
+   "image": "unit-019",
+   "unit_id": "narr-29d99aa02685e6c8"
+  },
+  {
+   "image": "unit-020",
+   "unit_id": "narr-12abaf31cd911684"
+  },
+  {
+   "image": "unit-021",
+   "unit_id": "narr-1449ce20290a9b68"
+  },
+  {
+   "image": "unit-022",
+   "unit_id": "narr-38cda29b644da0f4"
+  },
+  {
+   "image": "unit-023",
+   "unit_id": "narr-6e046eaeb16d8104"
+  },
+  {
+   "image": "unit-024",
+   "unit_id": "narr-abf35e57aa0c9ab2"
+  },
+  {
+   "image": "unit-025",
+   "unit_id": "narr-1fe7cee49ed632c9"
+  },
+  {
+   "image": "unit-026",
+   "unit_id": "narr-74d85ce0852b06cf"
+  },
+  {
+   "image": "unit-027",
+   "unit_id": "narr-574dac61061ecc22"
+  },
+  {
+   "image": "unit-028",
+   "unit_id": "narr-2da7988096704797"
+  },
+  {
+   "image": "unit-029",
+   "unit_id": "narr-1272118b938ed0bb"
+  },
+  {
+   "image": "unit-030",
+   "unit_id": "narr-b9b3a449ace56995"
+  },
+  {
+   "image": "unit-031",
+   "unit_id": "narr-5924cef849a83acf"
+  },
+  {
+   "image": "unit-032",
+   "unit_id": "narr-1df926cf172515e4"
+  },
+  {
+   "image": "unit-033",
+   "unit_id": "narr-bbbfd8b3ae0f79e9"
+  },
+  {
+   "image": "unit-034",
+   "unit_id": "narr-4e040846a213b60c"
+  },
+  {
+   "image": "unit-035",
+   "unit_id": "narr-a65ebcbd03b8f04d"
+  },
+  {
+   "image": "unit-036",
+   "unit_id": "narr-0d91b39403746fdf"
+  },
+  {
+   "image": "unit-037",
+   "unit_id": "narr-c04449d2ad7afd70"
+  },
+  {
+   "image": "unit-038",
+   "unit_id": "narr-de5bfd2fc8771a87"
+  },
+  {
+   "image": "unit-039",
+   "unit_id": "narr-ef05fdca2b3a9488"
+  },
+  {
+   "image": "unit-040",
+   "unit_id": "narr-c149d74386a85558"
+  },
+  {
+   "image": "unit-041",
+   "unit_id": "narr-2295246143b5af50"
+  },
+  {
+   "image": "unit-042",
+   "unit_id": "narr-4273f36e8559b98f"
+  },
+  {
+   "image": "unit-043",
+   "unit_id": "narr-fc0a3713fce20f36"
+  },
+  {
+   "image": "unit-044",
+   "unit_id": "narr-e89268ff1d32d75d"
+  },
+  {
+   "image": "unit-045",
+   "unit_id": "narr-e30e91ad97605d6b"
+  },
+  {
+   "image": "unit-046",
+   "unit_id": "narr-8267490f6e9a8199"
+  },
+  {
+   "image": "unit-047",
+   "unit_id": "narr-925adb1689bbecba"
+  },
+  {
+   "image": "unit-048",
+   "unit_id": "narr-de4d0a7758163d77"
+  },
+  {
+   "image": "unit-049",
+   "unit_id": "narr-1db93fe7ed23e58b"
+  },
+  {
+   "image": "unit-050",
+   "unit_id": "narr-d508a97d13fb493d"
+  },
+  {
+   "image": "unit-051",
+   "unit_id": "narr-2add6c4316e587ae"
+  },
+  {
+   "image": "unit-052",
+   "unit_id": "narr-7547ecb081a025d8"
+  },
+  {
+   "image": "unit-053",
+   "unit_id": "narr-cd8e17a31fb14a1b"
+  },
+  {
+   "image": "unit-054",
+   "unit_id": "narr-785328613513e0c7"
+  },
+  {
+   "image": "unit-055",
+   "unit_id": "narr-951817a80918da56"
+  },
+  {
+   "image": "unit-056",
+   "unit_id": "narr-6bbfc9d70709df8d"
+  },
+  {
+   "image": "unit-057",
+   "unit_id": "narr-89327b50bbd2cc3f"
+  },
+  {
+   "image": "unit-058",
+   "unit_id": "narr-4d1afa5f6ce98a50"
+  },
+  {
+   "image": "unit-059",
+   "unit_id": "narr-394f817a9ed26050"
+  },
+  {
+   "image": "unit-060",
+   "unit_id": "narr-c377c7e686c645c2"
+  },
+  {
+   "image": "unit-061",
+   "unit_id": "narr-087d056476728973"
+  },
+  {
+   "image": "unit-062",
+   "unit_id": "narr-31914134e3a80810"
+  },
+  {
+   "image": "unit-063",
+   "unit_id": "narr-e5e86aeef7149051"
+  },
+  {
+   "image": "unit-064",
+   "unit_id": "narr-0939583a7946c2d7"
+  },
+  {
+   "image": "unit-065",
+   "unit_id": "narr-7f1762912d6de97e"
+  },
+  {
+   "image": "unit-066",
+   "unit_id": "narr-4609e56fe9d188c7"
+  },
+  {
+   "image": "unit-067",
+   "unit_id": "narr-84ca9e99e328fba0"
+  },
+  {
+   "image": "unit-068",
+   "unit_id": "narr-880bd601b59991e2"
+  },
+  {
+   "image": "unit-069",
+   "unit_id": "narr-1f39ba0160b091a0"
+  },
+  {
+   "image": "unit-070",
+   "unit_id": "narr-5a588718712e9de8"
+  },
+  {
+   "image": "unit-071",
+   "unit_id": "narr-c72a68db75ffc690"
+  },
+  {
+   "image": "unit-072",
+   "unit_id": "narr-6f9a3ec6f400163f"
+  }
+ ],
+ "authored": true,
+ "authored_by": "xlc-07-fix: 70 auto-cache plates + 3 sanitized replacement plates (guardrail-safe), zero new generation",
+ "review_required": true
+}

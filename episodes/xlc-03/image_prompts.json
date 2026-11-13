@@ -1,0 +1,135 @@
+{
+  "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/flat/infographic/photorealistic/3d render/chiaroscuro/silk-scroll 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。",
+  "XL01": {
+    "en": "A young Tang crown prince pushing open a heavy wooden gate into a poor walled courtyard, two thin figures visible beyond, autumn leaves blowing"
+  },
+  "XL18": {
+    "en": "A frail young Tang prince shivering in a thin robe at an open lattice window in autumn dusk, a damp cloth pressed to his forehead, courtyard leaves below"
+  },
+  "XL19": {
+    "en": "A thoughtful young Tang prince pressing one hand over an open book, an elderly tutor leaning beside him in an Eastern Palace study, lamplight on stacked scrolls"
+  },
+  "XL20": {
+    "en": "A grey-bearded Tang chancellor bowing respectfully toward a palace gate where a young crown prince stands, anxious officials clustered behind in cold daylight"
+  },
+  "XL21": {
+    "en": "A young Tang prince walking alone into a long dim palace corridor, warm lamplight behind him and cold dark depth ahead, his back to the light"
+  },
+  "XL02": {
+    "en": "Two emaciated women in coarse hemp skirts pounding grain in a bleak walled courtyard, a young prince standing still at the gate watching them"
+  },
+  "XL22": {
+    "en": "Two gaunt middle-aged Tang princesses in coarse hemp garments sitting apart in a bare locked cell, straw on the floor, a barred high window casting one thin shaft of light"
+  },
+  "XL23": {
+    "en": "An overturned dark wine jar on cold stone palace floorboards under moonlight, a torn silk sleeve lying beside it, long shadows, no one present"
+  },
+  "XL24": {
+    "en": "A lone black cat crouching on the steps of a Luoyang palace at dusk, an unlit lantern beside it, long empty corridors behind"
+  },
+  "XL03": {
+    "en": "A Tang prince with red eyes handing a memorial scroll to a eunuch outside a palace hall, torchlight, his hands trembling"
+  },
+  "XL25": {
+    "en": "A Tang emperor seated at a writing desk pressing his seal onto an imperial decree, a young prince bowing at the doorway, morning light, attendants waiting"
+  },
+  "XL26": {
+    "en": "A Tang prince standing before a curtained throne with a memorial held in both hands, the veiled figure behind the curtain motionless, a tall dim hall with a single lamp"
+  },
+  "XL04": {
+    "en": "A Tang empress in dark phoenix robes turning sharply in a lamplit corridor, cold furious eyes, memorial scrolls scattered at her feet"
+  },
+  "XL27": {
+    "en": "A veiled Tang empress behind hanging bead curtains lifting the beads aside with one hand, her eyes cold and appraising, a prince's blurred back at the far end of the dark hall"
+  },
+  "XL05": {
+    "en": "Tang soldiers fleeing across a bleak windswept highland battlefield, snow and dust blinding, fallen banners half-buried"
+  },
+  "XL28": {
+    "en": "A drought-stricken Tang road under a white sky, thin villagers holding empty bowls in a long queue toward the horizon, withered fields and a bare mulberry tree"
+  },
+  "XL29": {
+    "en": "A young crown prince in plain robes walking a quiet Eastern Palace hall holding a folded document, attendants waiting beside stacked scrolls, cool morning light"
+  },
+  "XL06": {
+    "en": "A young crown prince in plain robes reviewing grain registers with grey-bearded officials inside the Eastern Palace, daylight through lattice windows"
+  },
+  "XL30": {
+    "en": "A young crown prince pressing a finger onto a long tax register scroll spread across a low table, a hesitant older official standing beside him, daylight through lattice windows"
+  },
+  "XL31": {
+    "en": "Tang officials in court robes standing quietly with lowered eyes as if listening, a young crown prince's gate glowing warm at the end of a great hall, a high empty throne above"
+  },
+  "XL07": {
+    "en": "A half-blind middle-aged Tang emperor groping over memorials he cannot read, one hand trailing across the desk, a single candle burning low"
+  },
+  "XL32": {
+    "en": "A half-blind Tang emperor gripping the armrest of his throne and turning toward a young crown prince standing below, a heavy curtain of rain-grey light behind them"
+  },
+  "XL08": {
+    "en": "An old chancellor kneeling to block an edict in a grand audience hall, forehead nearly touching the floor tiles, the emperor seated above, torchlight"
+  },
+  "XL33": {
+    "en": "Stacked imperial memorials and document boxes filling a screened alcove, a woman's silhouette alone behind the pile at a writing desk, one lamp burning low"
+  },
+  "XL34": {
+    "en": "An imperial brush and vermilion seal resting on an abandoned desk inside deep palace shadow, a pearl curtain hanging still before an empty throne"
+  },
+  "XL35": {
+    "en": "An outstretched pale hand loosening its grip on a wooden court tally slip, the tall empty throne room receding into darkness behind"
+  },
+  "XL36": {
+    "en": "A Tang empress seated behind a bead curtain, a young prince's silhouette standing motionless opposite her, cold light falling between them, an empty audience hall"
+  },
+  "XL09": {
+    "en": "An imperial procession leaving Chang'an for Luoyang under low leaden rain clouds, carriage curtains closed, wet road glistening"
+  },
+  "XL10": {
+    "en": "A palace bedchamber at night in Luoyang, physicians kneeling around a still bed, candles guttering, rain streaking the windows"
+  },
+  "XL37": {
+    "en": "An antechamber at night looking through a dark doorway into a curtained inner room where a figure lies resting, a heavy bead curtain at the corridor end with a faint shape behind it, one lamp low"
+  },
+  "XL38": {
+    "en": "A lamplit palace corridor at dusk, attendants moving quietly past a curtained inner chamber, a lamp set down on a low stand, rain on the lattice windows"
+  },
+  "XL39": {
+    "en": "Two stacks of old bound court chronicles side by side on a scholar's low desk, one lying open with dense brush columns, a reader's hand resting on the page, cold daylight"
+  },
+  "XL11": {
+    "en": "A celadon bowl of dark medicine steaming on a low palace table, an overturned cup beside it, a single lamp flame leaning"
+  },
+  "XL12": {
+    "en": "Tang officials and armored guards exchanging fearful glances beneath palace eaves in rain, no one speaking"
+  },
+  "XL40": {
+    "en": "A long audience hall seen from behind rows of seated Tang officials, all gazes lowered toward the floor, a lone raised dais far ahead in shadow, cold daylight from high windows"
+  },
+  "XL13": {
+    "en": "A young prince alone in a vast empty palace corridor at night, a towering shadowed wall ahead, one distant lamp"
+  },
+  "XL14": {
+    "en": "An old half-blind emperor weeping over an empty crown prince's robes laid on a bier, white mourning drapes hanging, candles all around"
+  },
+  "XL41": {
+    "en": "A vast earthwork rising on an open plain with wooden scaffolding and earthen ramps, work crews hauling timbers, pale morning light"
+  },
+  "XL42": {
+    "en": "A ceremonial altar in a vast hall, folded ceremonial robes laid on a raised platform beside a single burning lamp, empty ranks of officials standing in ordered silence"
+  },
+  "XL43": {
+    "en": "An old Tang emperor standing with head bowed before a curtained alcove, one hand gripping a staff, rows of white-robed attendants kneeling behind him, cold torchlight"
+  },
+  "XL15": {
+    "en": "A grand imperial tomb mound rising on the plain at dusk, a white-bannered funeral procession winding toward it, low red sun"
+  },
+  "XL44": {
+    "en": "A ceremonial scroll of imperial appointment resting on a low altar before a young Tang prince kneeling, court officials standing in two ordered rows, morning light through high windows"
+  },
+  "XL16": {
+    "en": "A sharp-eyed young prince in dark ceremonial robes ascending the Eastern Palace steps, cold morning light, officials watching from below"
+  },
+  "XL17": {
+    "en": "A pearl curtain hanging in a dark palace hall, a pair of watching eyes faintly visible behind the beads, a single lamp burning"
+  }
+}

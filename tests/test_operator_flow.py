@@ -25,19 +25,19 @@ def test_missing_script_does_not_offer_a_paid_command():
 
 
 def test_image_step_keeps_the_budget_explicit():
-    advice = advise("caomin-01", {"status": "STAGES_COMPLETE", "stages_done": ["script"]})
+    advice = advise("caomin-01", {"status": "STAGES_COMPLETE", "stages_done": ["script", "tts", "delivery", "quality", "alignment"]})
     assert advice["command"].endswith("--max-images N --budget-id <本次授权>")
     assert any("没有授权就不要执行" in note for note in advice["notes"])
 
 
-def test_voice_findings_come_before_a_stale_rebuild():
+def test_voice_findings_do_not_block_updating_a_stale_source():
     advice = advise("caomin-01", {
         "status": "STALE",
         "blockers": ["source changed", "audio findings await disposition"],
         "quality_pending_units": ["u1"],
     })
-    assert advice["command"] == ".\\webui.bat"
-    assert "语音" in advice["headline"]
+    assert advice["command"].endswith('--stage script')
+    assert any('语音疑点保留' in n for n in advice['notes'])
     assert "--decision" not in (advice["command"] or "")
 
 
@@ -114,7 +114,7 @@ def test_existing_legacy_film_is_not_a_fresh_start(monkeypatch, tmp_path):
 
 def test_status_list_hides_smoke_residue(monkeypatch, tmp_path):
     root = tmp_path / "episodes"
-    root.mkdir()
+    root.mkdir(exist_ok=True)
     (root / "caomin-01.json").write_text("{}", encoding="utf-8")
     (root / "smoke-1.json").write_text("{}", encoding="utf-8")
     folder = root / "caomin-01" / "production" / "v2"

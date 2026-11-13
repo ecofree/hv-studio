@@ -1,21 +1,7 @@
-"""
-统一真实编排器（P0-3 修复：状态只由产物推进，API/CLI 共用同一入口）。
+"""Production dispatch and shared scene definitions.
 
-背景（审计 P0-3）：此前 `app/controllers/v1/episode.py` 的 /run 直接调 `run_stage(ep)`
-且不传真实执行函数，状态机仍逐级迁移到 done —— 没有任何音频/图/视频也被算"完成"，
-状态不可作完成度或计费依据。
-
-本模块把【真实的生产 stage】绑成可被 `run_stage(ep, stage_fn=...)` 驱动的回调，
-并让状态只在对应产物校验成功后推进。CLI `hv produce` 与 API `POST .../produce` 共用它。
-
-真实 stage 链（依赖序，仅跑适用项）：
-  script   ep.script_path(或 script_md) → split 重建 frames     产物: frames 非空
-  tts      frames → voice.synthesize → audio_path 落盘          产物: 每 frame 有 wav
-  compose  需已有 shots → compose_episode → out/{id}_m1.mp4      产物: mp4 可解码
-  verify   产物驱动的真值校验（mp4 存在 + 时序 + 解码）         返回真值
-
-注意：shot 装配（句子→场景/运镜）是每部作品的人工创意步骤，不在通用自动链内；
-对已有 shots 的 episode，本链可一路 script→tts→compose→verify 走通。
+v2 owns narration, paid assets and new candidate rendering. legacy-preview
+rebuilds existing historical media through script/shots/compose/verify only.
 """
 from __future__ import annotations
 
@@ -77,100 +63,6 @@ def stage_script(ep: Episode, md: str | None = None,
     if not ep.frames:
         raise RuntimeError(f"episode {ep.id} 脚本切分后 frames 为空")
     print(f"  [orchestrator] script: frames={len(ep.frames)}")
-
-
-def stage_tts(ep: Episode, fallback: bool = False,
-              granularity: str = "paragraph",
-              group_chars: int | None = None,
-              workers: int | None = None) -> None:
-    """frames → CosyVoice 合成落盘。产物校验：每 frame 音频文件存在。
-
-    granularity：
-      "frame"（**默认**，2026-09-07 起）逐帧合成。
-      "paragraph" 按段落合成长音频再切回逐帧。
-
-      ⚠️ 为什么默认改成 frame（保守选择，2026-09-07 实测）：段落级在长上下文
-      下会把「晋阳令刘文静」断成「晋阳 / 令刘文静」，且 ≥45 字必错，
-      而段落级中位长度正是 65 字 —— 结构性错误，不是偶发。插空格 / 逗号 /
-      破折号都救不回来，模型会忽略这些韵律提示。只有逐帧（≈11 字上下文）
-      实测断对，与用户听感一致。
-      代价：每帧多约 300ms 首尾静音（全片约 +8%），但那是**纯静音**，
-      不动语音本身；用户明确表示宁可多这 20 多秒。
-      文本里没有「地名/官名+人名」紧连专名时，可手动切 paragraph 换句间韵律。
-      workers: TTS 并发路数。None = 按粒度自动（逐帧 2 / 段落 4，
-        见 voice._resolve_workers）；逐帧档 220 帧 = 220 次请求，
-        4 路并发实测撞 Throttling.RateQuota。
-      ⚠️ 段落边界靠 ep.script_path 还原；还原不出会**安全退化**成按句预算分组。
-
-    fallback（整改 B2-3，审计 P0-2 + 复核新发现 N2）：
-      cosyvoice 失败时是否静默降级 edge。此前本函数**根本没传**这个参数，
-      于是永远取 voice.synthesize 的默认值 True —— 而 `--no-fallback` 只存在于
-      voice 的独立 CLI 与 bin/ 脚本，**produce 这条官方生产链上无从关闭**。
-      结果：官方入口出片，cosyvoice 一抖就自动换个音色往下跑，成片无任何标记。
-      现在由 produce(tts_fallback=) 显式传入，CLI 有 --no-fallback。
-      交付集建议关掉：宁可失败重跑，也不要一部片子里有两种声音。
-    """
-    from pathlib import Path
-    from app.managers.episode import episode_path
-    from app.services.voice import synthesize, DEFAULT_ENGINE as DEFAULT_VOICE_ENGINE
-
-    if not ep.frames:
-        raise RuntimeError(f"episode {ep.id} 无 frames，先跑 script stage")
-    audio_dir = _episode_dir(ep.id) / "audio"
-    audio_dir.mkdir(parents=True, exist_ok=True)
-        # 引擎从配置读取（2026-09-08 起：qwen-audio-3.0-tts / cosyvoice 可切换）。
-    # 之前这里写死 "cosyvoice"，导致 engine: qwen 配置完全不起作用。
-    from app.config.config import get_settings
-    _eng = (get_settings().get_profile().voice.engine
-            or DEFAULT_VOICE_ENGINE)
-
-    # P1-4（审计）：narration_text 的读音修复方式与引擎绑定——
-    #   cosyvoice 靠 polyphone 同音字替换；qwen 靠 hot_fix（需要原文）。
-    #   切引擎后不重生成 → 多音字全读错。双向防护告警（None 不误报）。
-    from app.services.polyphone import preprocess as _pp
-    _ssml_on = False
-    try:
-        _ssml_on = bool(get_settings().get_profile().voice.tts_ssml)
-    except Exception:  # noqa: BLE001
-        pass
-    _mismatch = []
-    # SSML 开启时读音由 <phoneme> 直接钉死，narration_text 用原文即可 → 不告警
-    for f in ([] if _ssml_on else ep.frames):
-        _nt = f.narration_text
-        if _nt is None:
-            continue
-        if (_nt == f.text) != (_eng == "qwen") and \
-                _pp(f.text, log_hits=False) != f.text:
-            _mismatch.append(f.id)
-    if _mismatch:
-        print(f"  [tts][告警] 引擎 {_eng} 与 narration_text 的读音修复方式不匹配"
-              f"（{len(_mismatch)} 帧，如 {_mismatch[:3]}）。"
-              f"cosyvoice 需要同音字替换版、qwen 需要原文版——"
-              f"请用 --stage script 重生成（⚠️ 会重切帧，scene_plan 需重建）。")
-    rep = synthesize(ep.frames, engine=_eng, out_dir=audio_dir,
-                     fallback_to_edge=fallback,
-                     granularity=granularity,
-                     script_md=_load_script_md(ep),
-                     target_chars=group_chars,
-                     workers=workers)
-    missing = [f.id for f in ep.frames
-               if not (f.audio_path and Path(f.audio_path).exists())]
-    if missing:
-        raise RuntimeError(f"episode {ep.id} 仍有 {len(missing)} 段缺音频: {missing[:10]}")
-    total = sum(f.audio_duration_ms or 0 for f in ep.frames)
-    print(f"  [orchestrator] tts: {len(ep.frames)}/{len(ep.frames)} 落盘，"
-          f"旁白 {total/1000:.1f}s")
-    # 音色一致性体检：降级帧与非 cosyvoice 帧都会在这里显形（manifest 打标的消费方）
-    if rep.get("mixed"):
-        deg = rep.get("degraded", [])
-        _by = rep.get("by_engine") or {}
-        _main = (max(_by.items(), key=lambda kv: kv[1])[0] if _by
-                 else "cosyvoice")
-        print(f"  [orchestrator][告警] 音频目录存在非主引擎（{_main}）音色的帧 "
-              f"{len(deg)}/{rep.get('total', 0)}：{deg[:10]}"
-              f"{' …' if len(deg) > 10 else ''}")
-        print(f"  [orchestrator][告警] 成片会中途换人声；建议跑 "
-              f"--stage tts --force 重合成，或用 --no-fallback 让失败暴露。")
 
 
 def _read_image_prompts(ep_id: str) -> dict:
@@ -320,17 +212,18 @@ def _compose_prompt(en: str, suffix: str, neg: str) -> str:
 
 
 def build_image_jobs(ep_id: str, prescreen: bool = True,
-                     only: set[str] | None = None, strict: bool = False) -> list["ImageJob"]:
+                     only: set[str] | None = None, strict: bool = False,
+                     *, create_output_dir: bool = True) -> list["ImageJob"]:
     """从 image_prompts.json 构建生图任务（prompt 单源）。
 
-    only：只构建这些 key（用于单镜重建 reshot）。None = 全部。
+    only：只构建这些 key（用于 v2 指定底图）。None = 全部。
 
     唯一数据源 = episodes/{id}/image_prompts.json：
       { "LGT01": {"en": "...", ...}, ... }
     每个键 → ImageJob(落盘 episodes/{id}/shots/{KEY}.png)。
     prompt = en + style_suffix + negative（扁平 ImageConfig 顶层字段）。
     幂等由 generate_many 内部按「已存在 >50KB」处理，本函数只建任务不生成。
-    stage_images 与 batch_generate_lgt 共用本函数 → 消除 prompt 拼接漂移。
+    v2 与历史预览读取同一份场景定义；付费调度仅由 v2 执行。
 
     prescreen=True（默认）：先跑 screen_prompt 体检，拦下空/占位符/过短的
     prompt —— 这些发过去只会白烧配额，且会因为「回来个 >50KB 的图」
@@ -367,7 +260,8 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
                 "strict_param_validation=true 且生图参数非法，拒绝生成"
                 "（避免白烧配额）：\n  " + "\n  ".join(bad))
     shots_d = _episode_dir(ep_id) / "shots"
-    shots_d.mkdir(parents=True, exist_ok=True)
+    if create_output_dir:
+        shots_d.mkdir(parents=True, exist_ok=True)
 
     keys = sorted(k for k in spec if not k.startswith("_"))
     if only:
@@ -467,82 +361,6 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
     return jobs
 
 
-def stage_images(ep: Episode, budget=None, only: set[str] | None = None) -> None:
-    """按 image_prompts.json 批量生图（三路并行 generate_many）。
-
-    数据源唯一入口 = episodes/{id}/image_prompts.json（见 build_image_jobs）。
-    已存在 >50KB 的图幂等跳过（不占渠道）。任一失败即 raise（stage 语义）。
-
-    only: 只生成这些 key。**补单张图时必用**——此前 stage_images 始终处理
-    全部待生成 key，于是「只想补 D40」会把所有缺图一起拉进来，预算被抢占、
-    单张补不上（2026-09-29 caomin-01 实测：3 槽预算被 4 张瓜分全军覆没）。
-
-    花钱前的镜长预检就压在这里（generate_many 调用**之前**）：镜长上限 #3 原本
-    只在 compose 阶段断言，而 compose 在全部图片付完钱之后才跑。lishimin-03
-    实测：285 帧里 2 帧是旁白真放慢到 8.03s/8.24s，预算花完才被拦下。
-    切帧器按 TTS_CHARS_PER_SEC=3.9 估算字数，而真人真人旁白有戏剧性停顿，
-    字数不是时长的可靠预测 —— 只有实测音频能提前判定。
-    """
-    import os
-
-    from app.services.timing_assert import assert_pacing_or_raise, projected_shot_pacing
-    jobs = build_image_jobs(ep.id, only=only)
-    if not jobs:
-        what = f"（only={sorted(only)} 无匹配）" if only else ""
-        print(f"  [orchestrator] image: 无 {ep.id}/image_prompts.json 或全空{what}，跳过生图")
-        return
-    # 只对【真正要发起调用】的子集判定：已存在的图不再花钱，其时长不该成为新拦路虎。
-    pending = [j for j in jobs if not (os.path.exists(j.out_path) and j.is_done())]
-    if ep.frames and pending:
-        if not projected_shot_pacing(ep)["ok"]:
-            assert_pacing_or_raise(ep)   # 必然抛，给出可执行指引
-        # 镜长过了不代表字面对了：错字集照样会把 30+ 张图的预算烧光。
-        from app.services.subtitle_fidelity import assert_subtitle_fidelity
-        assert_subtitle_fidelity(ep)
-        print(f"  [orchestrator] image: 镜长预检 + 字幕字面门禁通过"
-              f"（{len(ep.frames)} 帧，待生成 {len(pending)} 张）")
-    from app.services.image import generate_many
-    print(f"  [orchestrator] image: {len(jobs)} 张待生成/跳过（三路并行）")
-    res = generate_many(jobs, budget=budget)
-    failed = [k for k, v in res.items() if not k.endswith("__error") and v is None]
-    if failed:
-        raise RuntimeError(
-            f"episode {ep.id} 有 {len(failed)} 张生图失败: "
-            f"{[(k, res.get(k+'__error')) for k in failed[:5]]}")
-    print(f"  [orchestrator] image: {len(jobs)} 张全部就绪")
-
-
-def stage_assets(ep: Episode, tts_fallback: bool = False,
-                 tts_granularity: str = "paragraph",
-                 tts_group_chars: int | None = None,
-                 tts_workers: int | None = None,
-                 budget=None) -> None:
-    """TTS 先行、生图随后（**串行**，两侧都结束才返回）。
-
-    为什么不并行（2026-09-28 改，lishimin-03 实测）：原先用
-    ThreadPoolExecutor 让 TTS ∥ 生图同跑。但镜长预检（stage_images 开头）
-    判的是 frame.audio_duration_ms —— 并行时生图侧可能读到 TTS 之前的
-    0 值或旧值，预检要么空过、要么误报。让「花钱前必须校验」成立，
-    就必须保证校验读到的是**刚生成完的真实时长**，即 TTS 必须先完成。
-    代价是失去两者的重叠（生图本就是长杆，实际影响有限）。
-
-    - stage_tts 失败：不进生图（时长不可信，镜长无从判定）。
-    - stage_images 失败：TTS 产物已落盘，可断点续跑。
-    """
-    has_frames = bool(ep.frames)
-    spec = _read_image_prompts(ep.id)
-    has_prompts = bool(spec)
-    if not has_frames and not has_prompts:
-        print("  [orchestrator] assets: 无 TTS 帧且无生图 prompts，跳过")
-        return
-
-    if has_frames:
-        stage_tts(ep, fallback=tts_fallback, granularity=tts_granularity,
-                  group_chars=tts_group_chars, workers=tts_workers)
-    if has_prompts:
-        stage_images(ep, budget=budget)
-
-
 def stage_compose(ep: Episode) -> None:
     """整集合成成片。产物校验：mp4 生成 + 可解码。"""
     from app.services.compose import compose_episode
@@ -627,43 +445,6 @@ def stage_verify(ep: Episode) -> dict:
     return {"ok": True, "frames": nf, "bytes": size,
             "subtitle_fidelity": {k: fidelity.get(k) for k in
                                   ("ok", "applicable", "frames", "source_chars")}}
-
-
-def reshot(ep_id: str, keys: list[str], do_verify: bool = True, *, budget_id=None, max_images=0) -> dict:
-    """Generate scoped image candidates; preserve published media and manual shot edits."""
-    import uuid
-    from app.managers import load
-    from app.services.image import generate_many
-    from app.services.provenance import atomic_json, file_sha256
-    keys = list(dict.fromkeys(k.strip() for k in keys if k and k.strip()))
-    if not keys: raise ValueError("reshot requires image keys")
-    with _episode_lock(ep_id):
-        ep = load(ep_id)
-        jobs = build_image_jobs(ep_id, only=set(keys))
-        if {j.id for j in jobs} != set(keys):
-            raise ValueError("requested images were blocked or missing; no generation performed")
-        if not budget_id: raise ValueError('reshot requires an explicit stable budget ID')
-        from app.services.provider_budget import for_run
-        from app.services.provenance import fingerprint
-        budget = for_run(_episode_dir(ep_id)/'production', ['reshot',budget_id],dict(max_images=max_images))
-        candidate = _episode_dir(ep_id)/"candidates"/fingerprint(['reshot',budget_id,keys])
-        candidate.mkdir(parents=True, exist_ok=True)
-        before = ep.model_dump(mode="json")
-        old_paths={j.id:str(j.out_path).replace("\\","/") for j in jobs}
-        for job in jobs: job.out_path=candidate/(job.id+".png")
-        result=generate_many(jobs, budget=budget)
-        if any(not j.is_done() for j in jobs):
-            raise RuntimeError(f"candidate generation failed; previous revision preserved: {candidate}")
-        for shot in ep.shots.values():
-            for job in jobs:
-                if shot.image_path and Path(shot.image_path).resolve()==Path(old_paths[job.id]).resolve():
-                    shot.image_path=str(job.out_path.resolve()).replace("\\","/")
-                    shot.upscaled_path=None
-        atomic_json(candidate/"episode.json",ep.model_dump(mode="json"))
-        atomic_json(candidate/"source_revision.json",before)
-        atomic_json(candidate/"images.json",[{"key":j.id,"path":str(j.out_path),"sha256":file_sha256(j.out_path)} for j in jobs])
-        return {"ep_id":ep_id,"status":"CANDIDATE_READY","reshot_keys":keys,"removed":[],
-                "candidate_episode":str(candidate/"episode.json"),"content_review":"pending", "approved":False}
 
 
 def _load_script_md(ep: Episode) -> str:
@@ -752,9 +533,6 @@ def stage_shots(ep: Episode, plan_path: Path | None = None,
 # 就求值，函数体在其后定义会 NameError。
 STAGE_FN = {
     "script": stage_script,
-    "tts": stage_tts,
-    "images": stage_images,
-    "assets": stage_assets,
     "shots": stage_shots,
     "compose": stage_compose,
     "verify": stage_verify,
@@ -818,34 +596,12 @@ def produce_legacy(
     ep_id: str,
     stages: list[str] | None = None,
     script_md: str | None = None,
-    tts_fallback: bool = False,
     merge_short: bool = False,
-    tts_granularity: str = "paragraph",
-    tts_group_chars: int | None = None,
-    tts_workers: int | None = None,
-    max_images: int = 0,
-    budget_id: str | None = None,
     image_only: set[str] | None = None,
 ) -> dict:
-    """
-    跑真实生产链（不滥用 rigid 状态枚举空推）；状态由产物真值导出。
-      stages: None=全跑适用的；或 ['script','tts','compose','verify'] 子集。
-      image_only: 只生成这些 image key（补单张图时用）。None = 全部缺失的。
-        此前 stage_images 永远处理全部待生成 key，想补 1 张会被其余缺图
-        抢走预算（2026-09-29 caomin-01 实测）。
-      tts_granularity: "frame"（**默认**，正确性优先，见 stage_tts 的实测说明）；
-        "paragraph" 按段落合成长音频再切回逐帧，句间韵律更好，但长上下文下
-        会把「地名/官名+人名」这类紧连专名读断，且 ≥45 字必错。
-      tts_fallback: cosyvoice 失败是否静默降级 edge（B2-3）。交付集建议 False。
-      merge_short: 合并过短片段（见 stage_script）。**新集建档才开**，
-        既有多集开它会让帧数变化 → 音频与 scene_plan 错位。默认 False。
-      max_images / budget_id: 生图硬预算。**必填**才允许真正发起图片调用
-        （provider 边界本就无预算即拒，这里提前到编排层给出可执行报错，
-         并让 CLI 的 --max-images/--budget-id 在 legacy 路径上真正生效）。
-        此前 app/cli.py 在 pipeline=legacy-preview 分支里整份替换了 options，
-        这两个参数被静默丢弃 —— 同坑 #38（--merge-short 当年也是这样失效的）。
-    返回 {ep_id, status, stages_done, verify}。
-    """
+    """Rebuild previews from existing historical media; never dispatch providers."""
+    if stages is not None and (not stages or any(st not in STAGE_FN for st in stages)):
+        raise ValueError('legacy-preview supports script/shots/compose/verify only; paid legacy stages are retired')
     from app.managers import load, save
     from app.managers.episode import validate_schema
     from app.models import EpisodeStatus
@@ -868,33 +624,9 @@ def produce_legacy(
         raise RuntimeError(
             f"episode {ep.id} schema 不合法，拒绝生产: {problems}")
 
-    # 生图预算：没有显式预算就不允许真正发起调用（provider 边界本就无预算即拒，
-    # 这里提前一层，给出「怎么修」而不是让调用栈深处抛 BudgetExceeded）。
-    # 注意只在【本轮真的会跑 images】时才要求预算 —— 否则 `--stage shots`/
-    # `--stage compose` 这类不生图的排障命令会被无谓地挡在门外。
-    _will_generate = stages is None or bool({"assets", "images"} & set(stages))
-    _prompts_present = bool(_read_image_prompts(ep.id))
-    wants_images = _prompts_present and _will_generate
-    if wants_images and (not budget_id or max_images <= 0):
-        raise RuntimeError(
-            f"episode {ep_id} 有生图任务但未给预算：拒绝发起图片调用。"
-            f"请显式传 --budget-id <稳定ID> --max-images <上限>"
-            f"（重试也计入额度，故上限应含重试余量）。")
-    image_budget = None
-    if wants_images:
-        from app.services.provider_budget import for_run
-        image_budget = for_run(_episode_dir(ep_id) / "production",
-                               ["legacy", budget_id], dict(max_images=max_images))
-        # 预检容量而非等 dispatch 撞顶：额度不足要在开跑前说清差多少。
-        image_budget.check_capacity(image_requests=len(
-            [j for j in build_image_jobs(ep_id) if not j.is_done()]))
-
-    # 依赖序（script → assets[=tts→images 串行] → shots → compose → verify）
-    order = ["script", "assets", "shots", "compose", "verify"]
     if stages is None:
         runnable = []
-        has_assets_work = bool(ep.frames) or _prompts_present
-        for st in order:
+        for st in STAGE_FN:
             if st == "script":
                 if not has_script:
                     print("  [orchestrator] 无脚本，跳过 script")
@@ -907,9 +639,6 @@ def produce_legacy(
                     print("  [orchestrator] 已有 frames，默认跳过 script"
                           "（如需重切请显式 --stage script）")
                     continue
-            if st == "assets" and not has_assets_work:
-                print("  [orchestrator] 无 TTS 帧且无 prompts，跳过 assets")
-                continue
             if st == "shots" and not ep.shots and not can_assemble_shots(ep_id):
                 # 条件不足就【不排进 runnable】：此前是无操作桩，打印一行后
                 # "shots" 仍被记进 stages_done —— 无人值守下这就是假绿。
@@ -925,22 +654,7 @@ def produce_legacy(
             runnable.append(st)
         stages = runnable
 
-    # tts/assets 需要透传 tts_fallback；STAGE_FN 是模块级映射，不在原地改它
-    # （API 与 CLI 共用），只在本轮调用上覆盖一份。
     stage_fn = dict(STAGE_FN)
-    # ⚠️ 必须**无条件**覆盖，不能写成 `if not tts_fallback:` ——
-    #   那样只有 --no-fallback 时闭包才带参数，其余情况 tts_granularity 会被
-    #   静默丢掉（同坑 #38：--merge-short 当年就是这么失效的）。
-    stage_fn["tts"] = lambda ep: stage_tts(
-        ep, fallback=tts_fallback, granularity=tts_granularity,
-        group_chars=tts_group_chars, workers=tts_workers)
-    stage_fn["assets"] = lambda ep: stage_assets(
-        ep, tts_fallback=tts_fallback, tts_granularity=tts_granularity,
-        tts_group_chars=tts_group_chars, tts_workers=tts_workers,
-        budget=image_budget)
-    # 生图预算必须一路传到 dispatch 边界。同坑 #38：只加参数不透传 =
-    # 参数静默失效，而这次失效的后果是「无预算的付费调用」。
-    stage_fn["images"] = lambda ep: stage_images(ep, budget=image_budget, only=image_only)
     if script_md or merge_short:
         # D4：把正文用闭包喂给 stage_script，而不是写进 ep.notes 再读回。
         # merge_short 也必须走这个闭包——STAGE_FN 里存的是默认参数版本，

@@ -1,15 +1,4 @@
-"""
-subrouter.ai（中转）的请求/响应模型。
-
-重要：
-  1. subrouter 会**静默忽略非法 size/quality** 并真去生成
-     （已计费 $0.012）—— 请求时严格按 ImageGenRequest 校验字段值。
-  2. 错误响应有**两套 schema**：
-     - 图像端：OpenAI 风格 {error: {message, type, code}}
-     - 视频端：{code, message, data}
-  3. size 仅控制长宽比，**总像素固定 1,572,864 = 1024×1536**。
-     返回图实际像素由 predict_actual_dims() 算。
-"""
+"""Image-provider request models and observed quota records."""
 from __future__ import annotations
 
 import json
@@ -40,24 +29,13 @@ class ImageGenRequest(BaseModel):
     n: int = 1
 
     def validate_for_subrouter(self) -> None:
-        """
-        ★ 严格校验：subrouter 会**静默忽略**非法 size/quality 并真去生成。
-        本地校验是规避这个陷阱的最后一关。
-        """
-        allowed_sizes = {
-            # 实测确认的 size 集合
-            "1024x1024", "1024x1536", "1024x1792", "1536x1024",
-            "1024x1856", "1856x1024", "1536x2048", "2048x1536",
-            # 推荐（9:16 精确）
-            "1080x1920",
-        }
-        if self.size not in allowed_sizes:
-            raise ValueError(
-                f"size={self.size!r} 风险：subrouter 可能静默忽略并真去生成。"
-                f"白名单: {sorted(allowed_sizes)}"
-            )
-        if self.quality not in ("low", "medium", "high", "auto"):
-            raise ValueError(f"quality={self.quality!r} 不在 low/medium/high/auto")
+        """Use the same preflight rules at the actual dispatch boundary."""
+        from app.services.image import validate_image_params
+        problems = validate_image_params(self.size, self.quality, self.model)
+        if self.n != 1:
+            problems.append('one image per request is required for budget accounting')
+        if problems:
+            raise ValueError('; '.join(problems))
 
 
 class ImageEditRequest(BaseModel):
@@ -89,9 +67,6 @@ class ImageGenItem(BaseModel):
     url: str | None = None
     revised_prompt: str | None = None
 
-    def has_image(self) -> bool:
-        return self.b64_json is not None or self.url is not None
-
 
 class ImageGenResponse(BaseModel):
     created: int = 0
@@ -118,22 +93,7 @@ class QuotaSnapshot(BaseModel):
     channel: str                         # 渠道名（aicost / qcyc / cxk）
     fetched_at: datetime = Field(default_factory=datetime.now)
 
-    @property
-    def remaining_usd(self) -> float:
-        return max(0.0, self.soft_limit_usd - 0.0)  # 当前仅暴露上限，不暴露余额
-
 
 # ---------------------------------------------------------------------------
 # 工具函数
 # ---------------------------------------------------------------------------
-def predict_actual_dims(requested_size: str) -> tuple[int, int]:
-    """
-    预测 subrouter 返回图的真实像素。
-    实测验证：1024x1024→1254x1254, 1024x1536→1024x1536, 1024x1792→948x1659
-
-    H 批（2026-09-05）：公式与常量搬到 app/services/spec.py（此前这里与
-    config.predict_actual_image_dims 各有一份 1024*1536 和一份照抄的公式）。
-    本函数保留名字作为 "WxH" 字符串入口。
-    """
-    from app.services.spec import predict_actual_dims_of
-    return predict_actual_dims_of(requested_size)

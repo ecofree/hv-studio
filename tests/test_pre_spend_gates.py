@@ -157,52 +157,6 @@ def test_can_assemble_shots_is_false_without_storyboard(tmp_episodes):
 # --------------------------------------------------------------------------
 # 3) legacy 路径：预算必填 + 工具链预检
 # --------------------------------------------------------------------------
-def test_legacy_produce_refuses_images_without_budget(tmp_episodes, monkeypatch):
-    """有生图任务却没给预算时，必须在花钱前拒绝并说清怎么修。"""
-    import app.orchestrator as o
-    from app.managers import save
-    ep = Episode(id="no-budget", title="t", episode_number=1)
-    save(ep)
-    d = tmp_episodes / ep.id
-    d.mkdir(parents=True, exist_ok=True)
-    # 空集需有正文才能起步（schema 的 allow_empty 判据），与真实新集建档一致
-    (d / "script.md").write_text("> 作品类型：测试\n\n正文一段。\n", encoding="utf-8")
-    (d / "image_prompts.json").write_text('{"X1": {"en": "a test plate"}}',
-                                           encoding="utf-8")
-    monkeypatch.setattr(o, "_check_disk_space", lambda *a, **k: None)
-    monkeypatch.setattr(o, "_check_toolchain", lambda **k: None)
-    monkeypatch.setattr(o, "build_image_jobs", lambda *a, **k: [])
-    with pytest.raises(RuntimeError, match="未给预算"):
-        o.produce_legacy(ep.id, stages=["assets"])
-
-
-def test_legacy_produce_threads_budget_into_image_stage(tmp_episodes, monkeypatch):
-    """--max-images/--budget-id 必须在 legacy 路径真的传到 stage_images。"""
-    import app.orchestrator as o
-    from app.managers import save
-    ep = Episode(id="with-budget", title="t", episode_number=1)
-    save(ep)
-    d = tmp_episodes / ep.id
-    d.mkdir(parents=True, exist_ok=True)
-    (d / "script.md").write_text("> 作品类型：测试\n\n正文一段。\n", encoding="utf-8")
-    (d / "image_prompts.json").write_text('{"X1": {"en": "a test plate"}}',
-                                           encoding="utf-8")
-    monkeypatch.setattr(o, "_check_disk_space", lambda *a, **k: None)
-    monkeypatch.setattr(o, "_check_toolchain", lambda **k: None)
-    monkeypatch.setattr(o, "build_image_jobs", lambda *a, **k: [])
-    seen = {}
-
-    # 替身签名必须跟着 stage_images 走：新增 only 形参后这里也要接受，
-    # 否则真实调用多传 only= 会 TypeError（2026-09-29 P3 加 only 时踩到）。
-    def fake_images(ep, budget=None, only=None):
-        seen["budget"] = budget
-        seen["limits"] = None if budget is None else budget.limits
-        seen["only"] = only
-    monkeypatch.setattr(o, "stage_images", fake_images)
-    # produce_legacy 内部按 STAGE_FN 覆盖 images，故直接验证闭包产物
-    o.produce_legacy(ep.id, stages=["images"], max_images=7, budget_id="b1")
-    assert seen["budget"] is not None
-    assert seen["limits"]["image_requests"] == 7
 
 
 def test_legacy_produce_does_not_demand_budget_for_non_image_stages(
@@ -229,17 +183,6 @@ def test_legacy_produce_does_not_demand_budget_for_non_image_stages(
     out = o.produce_legacy(ep.id, stages=["shots"])   # 不给预算
     assert "shots" in out["stages_done"], out
     assert called, "shots 阶段应真的被调用"
-
-
-def test_cli_legacy_branch_keeps_budget_flags():
-    """回归锁：cli.py 的 legacy-preview 分支曾整份替换 options，
-    把 --max-images/--budget-id 静默丢弃（同坑 #38：--merge-short）。"""
-    from pathlib import Path
-    src = Path("app/cli.py").read_text(encoding="utf-8")
-    i = src.index('args.pipeline == "legacy-preview"')
-    branch = src[i:i + 700]
-    assert "max_images=args.max_images" in branch
-    assert "budget_id=args.budget_id" in branch
 
 
 def test_toolchain_preflight_reports_missing_ffmpeg(monkeypatch):

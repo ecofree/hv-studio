@@ -55,7 +55,10 @@ def main():
     except Exception as exc: status, error = 'FAIL', str(exc)
     sources = {str(p.relative_to(ROOT)): file_sha256(p) for folder in ('app','bin','tests','scripts')
                for p in (ROOT/folder).rglob('*') if p.is_file() and p.suffix in ('.py','.yaml','.ps1') and '__pycache__' not in str(p)}
-    for relative in ('pyproject.toml', '.ai-project/contract.yaml'):
+    for relative in ('pyproject.toml', '.ai-project/contract.yaml', '.studio-project.json', '.streamlit/config.toml',
+                     'resource/风趣历史.writing-DNA/scripts/generate_chutang_v2.py',
+                     'resource/风趣历史.writing-DNA/scripts/generate_chutang_emotional.py',
+                     'resource/风趣历史.writing-DNA/scripts/generate_qwen3_local_audio.py'):
         sources[relative] = file_sha256(ROOT/relative)
     source_fp = fingerprint(sources)
     revision = subprocess.run(['git','rev-parse','HEAD'], cwd=ROOT, capture_output=True,text=True)

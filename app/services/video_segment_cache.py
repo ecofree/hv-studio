@@ -6,7 +6,7 @@ from pathlib import Path
 from app.services.provenance import file_sha256, fingerprint, replace_file
 from app.services.narration_pipeline import read
 
-SCHEMA = 'video-segment-inputs-v1'
+SCHEMA = 'video-segment-inputs-v2'
 # Direct pixel/geometry/encoder implementation dependencies. Full candidate
 # receipts still bind every app module and configuration, including validators.
 DEPENDENCIES = (
@@ -19,6 +19,7 @@ DEPENDENCIES = (
     # count changes, so verify stays green (xlc-01 era gap, 2026-10-14).
     'app/services/overlay.py', 'app/services/karaoke.py',
     'app/services/word_timing.py',
+    'app/services/scene_animation.py',
 )
 
 
@@ -30,7 +31,7 @@ def context(root, runtime, subtitle, encoder, font):
 
 
 def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared,
-                        overlay_digest=None):
+                        overlay_digest=None,karaoke=None):
     first, last = rows[0][1], rows[-1][2]
     shots = []
     for index, start, stop in rows:
@@ -38,6 +39,8 @@ def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared,
         shots.append(dict(frames=[start, stop], sample_start=shot['sample_start'],
                           sample_end=shot['sample_end'], motion=motion.model_dump(mode='json'),
                           image_sha256=inputs[str(Path(shot['image_path']).resolve())]))
+        if shot.get('animation') is not None:
+            shots[-1]['animation'] = shot['animation']
     # Match the renderer's integer sample clock, including a cue beginning
     # inside a frame. Extra boundary cues are harmless conservative invalidation.
     visible = [dict(text=c['text'], sample_start=c['sample_start'], sample_end=c['sample_end'])
@@ -46,7 +49,9 @@ def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared,
     # Overlay content is windowed per segment (same principle as cues): a title
     # card edit re-encodes only the segments it touches, instead of the film.
     return fingerprint(dict(context=shared, shots=shots, cues=visible,
-                            overlay=overlay_digest, sample_rate=sample_rate))
+                            overlay=overlay_digest, sample_rate=sample_rate,
+                            highlights=[c.words for c in karaoke.cues if c.sample_end>first*sample_rate//25
+                                        and c.sample_start<=(last-1)*sample_rate//25] if karaoke else []))
 
 
 def reusable_records(output_dir):

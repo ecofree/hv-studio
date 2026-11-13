@@ -38,19 +38,6 @@ def test_quality_numbers_and_stale_pass(tmp_path,monkeypatch):
     assert A.normalize_numbers('一亿二千万')=='120000000'
 
 
-def test_conversion_unique_readable(tmp_path):
-    from app.services.asr_check import _to_16k_wav
-    a=_to_16k_wav(np.arange(24000),24000)
-    b=_to_16k_wav(np.arange(24000),24000)
-    try:
-        assert a!=b
-        for p in (a,b):
-            with wave.open(str(p),'rb') as w:
-                assert w.getframerate()==16000 and w.getnframes()==16000
-    finally:
-        a.unlink();b.unlink()
-
-
 def test_document_preserves_source_and_delivery():
     from app.services.script_document import parse_document
     source='# 标题\n\n**整句正文！**\n\n> 天下太平？\n\n【语气：克制】行军3.5里。[停顿0.5秒]随后[停顿1.5秒]继续。\n\nHello world\nagain.\n\n> 作者：测试\n'
@@ -314,7 +301,7 @@ def test_v2_render_segments_resume_from_state(tmp_path, monkeypatch):
     monkeypatch.setattr(P, "_encode_v2_segment", encode)
     monkeypatch.setattr(C, "_concat_segments", lambda paths, out: Path(out).write_bytes(b"concat"))
     monkeypatch.setattr(C, "_run_audio_mux", lambda video, audio, out, codec, bitrate, timeout: Path(out).write_bytes(b"candidate"))
-    monkeypatch.setattr(MI, "verify_media", lambda *args, **kwargs: {"status": "passed"})
+    monkeypatch.setattr(MI, "verify_media", lambda path, **kwargs: {"status":"passed","sha256":file_sha256(path)})
 
     receipt = P.render(manifest, timeline, tmp_path / "renders", timeout=10)
     assert len(encoded) == 2

@@ -12,3 +12,7 @@
     app/webui/      — Streamlit 控制台（可选）
 """
 __version__ = "0.1.0"
+
+# An independent Studio copy never writes through old absolute paths.
+from app.services.studio_workspace import install_original_write_guard
+install_original_write_guard()

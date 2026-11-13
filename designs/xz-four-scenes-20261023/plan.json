@@ -1,0 +1,2391 @@
+{
+  "schema": "hv.visual_proposal.v1",
+  "id": "xz-four-scenes-20261023",
+  "episode_id": "ytrm-01-user-20261022",
+  "status": "draft_for_visual_review",
+  "active": false,
+  "render_ready": false,
+  "visual_approved": false,
+  "scope": "four_scene_plan_only",
+  "source_sha256": "6ef9e6a3ec97a90e7c267549f69ea14320c28d7bb68d61cd2e5d2963e4b7b25a",
+  "source_binding": {
+    "path": "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\editorial\\source-binding.json",
+    "sha256": "ae22c92162d2ddca67efb7d4715da2ed3cc21d4782d3cd219aa7aa188488d1a4"
+  },
+  "base_timeline": {
+    "path": "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\timeline.json",
+    "sha256": "b926945034af7b8bd18955649ae402572e94682398b2b320a5979fef1f10f1b0"
+  },
+  "base_workflow": {
+    "path": "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\workflow.json",
+    "sha256": "338f43a0c68ee11493732ee3aa843142803a6039486fb584b3187a29bc68d9aa"
+  },
+  "audio": {
+    "path": "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\media\\full-1p2-leveled.wav",
+    "sha256": "ba89c963ecd73e128dde5c69c969c6608485eb94e5a81db4092b7282b26be27c",
+    "sample_rate": 24000,
+    "samples": 26026752,
+    "speed": "existing_1.2x_do_not_apply_again",
+    "contract_path": "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\voice-contract.json",
+    "contract_sha256": "debc9cf77f1c1462c7a8559b2094efff8debe9ea98fd8d766224a21094b894dc"
+  },
+  "alignment": {
+    "path": "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\alignment.json",
+    "sha256": "c56187457371cc57d6cecd6599e45492c0a8e6c0a5b6a838f12e8a69538f0023",
+    "all_timings_from_existing_alignment": true
+  },
+  "timebase": {
+    "fps": 25,
+    "existing_frame_count": 27111,
+    "existing_duration_seconds": 1084.448,
+    "rounding": "nearest frame; terminal boundary clamped to existing receipt frame count; audio remains sample-exact"
+  },
+  "policy": {
+    "rewrite_narration": false,
+    "change_voice": false,
+    "change_style": false,
+    "change_character_identity": false,
+    "overwrite_assets": false,
+    "run_tts": false,
+    "run_asr": false,
+    "render": false,
+    "new_provider_calls": 0
+  },
+  "opening_overlay_proposal": {
+    "kind": "title_card",
+    "title": "西行五万里",
+    "replace_subtitle": {
+      "old_rendered": "玄奘真实西行",
+      "new": "在后世的神魔演义里"
+    },
+    "title_duration_ms": 4000,
+    "context_label_until_sample": 419280,
+    "context_label_followup": "title fades after 4s; small context label remains to 17.47s",
+    "anchor_y": 0.15,
+    "status": "not_applied",
+    "all_existing_act_cards_preserved": true
+  },
+  "capabilities": {
+    "existing": "scene_animation v1 只有原平面图局部平移视差、rain、glow；可处理小幅遮罩环境动效，不能拆出真实人物或补全背景。",
+    "requires_assets": "真实分层视差需前中后景透明层与干净背景，移动范围须有足够补边。姿态切换需同身份的连续状态。",
+    "requires_future_implementation": [
+      "独立透明图层合成与遮挡顺序",
+      "动作状态编排",
+      "袋口水流与湿沙遮罩变化",
+      "局部风沙／云层（不得把 rain 改名当沙）"
+    ],
+    "fallback": "仅静态切镜与低幅推移可复用现有引擎；没有动作素材时标记待制作，不能称人物动作或真实 2.5D 已完成。"
+  },
+  "geometry": {
+    "canvas": [
+      1080,
+      1920
+    ],
+    "reserved_subtitle_box_norm": [
+      0.07,
+      0.72,
+      0.85,
+      0.9
+    ],
+    "right_platform_controls_exclusion": [
+      0.88,
+      0.4,
+      1.0,
+      0.94
+    ],
+    "note": "这是画面规划安全区，不修改现有字幕几何；未来必须按真实字幕渲染框复核，不是已通过字幕检验。",
+    "portrait_policy": "face/hands protected; preserve source aspect; no elastic body warp"
+  },
+  "layer_asset_contract": {
+    "required_fields": [
+      "asset_id",
+      "source_image_sha256",
+      "role",
+      "z_order",
+      "alpha_path",
+      "clean_background_path",
+      "protected_face_hand_mask",
+      "overscan_margin_px",
+      "motion_range_px",
+      "identity_reference",
+      "review_status"
+    ],
+    "overscan_rule": "至少覆盖最大位移加羽化宽度；人物边缘、刀柄、绳结必须单独检查。",
+    "acceptance": [
+      "无露底、重影、黑边、人物轮廓残留",
+      "静态视差不冒充姿态动画",
+      "人物脸手、文字与字幕不随环境扭曲"
+    ]
+  },
+  "scenes": [
+    {
+      "id": "opening",
+      "number": "01",
+      "title": "首帧与开场反差",
+      "tagline": "先看见玄奘，再看见处境翻转。",
+      "before_images": [
+        "unit-000.png",
+        "unit-001.png",
+        "unit-009.png"
+      ],
+      "before": "前 17.47 秒两镜都用器物静物图，主要是轻推与角落光效；随后仍是文书静物。已渲染标题写“玄奘真实西行”，但首段旁白明确在讲神魔演义。人物和反差出现得不够直观。",
+      "after": "首帧把既有玄奘人物设定、钵盂和送行空间放进同一构图，明确标出“在后世的神魔演义里”；到原文“但你要是”才切现实文书，接“相反”转向边关追捕压力。保留原顺序，不把后文危险强塞进第一句。",
+      "old_shots": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "end_sample": 886080,
+      "layout": [
+        "上方 8%–22%：既有标题＋原文演义标识",
+        "中部 28%–68%：玄奘轮廓与钵盂；右侧留出入口",
+        "下部 72%–90%：字幕预留区；器物不压字幕",
+        "深度：前景钵盂／中景人物／后景殿门"
+      ],
+      "reuse": "复用 unit-000 的器物、灯光与材质，unit-001／009 的文书与门窗，人物沿用 unit-016／025 及既有人物设定。旧图保留原文件。",
+      "needed": "补一张人物与器物同框的首帧母版，准备钵盂、人物、殿门、干净背景层；人物不得从其他图直接硬贴。",
+      "movement": "每镜的虚拟摄影机只走一个方向：前景约 10 px、中景约 4 px、背景约 2 px（1080 宽，设计上限）；脸和手不做局部拉伸。灯光只在灯罩内轻变。",
+      "accept": [
+        "第一帧即可辨认玄奘与送行语境，标题不遮脸。",
+        "演义标识在首段持续可读，17.47 秒之后才进入现实叙述。",
+        "道具无伪造可读公文；可读字均使用原文的后期文字层。"
+      ],
+      "beats": [
+        {
+          "anchor": {
+            "unit_id": "narr-60333fa215022f5e",
+            "unit_index": 0,
+            "text_start": 0,
+            "text_end": 9,
+            "quote": "在后世的神魔演义里",
+            "sample": 0,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "人物先进入故事",
+          "action": "玄奘与钵盂同框，殿门形成纵深；镜头轻向人物靠近，保留“演义”提示。",
+          "layer_design": "钵盂前景／玄奘中景／门柱后景；脸手独立保护。",
+          "asset_requirement": "OPEN-01：新构图母版＋4 层，待准备。",
+          "local_motion": "灯罩内微亮暗；不添加烟雾或飘落物。",
+          "guard": "不改旁白；不展示现实追兵。",
+          "id": "opening-01",
+          "start_sample": 0,
+          "end_sample": 151200,
+          "start_seconds": 0.0,
+          "end_seconds": 6.3,
+          "start_frame": 0,
+          "end_frame": 158,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-60333fa215022f5e",
+            "unit_index": 0,
+            "text_start": 30,
+            "text_end": 36,
+            "quote": "天子端着御酒",
+            "sample": 151200,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "送行的具体道具",
+          "action": "沿人物视线切到御酒与钵盂；用镜头关注变化表现待遇，避免让整张静图漂移。",
+          "layer_design": "杯与钵前景／桌面中景／殿门背景。",
+          "asset_requirement": "复用 unit-000 道具；需要干净背景。",
+          "local_motion": "器物高光随视差轻移，幅度不超过 1%；无闪白。",
+          "guard": "不添加原文之外的对白或仪式。",
+          "id": "opening-02",
+          "start_sample": 151200,
+          "end_sample": 270720,
+          "start_seconds": 6.3,
+          "end_seconds": 11.28,
+          "start_frame": 158,
+          "end_frame": 282,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-60333fa215022f5e",
+            "unit_index": 0,
+            "text_start": 53,
+            "text_end": 57,
+            "quote": "通关文牒",
+            "sample": 270720,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "为反转埋下文书",
+          "action": "聚焦文牒与印记，再回到人物和器物的关系；承接下一段同类文书。",
+          "layer_design": "文书前景／手与袖中景／桌面背景。",
+          "asset_requirement": "OPEN-02：文书近景分层，原图不能提供时再准备。",
+          "local_motion": "前景缓移、背景慢移；切换前停稳 0.3 秒。",
+          "guard": "不让生成模型绘制可读字，不伪造具体通关文件。",
+          "id": "opening-03",
+          "start_sample": 270720,
+          "end_sample": 419280,
+          "start_seconds": 11.28,
+          "end_seconds": 17.47,
+          "start_frame": 282,
+          "end_frame": 437,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-3a005d10009b3636",
+            "unit_index": 1,
+            "text_start": 0,
+            "text_end": 4,
+            "quote": "但你要是",
+            "sample": 419280,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "同一文书，意义翻转",
+          "action": "沿相近构图切至现实环境的文书；去掉演义标识，人物从受礼位置变成面对关口的位置。",
+          "layer_design": "文书／人物背影／关门；保持光色来自既有画风。",
+          "asset_requirement": "OPEN-03：沿用 unit-001／009 的环境；人物关口关系待补。",
+          "local_motion": "切换本身承担转折；不加闪光或快速旋转。",
+          "guard": "只画文书与关口压力，不画已被捕或遭殴打。",
+          "id": "opening-04",
+          "start_sample": 419280,
+          "end_sample": 735120,
+          "start_seconds": 17.47,
+          "end_seconds": 30.63,
+          "start_frame": 437,
+          "end_frame": 766,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-3a005d10009b3636",
+            "unit_index": 1,
+            "text_start": 68,
+            "text_end": 70,
+            "quote": "相反",
+            "sample": 735120,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "把威胁落到空间",
+          "action": "从文书近景移到关口环境，远处人影受门框压迫；让观众理解“出不去”。",
+          "layer_design": "近处门柱／中景玄奘／远处关口。",
+          "asset_requirement": "与 OPEN-03 共用母版和人物层。",
+          "local_motion": "门柱横移 10 px、人物 4 px、远景 2 px。",
+          "guard": "不改变人物衣着，不新增追逐动作。",
+          "id": "opening-05",
+          "start_sample": 735120,
+          "end_sample": 886080,
+          "start_seconds": 30.63,
+          "end_seconds": 36.92,
+          "start_frame": 766,
+          "end_frame": 923,
+          "status": "design_only_assets_pending"
+        }
+      ],
+      "start_sample": 0,
+      "start_seconds": 0.0,
+      "end_seconds": 36.92,
+      "render_ready": false,
+      "before_evidence": [
+        {
+          "id": "directed-000",
+          "image_id": "unit-000",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\0907b92b18b554ad12836efd28a8789b523d3c7fd77e62849847f70647b51912\\unit-000.png",
+          "sample_start": 0,
+          "sample_end": 151200,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "at": "start"
+          },
+          "purpose": "演义里的送行器物",
+          "animation": {
+            "version": 1,
+            "source_sha256": "9abb52c65f6fe489e3006255156dcdf6047f745a59ba953f6f4408cf922a2f1d",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.01,
+                  0.3
+                ],
+                [
+                  0.98,
+                  0.3
+                ],
+                [
+                  0.98,
+                  0.99
+                ],
+                [
+                  0.01,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "parallax",
+                "polygon": [
+                  [
+                    0.66,
+                    0.04
+                  ],
+                  [
+                    0.96,
+                    0.04
+                  ],
+                  [
+                    0.96,
+                    0.27
+                  ],
+                  [
+                    0.66,
+                    0.27
+                  ]
+                ],
+                "feather": 0.012,
+                "travel": [
+                  0.004,
+                  0
+                ],
+                "progress": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.12,
+                    0
+                  ],
+                  [
+                    0.88,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              },
+              {
+                "kind": "glow",
+                "polygon": [
+                  [
+                    0.04,
+                    0.04
+                  ],
+                  [
+                    0.25,
+                    0.04
+                  ],
+                  [
+                    0.25,
+                    0.23
+                  ],
+                  [
+                    0.04,
+                    0.23
+                  ]
+                ],
+                "feather": 0.02,
+                "strength": 0.025,
+                "envelope": [
+                  [
+                    0,
+                    0.3
+                  ],
+                  [
+                    0.35,
+                    0.65
+                  ],
+                  [
+                    0.7,
+                    0.4
+                  ],
+                  [
+                    1,
+                    0.3
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "directed-001",
+          "image_id": "unit-000",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\0907b92b18b554ad12836efd28a8789b523d3c7fd77e62849847f70647b51912\\unit-000.png",
+          "sample_start": 151200,
+          "sample_end": 419280,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-60333fa215022f5e",
+            "text_start": 30
+          },
+          "purpose": "看清道具，把文学送行与下一段反差分开",
+          "animation": {
+            "version": 1,
+            "source_sha256": "9abb52c65f6fe489e3006255156dcdf6047f745a59ba953f6f4408cf922a2f1d",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.01,
+                  0.3
+                ],
+                [
+                  0.98,
+                  0.3
+                ],
+                [
+                  0.98,
+                  0.99
+                ],
+                [
+                  0.01,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "parallax",
+                "polygon": [
+                  [
+                    0.66,
+                    0.04
+                  ],
+                  [
+                    0.96,
+                    0.04
+                  ],
+                  [
+                    0.96,
+                    0.27
+                  ],
+                  [
+                    0.66,
+                    0.27
+                  ]
+                ],
+                "feather": 0.012,
+                "travel": [
+                  0.004,
+                  0
+                ],
+                "progress": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.12,
+                    0
+                  ],
+                  [
+                    0.88,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              },
+              {
+                "kind": "glow",
+                "polygon": [
+                  [
+                    0.04,
+                    0.04
+                  ],
+                  [
+                    0.25,
+                    0.04
+                  ],
+                  [
+                    0.25,
+                    0.23
+                  ],
+                  [
+                    0.04,
+                    0.23
+                  ]
+                ],
+                "feather": 0.02,
+                "strength": 0.025,
+                "envelope": [
+                  [
+                    0,
+                    0.3
+                  ],
+                  [
+                    0.35,
+                    0.65
+                  ],
+                  [
+                    0.7,
+                    0.4
+                  ],
+                  [
+                    1,
+                    0.3
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "directed-002",
+          "image_id": "unit-001",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\94bf12bf2f7a77b0e37de5d828f5847c29b01be00c4632138788ca5faf74e9bd\\unit-001.png",
+          "sample_start": 419280,
+          "sample_end": 735120,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-3a005d10009b3636",
+            "text_start": 0
+          },
+          "purpose": "文书从护身符变成追捕令",
+          "animation": {
+            "version": 1,
+            "source_sha256": "526ecde071251637411bbf8222306c0cc705c0d6ab7900e1897d6fb7f328e3ba",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.01,
+                  0.56
+                ],
+                [
+                  0.99,
+                  0.56
+                ],
+                [
+                  0.99,
+                  0.99
+                ],
+                [
+                  0.01,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "parallax",
+                "polygon": [
+                  [
+                    0.62,
+                    0.06
+                  ],
+                  [
+                    0.96,
+                    0.06
+                  ],
+                  [
+                    0.96,
+                    0.48
+                  ],
+                  [
+                    0.62,
+                    0.48
+                  ]
+                ],
+                "feather": 0.012,
+                "travel": [
+                  0.004,
+                  0
+                ],
+                "progress": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.12,
+                    0
+                  ],
+                  [
+                    0.88,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "directed-003",
+          "image_id": "unit-009",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\9f26c67a0aef705ad0fadf33e972b413e1981c4b346474a1034e6bd7f55d2d07\\unit-009.png",
+          "sample_start": 735120,
+          "sample_end": 886080,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-3a005d10009b3636",
+            "text_start": 68
+          },
+          "purpose": "从缺少通关文书转到追捕公文",
+          "animation": {
+            "version": 1,
+            "source_sha256": "e83503a0c5d2600e425954b08474739e649926edf628bb074f44bd7992888b64",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.02,
+                  0.55
+                ],
+                [
+                  0.98,
+                  0.55
+                ],
+                [
+                  0.98,
+                  0.99
+                ],
+                [
+                  0.02,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "glow",
+                "polygon": [
+                  [
+                    0.04,
+                    0.4
+                  ],
+                  [
+                    0.19,
+                    0.4
+                  ],
+                  [
+                    0.19,
+                    0.53
+                  ],
+                  [
+                    0.04,
+                    0.53
+                  ]
+                ],
+                "feather": 0.02,
+                "strength": 0.025,
+                "envelope": [
+                  [
+                    0,
+                    0.3
+                  ],
+                  [
+                    0.35,
+                    0.65
+                  ],
+                  [
+                    0.7,
+                    0.4
+                  ],
+                  [
+                    1,
+                    0.3
+                  ]
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "knife",
+      "number": "02",
+      "title": "夜间向导持刀",
+      "tagline": "危险来自距离、犹豫和等待。",
+      "before_images": [
+        "unit-017.png",
+        "unit-015.png",
+        "unit-016.png"
+      ],
+      "before": "第一张夜景 unit-017 里两人近距离相对，与“几十步”不符；unit-015 的刃身特写偏长且带火光；unit-016 才有前后距离。现有镜头缺少拔刀、停步、僵持、退回的连续变化。",
+      "after": "用同一空间轴线组织铺草→拔刀→远处停步→端坐→僵持→收刀退回。人始终分处前后景，旁白说“要是”时保持悬念，不演成实际行凶。",
+      "old_shots": [
+        24,
+        25,
+        26,
+        27
+      ],
+      "end_sample": 9241920,
+      "layout": [
+        "玄奘位于左下中景；向导位于右上远景",
+        "两人之间保留大片空沙地；相对位置全段一致",
+        "短刀与持刀手在中景特写中交代，不靠近玄奘颈部",
+        "月光与云在背景；风沙只过地面，不盖脸"
+      ],
+      "reuse": "优先复用 unit-016 的远近关系与玄奘形象；unit-017 留作旧版对照，不能直接用作“几十步”主镜；unit-015 的长刃与火光不进入新方案。",
+      "needed": "同一夜景干净背景、玄奘卧／坐两个状态、向导持刀／收刀／退回三个状态、匹配原文短刀的手部近景。各状态同装束、同体型、同一光向。",
+      "movement": "环境动、人物关键时刻停：地面薄沙横移，月后云慢移；前沙 12 px／玄奘 3 px／向导 2 px／远景 1 px。角色动作靠准备好的姿态，不平移僵硬人形假装走路。",
+      "accept": [
+        "两人始终有明显远近与空地间隔；不量化虚构精确步数。",
+        "短刀始终属于向导；没有刺杀、流血、尸体和火焰升级。",
+        "收刀后才后退，机位不越轴；原文“无声地耗着”处让镜头真正慢下来。"
+      ],
+      "beats": [
+        {
+          "anchor": {
+            "unit_id": "narr-1ecd29c6a6e4f5c7",
+            "unit_index": 18,
+            "text_start": 0,
+            "text_end": 3,
+            "quote": "半夜里",
+            "sample": 7895760,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "先交代两处草铺",
+          "action": "同一宽景交代玄奘与向导分处两端；留出中间空沙地。",
+          "layer_design": "近沙／玄奘卧姿／远处向导／月下荒原。",
+          "asset_requirement": "NIGHT-01：同轴夜景母版与两处草铺，待准备。",
+          "local_motion": "地面少量薄沙平移；月后云慢移，不加暴风。",
+          "guard": "旧 unit-017 近距离构图不能直接沿用。",
+          "id": "knife-01",
+          "start_sample": 7895760,
+          "end_sample": 8134320,
+          "start_seconds": 328.99,
+          "end_seconds": 338.93,
+          "start_frame": 8225,
+          "end_frame": 8473,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-1ecd29c6a6e4f5c7",
+            "unit_index": 18,
+            "text_start": 40,
+            "text_end": 51,
+            "quote": "石磐陀拔出了腰里的短刀",
+            "sample": 8134320,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "拔刀，不贴身",
+          "action": "切向导腰部与持刀手；用刀柄出鞘、短刀下垂两个状态交代动作，再回到距离关系。",
+          "layer_design": "手与短刀／向导衣袖／暗背景。",
+          "asset_requirement": "NIGHT-02：两张短刀动作状态；不是长刀亮刃旧图。",
+          "local_motion": "刀面只有一次低幅反光，随后稳定。",
+          "guard": "不加火光，不把短刀放到玄奘身旁。",
+          "id": "knife-02",
+          "start_sample": 8134320,
+          "end_sample": 8283120,
+          "start_seconds": 338.93,
+          "end_seconds": 345.13,
+          "start_frame": 8473,
+          "end_frame": 8628,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-1ecd29c6a6e4f5c7",
+            "unit_index": 18,
+            "text_start": 62,
+            "text_end": 77,
+            "quote": "走到距离玄奘几十步的地方停住脚",
+            "sample": 8283120,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "停步与犹豫",
+          "action": "向导仍在远景；由两三个朝向状态交代徘徊，再停住。玄奘留在近处草铺。",
+          "layer_design": "沙地前景／玄奘近层／向导远层／地平线。",
+          "asset_requirement": "NIGHT-03：向导持刀的朝向状态，共用 NIGHT-01。",
+          "local_motion": "镜头慢推 1%；人物停止后环境还在极轻移动。",
+          "guard": "不画到玄奘跟前；距离通过构图表达。",
+          "id": "knife-03",
+          "start_sample": 8283120,
+          "end_sample": 8430000,
+          "start_seconds": 345.13,
+          "end_seconds": 351.25,
+          "start_frame": 8628,
+          "end_frame": 8781,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-86d188f58a2158ee",
+            "unit_index": 19,
+            "text_start": 0,
+            "text_end": 9,
+            "quote": "黑灯瞎火的大漠深处",
+            "sample": 8430000,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "让危险留在可能中",
+          "action": "保持远景向导与空地，转到玄奘视角的距离；不出现旁白假设中的伤害结果。",
+          "layer_design": "近处草铺边缘／远处向导／天空。",
+          "asset_requirement": "共用 NIGHT-01／03。",
+          "local_motion": "减少移动，刀面不持续闪烁。",
+          "guard": "“要是”是条件句，不画尸体、埋沙或杀人。",
+          "id": "knife-04",
+          "start_sample": 8430000,
+          "end_sample": 8581200,
+          "start_seconds": 351.25,
+          "end_seconds": 357.55,
+          "start_frame": 8781,
+          "end_frame": 8939,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "unit_index": 20,
+            "text_start": 0,
+            "text_end": 7,
+            "quote": "玄奘既没喊救命",
+            "sample": 8581200,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "先给不动的反应",
+          "action": "近景看玄奘没有逃跑；短暂停住画面，让“既没……也没……”听清楚。",
+          "layer_design": "玄奘头肩／草铺／远景。",
+          "asset_requirement": "复用 unit-016 人物形象；新卧姿到坐姿连续状态。",
+          "local_motion": "面部完全静止；风沙不覆盖眼口。",
+          "guard": "不新增惊叫、哭泣或夸张表情。",
+          "id": "knife-05",
+          "start_sample": 8581200,
+          "end_sample": 8650320,
+          "start_seconds": 357.55,
+          "end_seconds": 360.43,
+          "start_frame": 8939,
+          "end_frame": 9011,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "unit_index": 20,
+            "text_start": 15,
+            "text_end": 22,
+            "quote": "他慢慢坐直身子",
+            "sample": 8650320,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "坐直与端坐",
+          "action": "由起身半坐→盘腿坐稳两个状态切换，镜头缓靠近衣角和稳定姿态；不使用全身橡皮拉伸。",
+          "layer_design": "衣角与手／玄奘／远处向导。",
+          "asset_requirement": "NIGHT-04：两个人物姿态，身份沿用现有形象。",
+          "local_motion": "坐稳后停止人物层；不做口型。",
+          "guard": "只表现原文动作，不追加抵抗或搏斗。",
+          "id": "knife-06",
+          "start_sample": 8650320,
+          "end_sample": 8850480,
+          "start_seconds": 360.43,
+          "end_seconds": 368.77,
+          "start_frame": 9011,
+          "end_frame": 9219,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "unit_index": 20,
+            "text_start": 49,
+            "text_end": 58,
+            "quote": "刀刃在几十步外晃动",
+            "sample": 8850480,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "距离里对峙",
+          "action": "回到同轴宽景：近处玄奘稳定，远处向导改变朝向；保持双方尺寸与位置连续。",
+          "layer_design": "近沙／玄奘／远处向导／月与云。",
+          "asset_requirement": "复用 NIGHT-01／03／04。",
+          "local_motion": "前景沙缓动，背景微移；不靠抖屏制造危险。",
+          "guard": "不把远景人放大到贴身，不使用频闪。",
+          "id": "knife-07",
+          "start_sample": 8850480,
+          "end_sample": 8979120,
+          "start_seconds": 368.77,
+          "end_seconds": 374.13,
+          "start_frame": 9219,
+          "end_frame": 9353,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "unit_index": 20,
+            "text_start": 70,
+            "text_end": 83,
+            "quote": "两个人就在夜色里无声地耗着",
+            "sample": 8979120,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "留一段真正的等待",
+          "action": "保持同一空间，不新增切镜；让空地成为画面的中心。",
+          "layer_design": "同轴四层；人物不动。",
+          "asset_requirement": "复用同一分层母版。",
+          "local_motion": "只保留最低幅度背景变化；移动强度约前段的 1/3。",
+          "guard": "不压缩现有音频停顿，不改变字幕时间。",
+          "id": "knife-08",
+          "start_sample": 8979120,
+          "end_sample": 9096720,
+          "start_seconds": 374.13,
+          "end_seconds": 379.03,
+          "start_frame": 9353,
+          "end_frame": 9476,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "unit_index": 20,
+            "text_start": 90,
+            "text_end": 99,
+            "quote": "石磐陀终于叹了口气",
+            "sample": 9096720,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "收刀，退回原处",
+          "action": "先给收刀状态，再回宽景让向导退向自己的草铺；到下一句天亮才进入后续画面。",
+          "layer_design": "近处玄奘／远处向导／草铺／荒原。",
+          "asset_requirement": "NIGHT-05：收刀与退回状态，共用原空间。",
+          "local_motion": "环境继续缓动；避免人物在沙面上无步态滑行。",
+          "guard": "不得提前转白天，不新增台词与声效。",
+          "id": "knife-09",
+          "start_sample": 9096720,
+          "end_sample": 9241920,
+          "start_seconds": 379.03,
+          "end_seconds": 385.08,
+          "start_frame": 9476,
+          "end_frame": 9627,
+          "status": "design_only_assets_pending"
+        }
+      ],
+      "start_sample": 7895760,
+      "start_seconds": 328.99,
+      "end_seconds": 385.08,
+      "render_ready": false,
+      "before_evidence": [
+        {
+          "id": "directed-024",
+          "image_id": "unit-017",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bbca0c199eb69047db618ca98e1dba994023430fd3a5bccce5ceca302f0f4a93\\unit-017.png",
+          "sample_start": 7895760,
+          "sample_end": 8430000,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-1ecd29c6a6e4f5c7",
+            "text_start": 0
+          },
+          "purpose": "保持几十步距离的夜间试探",
+          "animation": {
+            "version": 1,
+            "source_sha256": "b8c9f34ee731b7a44834285e63a80a81517c47da199b4ad033f1397255154dab",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.01,
+                  0.21
+                ],
+                [
+                  0.99,
+                  0.21
+                ],
+                [
+                  0.99,
+                  0.99
+                ],
+                [
+                  0.01,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "parallax",
+                "polygon": [
+                  [
+                    0.08,
+                    0.04
+                  ],
+                  [
+                    0.91,
+                    0.04
+                  ],
+                  [
+                    0.91,
+                    0.17
+                  ],
+                  [
+                    0.08,
+                    0.17
+                  ]
+                ],
+                "feather": 0.012,
+                "travel": [
+                  0.004,
+                  0
+                ],
+                "progress": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.12,
+                    0
+                  ],
+                  [
+                    0.88,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "directed-025",
+          "image_id": "unit-015",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\ff3017362d5c0e803196551067b889f63b51bbbeba96729396c6b860b9db53d2\\unit-015.png",
+          "sample_start": 8430000,
+          "sample_end": 8581200,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-86d188f58a2158ee",
+            "text_start": 0
+          },
+          "purpose": "条件式危险，不展示杀人"
+        },
+        {
+          "id": "directed-026",
+          "image_id": "unit-016",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5712f55d74668ddc48586085842d20c29ded138e5efcf76433e29fc90056cbb4\\unit-016.png",
+          "sample_start": 8581200,
+          "sample_end": 8979120,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "text_start": 0
+          },
+          "purpose": "端坐与无声对峙"
+        },
+        {
+          "id": "directed-027",
+          "image_id": "unit-017",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bbca0c199eb69047db618ca98e1dba994023430fd3a5bccce5ceca302f0f4a93\\unit-017.png",
+          "sample_start": 8979120,
+          "sample_end": 9241920,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-cc6b6741b27970bc",
+            "text_start": 70
+          },
+          "purpose": "以远景距离体现等待",
+          "animation": {
+            "version": 1,
+            "source_sha256": "b8c9f34ee731b7a44834285e63a80a81517c47da199b4ad033f1397255154dab",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.01,
+                  0.21
+                ],
+                [
+                  0.99,
+                  0.21
+                ],
+                [
+                  0.99,
+                  0.99
+                ],
+                [
+                  0.01,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "parallax",
+                "polygon": [
+                  [
+                    0.08,
+                    0.04
+                  ],
+                  [
+                    0.91,
+                    0.04
+                  ],
+                  [
+                    0.91,
+                    0.17
+                  ],
+                  [
+                    0.08,
+                    0.17
+                  ]
+                ],
+                "feather": 0.012,
+                "travel": [
+                  0.004,
+                  0
+                ],
+                "progress": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.12,
+                    0
+                  ],
+                  [
+                    0.88,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "id": "water",
+      "number": "03",
+      "title": "沙漠失水",
+      "tagline": "让观众看清，水是怎么失去的。",
+      "before_images": [
+        "unit-025.png",
+        "unit-026.png"
+      ],
+      "before": "unit-025 一张“伸手取袋”的定格承担约 16.36 秒；之后跳到 unit-026 的失水结果。掉落、触沙、渗水和水痕消失缺少过程，主要仍靠旁白解释。",
+      "after": "按原句安排取袋→脱手→落地→清水渗沙→只剩暗痕。失手发生在手与水袋的连接处，后果发生在地面，两个特写由同一水袋和落点连接。",
+      "old_shots": [
+        36,
+        37,
+        38
+      ],
+      "end_sample": 12798720,
+      "layout": [
+        "主动作放在画面中下部 42%–68%，避开字幕区",
+        "手与水袋位于同一焦点，马与人物不拆得支离破碎",
+        "落地后切近景：同一个袋口、同一个沙地落点",
+        "前景细沙／水袋与水痕／人物与马／远沙丘"
+      ],
+      "reuse": "unit-025 的人物、马、手和皮水袋是连续性参考；unit-026 的空袋与沙地作结果参考。保留原稿规定的意外失手。",
+      "needed": "准备水袋脱手、触沙两个状态及干净地面；袋口水流、湿沙形状和干沙覆盖分别成层。不能直接把整幅 unit-025 向下挪动模拟掉落。",
+      "movement": "取袋时保持镜头稳定；掉袋约 0.4–0.6 秒、触沙停 0.15 秒（待动作素材试排），不加夸张弹跳。水痕先出现再淡出；地面细沙仅在背景流动。",
+      "accept": [
+        "同一袋型、绳结、手位、光向贯穿取袋到落地。",
+        "水只从袋口出来，按重力向下；水痕不穿过人物或马。",
+        "渗水之后才出现干痕；动作时长在既有旁白窗口内，不改速度、不补读。"
+      ],
+      "beats": [
+        {
+          "anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "unit_index": 27,
+            "text_start": 0,
+            "text_end": 7,
+            "quote": "就在走入大沙漠",
+            "sample": 12164400,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "迷路，环境压住人物",
+          "action": "先用人物与老马在沙地中的位置交代迷路；镜头逐步靠近马背水袋，为动作建立位置。",
+          "layer_design": "前沙／人物与马／远丘。",
+          "asset_requirement": "复用 unit-025 形象与马；同构图背景清理层待准备。",
+          "local_motion": "远处轻微热扰动仅属后续可选效果；本批不实现，不扭曲人物。",
+          "guard": "不新增倒地、昏迷或沙尘暴。",
+          "id": "water-01",
+          "start_sample": 12164400,
+          "end_sample": 12368400,
+          "start_seconds": 506.85,
+          "end_seconds": 515.35,
+          "start_frame": 12671,
+          "end_frame": 12884,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "unit_index": 27,
+            "text_start": 44,
+            "text_end": 57,
+            "quote": "玄奘伸手去取马背上的皮水袋",
+            "sample": 12368400,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "手、绳与水袋",
+          "action": "切近景，先让手接触袋带，再展示握持；袋型和绳结要与后一镜完全一致。",
+          "layer_design": "手与绳／水袋／马背背景。",
+          "asset_requirement": "WATER-01：握袋状态与干净马背；沿用原人物、马和袋型。",
+          "local_motion": "身体不漂移；只移动准备好的手部动作状态。",
+          "guard": "不把取水改成主动倒水。",
+          "id": "water-02",
+          "start_sample": 12368400,
+          "end_sample": 12433680,
+          "start_seconds": 515.35,
+          "end_seconds": 518.07,
+          "start_frame": 12884,
+          "end_frame": 12952,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "unit_index": 27,
+            "text_start": 58,
+            "text_end": 67,
+            "quote": "连日疲惫，手上一滑",
+            "sample": 12433680,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "脱手的瞬间",
+          "action": "手与袋带分离，水袋离开原来挂点；先看清脱手，再进入下落镜头。",
+          "layer_design": "手层／袋层／绳层／马背背景。",
+          "asset_requirement": "WATER-02：脱手状态，独立皮袋与绳结层。",
+          "local_motion": "脱手约 0.3 秒、后续下落约 0.4–0.6 秒；以已确认旁白为时间基准。",
+          "guard": "不拉长手指，不让袋带穿过手掌。",
+          "id": "water-03",
+          "start_sample": 12433680,
+          "end_sample": 12488400,
+          "start_seconds": 518.07,
+          "end_seconds": 520.35,
+          "start_frame": 12952,
+          "end_frame": 13009,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "unit_index": 27,
+            "text_start": 68,
+            "text_end": 79,
+            "quote": "水袋啪的一声掉在沙地上",
+            "sample": 12488400,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "落地必须看得见",
+          "action": "同方向切低机位，水袋触沙；落地位置明确，袋口朝向与后续水流连续。",
+          "layer_design": "前沙／皮袋／湿沙准备层／干净地面。",
+          "asset_requirement": "WATER-03：落地状态与地面层，不能复用整张伸手定格代替动作。",
+          "local_motion": "落地轻扬少量细沙，停 0.15 秒后稳定；不加弹跳。",
+          "guard": "不新增撞击音效，不改现有声音方案。",
+          "id": "water-04",
+          "start_sample": 12488400,
+          "end_sample": 12557040,
+          "start_seconds": 520.35,
+          "end_seconds": 523.21,
+          "start_frame": 13009,
+          "end_frame": 13080,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "unit_index": 27,
+            "text_start": 80,
+            "text_end": 95,
+            "quote": "这是穿过数百里死海唯一的救命水",
+            "sample": 12557040,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "让损失停一下",
+          "action": "停在袋与地面的近景，视线落到袋口；保留旁白强调的时长，下一句才展开渗沙。",
+          "layer_design": "空袋／袋口／沙地。",
+          "asset_requirement": "复用 WATER-03。",
+          "local_motion": "画面基本静止，不让水持续喷涌成泉。",
+          "guard": "不增加字幕外的新结论。",
+          "id": "water-05",
+          "start_sample": 12557040,
+          "end_sample": 12630960,
+          "start_seconds": 523.21,
+          "end_seconds": 526.29,
+          "start_frame": 13080,
+          "end_frame": 13157,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-3bc388a164446a8d",
+            "unit_index": 28,
+            "text_start": 0,
+            "text_end": 9,
+            "quote": "在滚烫干燥的沙堆上",
+            "sample": 12630960,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "看清落点",
+          "action": "同一地面和水袋，切到袋口附近的局部；保持沙纹与光向连贯。",
+          "layer_design": "皮袋边缘／湿沙／干沙。",
+          "asset_requirement": "WATER-04：一套干湿沙层与袋口流体遮罩。",
+          "local_motion": "沙粒的局部运动不盖住关键水痕。",
+          "guard": "不把单薄水迹画成池塘。",
+          "id": "water-06",
+          "start_sample": 12630960,
+          "end_sample": 12672240,
+          "start_seconds": 526.29,
+          "end_seconds": 528.01,
+          "start_frame": 13157,
+          "end_frame": 13200,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-3bc388a164446a8d",
+            "unit_index": 28,
+            "text_start": 10,
+            "text_end": 20,
+            "quote": "清水瞬间渗得无影无踪",
+            "sample": 12672240,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "水进入沙地",
+          "action": "水流在袋口下方短暂可见，随后进入湿沙区；用轮廓扩散和透明度表现渗入。",
+          "layer_design": "袋口水流／湿沙轮廓／干沙。",
+          "asset_requirement": "WATER-04；需要新遮罩动画能力，当前渲染器没有。",
+          "local_motion": "水流约 0.4 秒消失；湿沙最多扩到预设局部区域，不全屏变色。",
+          "guard": "水的路径必须连续，不向上飘、不重复倒流。",
+          "id": "water-07",
+          "start_sample": 12672240,
+          "end_sample": 12725520,
+          "start_seconds": 528.01,
+          "end_seconds": 530.23,
+          "start_frame": 13200,
+          "end_frame": 13256,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-3bc388a164446a8d",
+            "unit_index": 28,
+            "text_start": 21,
+            "text_end": 36,
+            "quote": "只留下一片迅速晒干的暗褐色泥沙",
+            "sample": 12725520,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "痕迹也没了",
+          "action": "保留暗褐色水痕，局部缓缓变浅；最后留空袋和人物的距离关系，接回头求生。",
+          "layer_design": "空袋／逐渐变浅的湿沙／远处人物与马。",
+          "asset_requirement": "WATER-05：结果镜头，复用 unit-026 环境与形象参考。",
+          "local_motion": "约 1.2–1.6 秒渐淡，保留最后约 0.8 秒看清结果；不做闪切。",
+          "guard": "不改变下一幕“往回走”的入口与字幕。",
+          "id": "water-08",
+          "start_sample": 12725520,
+          "end_sample": 12798720,
+          "start_seconds": 530.23,
+          "end_seconds": 533.28,
+          "start_frame": 13256,
+          "end_frame": 13332,
+          "status": "design_only_assets_pending"
+        }
+      ],
+      "start_sample": 12164400,
+      "start_seconds": 506.85,
+      "end_seconds": 533.28,
+      "render_ready": false,
+      "before_evidence": [
+        {
+          "id": "directed-036",
+          "image_id": "unit-025",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\554ec7c00a0b85039277616e855203c012b606f885a02c1660a436c4e4513640\\unit-025.png",
+          "sample_start": 12164400,
+          "sample_end": 12557040,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "text_start": 0
+          },
+          "purpose": "迷路与水囊掉落"
+        },
+        {
+          "id": "directed-037",
+          "image_id": "unit-026",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\681fb9c7a357ab559a428b7461c4075a77360b03281bce875dd55ffc3524bca0\\unit-026.png",
+          "sample_start": 12557040,
+          "sample_end": 12630960,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-74ebb8eeb6ff2605",
+            "text_start": 80
+          },
+          "purpose": "由水袋转到失水后的结果"
+        },
+        {
+          "id": "directed-038",
+          "image_id": "unit-026",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\681fb9c7a357ab559a428b7461c4075a77360b03281bce875dd55ffc3524bca0\\unit-026.png",
+          "sample_start": 12630960,
+          "sample_end": 12798720,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-3bc388a164446a8d",
+            "text_start": 0
+          },
+          "purpose": "沙地上只剩水痕"
+        }
+      ]
+    },
+    {
+      "id": "ending",
+      "number": "04",
+      "title": "结尾与粗竹席",
+      "tagline": "五万里路，最后落在一件遗物上。",
+      "before_images": [
+        "unit-062.png",
+        "unit-064.png",
+        "unit-065.png"
+      ],
+      "before": "译经图已有局部动效，后段主要为病榻与送葬静图。最后 3.898 秒虽然标成 new-bamboo-mat，实际仍指向 unit-065 送葬人群；旁白落在“粗竹席”，画面却没有竹席。",
+      "after": "译经细节→薄葬嘱咐→送葬远景→行程与经卷回望→粗竹席近景。保留大场面到一件遗物的收束，最后一句只留竹席、空处和轻光，不再回人群。",
+      "old_shots": [
+        74,
+        75,
+        76,
+        77,
+        78,
+        79
+      ],
+      "end_sample": 26026752,
+      "layout": [
+        "译经：手与卷在中景，灯与窗各自为层",
+        "末句：竹席纹理居中偏下，上部保留安静空处",
+        "人物不加佛光，不表现升天，不新造葬礼细节",
+        "结尾末 2 秒逐步减速至静止，结束时长仍为 18:04.448"
+      ],
+      "reuse": "unit-062／063 的译经与经卷、unit-064 的室内关系、unit-065 的送葬远景保留；但送葬图只用在对应旁白，不能冒充竹席镜头。",
+      "needed": "END-01 粗竹席近景是真正缺失的画面，需单独准备；沿用室内材质与光色，不需新人物。译经要手／笔／纸三个状态时才补局部动作素材。",
+      "movement": "译经段灯焰局部轻动、窗外背景慢移，纸页只有具备独立层才轻翻；最后竹席最多推近 1%，最后 2 秒收住。环境动效随故事收束逐步减弱。",
+      "accept": [
+        "片尾资产名与真实画面一致：必须真的看见粗竹席。",
+        "不显示伪造可读梵文或古文；卷数信息只用用户原文。",
+        "末句字幕与竹席互不遮挡；不增加结尾口号、关注提示或延长声音。"
+      ],
+      "beats": [
+        {
+          "anchor": {
+            "unit_id": "narr-e925b50c3693d110",
+            "unit_index": 57,
+            "text_start": 0,
+            "text_end": 8,
+            "quote": "在此后的十九年里",
+            "sample": 24181200,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "从时代转回案头",
+          "action": "以现有译经室内建立安静空间，逐步靠近案台。",
+          "layer_design": "灯／书案与玄奘／窗与庭院。",
+          "asset_requirement": "复用 unit-062，清理背景后分层。",
+          "local_motion": "灯罩或灯焰内微亮暗；窗外变化不穿过窗框。",
+          "guard": "不把窗外天气细节当作史实再扩写。",
+          "id": "ending-01",
+          "start_sample": 24181200,
+          "end_sample": 24489840,
+          "start_seconds": 1007.55,
+          "end_seconds": 1020.41,
+          "start_frame": 25189,
+          "end_frame": 25510,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-e925b50c3693d110",
+            "unit_index": 57,
+            "text_start": 63,
+            "text_end": 72,
+            "quote": "一句梵文配一句汉话",
+            "sample": 24489840,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "把工作落在手与纸",
+          "action": "以笔、手、经卷的局部切镜表现逐字对勘；不靠画面文字堆积代替动作。",
+          "layer_design": "笔手／纸与卷／桌面。",
+          "asset_requirement": "END-02：如实施写字，需手与笔的连续状态；旧图只能静态特写。",
+          "local_motion": "局部停笔、对照、落笔；不用纸面整块扭动。",
+          "guard": "不得生成可读伪经文，不改原句。",
+          "id": "ending-02",
+          "start_sample": 24489840,
+          "end_sample": 24600480,
+          "start_seconds": 1020.41,
+          "end_seconds": 1025.02,
+          "start_frame": 25510,
+          "end_frame": 25626,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-fa7cf5d8f23f4e30",
+            "unit_index": 58,
+            "text_start": 0,
+            "text_end": 8,
+            "quote": "据《旧唐书》统计",
+            "sample": 24600480,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "成果让人听清",
+          "action": "经卷近景承接数字段；镜头慢退看见积累，不另加数据翻滚。",
+          "layer_design": "近卷／案台／书架。",
+          "asset_requirement": "复用 unit-063；文字不另加。",
+          "local_motion": "前景约 6 px、背景 1 px；不要快速数字动画。",
+          "guard": "原文数字只由现有旁白与字幕表达。",
+          "id": "ending-03",
+          "start_sample": 24600480,
+          "end_sample": 24831840,
+          "start_seconds": 1025.02,
+          "end_seconds": 1034.66,
+          "start_frame": 25626,
+          "end_frame": 25866,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-23f5ab1ea072a2db",
+            "unit_index": 59,
+            "text_start": 0,
+            "text_end": 6,
+            "quote": "麟德元年春天",
+            "sample": 24831840,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "病榻与嘱咐",
+          "action": "保留现有室内画面，调整关注点到人物与身旁弟子，逐步减少运动。",
+          "layer_design": "前景席与床沿／人物／窗。",
+          "asset_requirement": "复用 unit-064，脸部与身体保护。",
+          "local_motion": "窗外背景轻移，人物保持静止。",
+          "guard": "不加喘息、哭声或新的情绪表演。",
+          "id": "ending-04",
+          "start_sample": 24831840,
+          "end_sample": 25229280,
+          "start_seconds": 1034.66,
+          "end_seconds": 1051.22,
+          "start_frame": 25866,
+          "end_frame": 26280,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-23f5ab1ea072a2db",
+            "unit_index": 59,
+            "text_start": 74,
+            "text_end": 80,
+            "quote": "用一领粗竹席",
+            "sample": 25229280,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "提前交代遗物",
+          "action": "短切粗竹席纹理与卷边，再回到安静室内；这一镜为最终落点建立视觉记忆。",
+          "layer_design": "席边／席面／素地。",
+          "asset_requirement": "END-01：真正的粗竹席资产，当前缺失。",
+          "local_motion": "侧向约 4 px 的低幅视差，纹理不拉伸。",
+          "guard": "不展示遗体包裹细节，不把草席替代粗竹席。",
+          "id": "ending-05",
+          "start_sample": 25229280,
+          "end_sample": 25457760,
+          "start_seconds": 1051.22,
+          "end_seconds": 1060.74,
+          "start_frame": 26280,
+          "end_frame": 26518,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-8769aa8a0cc92125",
+            "unit_index": 60,
+            "text_start": 0,
+            "text_end": 6,
+            "quote": "玄奘安详圆寂",
+            "sample": 25457760,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "停止动作",
+          "action": "回到既有安静室内，保持画面，不追加强烈光效。",
+          "layer_design": "同一室内分层，运动归零。",
+          "asset_requirement": "复用 unit-064。",
+          "local_motion": "静止。",
+          "guard": "不画升天，不加钟声，不延长停顿。",
+          "id": "ending-06",
+          "start_sample": 25457760,
+          "end_sample": 25501680,
+          "start_seconds": 1060.74,
+          "end_seconds": 1062.57,
+          "start_frame": 26518,
+          "end_frame": 26564,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "unit_index": 61,
+            "text_start": 0,
+            "text_end": 9,
+            "quote": "唐高宗闻讯罢朝痛哭",
+            "sample": 25501680,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "由个人走向送别",
+          "action": "先保留静室或已存在且匹配的宫廷静景，待“出殡那天”再切人群。",
+          "layer_design": "室内现有层。",
+          "asset_requirement": "复用 unit-064；无需新增帝王哭泣特写。",
+          "local_motion": "保持低运动。",
+          "guard": "不靠虚构帝王表情增加戏剧性。",
+          "id": "ending-07",
+          "start_sample": 25501680,
+          "end_sample": 25611120,
+          "start_seconds": 1062.57,
+          "end_seconds": 1067.13,
+          "start_frame": 26564,
+          "end_frame": 26678,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "unit_index": 61,
+            "text_start": 18,
+            "text_end": 22,
+            "quote": "出殡那天",
+            "sample": 25611120,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "人群只用在送葬句",
+          "action": "使用 unit-065 的送葬远景，镜头慢退，避免从近处正脸营造新增具体人物。",
+          "layer_design": "前景队列／城门／远山。",
+          "asset_requirement": "复用 unit-065，深度层待准备。",
+          "local_motion": "前景 6 px／城门 2 px／远山 1 px；没有循环迈步素材就不伪造行走。",
+          "guard": "保持现有画风与服饰，不新增仪仗。",
+          "id": "ending-08",
+          "start_sample": 25611120,
+          "end_sample": 25742640,
+          "start_seconds": 1067.13,
+          "end_seconds": 1072.61,
+          "start_frame": 26678,
+          "end_frame": 26815,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "unit_index": 61,
+            "text_start": 38,
+            "text_end": 58,
+            "quote": "贞观初年那个混在饥民堆里溜出长安的年轻人",
+            "sample": 25742640,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "回望来路",
+          "action": "回用已经出现过的离城与行路画面作为回望，接经卷；切镜由原句触发。",
+          "layer_design": "既有行路图层；不混合成同一时空。",
+          "asset_requirement": "复用现有 new-refugee-gate 与 unit-019，先核对人物；不新增服装。",
+          "local_motion": "各镜微推；不做跨场景光流变形。",
+          "guard": "这是回望剪辑，不新增历史事件。",
+          "id": "ending-09",
+          "start_sample": 25742640,
+          "end_sample": 25850160,
+          "start_seconds": 1072.61,
+          "end_seconds": 1077.09,
+          "start_frame": 26815,
+          "end_frame": 26927,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "unit_index": 61,
+            "text_start": 59,
+            "text_end": 65,
+            "quote": "走了五万里路",
+            "sample": 25850160,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "路与经卷",
+          "action": "短接行路远景，再落经卷；为末句从宏大数量转到小物件腾出注意力。",
+          "layer_design": "行路／经卷分别成镜，不叠成奇观。",
+          "asset_requirement": "复用 unit-019 与 unit-063。",
+          "local_motion": "转场按句意切换，末镜减速。",
+          "guard": "不加数字或口号。",
+          "id": "ending-10",
+          "start_sample": 25850160,
+          "end_sample": 25933200,
+          "start_seconds": 1077.09,
+          "end_seconds": 1080.55,
+          "start_frame": 26927,
+          "end_frame": 27014,
+          "status": "design_only_assets_pending"
+        },
+        {
+          "anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "unit_index": 61,
+            "text_start": 76,
+            "text_end": 81,
+            "quote": "最后带走的",
+            "sample": 25933200,
+            "timing_source": "existing_acoustic_alignment_not_new_listening_approval"
+          },
+          "title": "只剩那一领粗竹席",
+          "action": "从第一字即切到竹席近景；让席面纹理与上方空处成为结尾，直到原音轨结束。",
+          "layer_design": "席边前景／席面中景／空背景。",
+          "asset_requirement": "END-01：缺失资产必须补齐，禁止拿 unit-065 代替。",
+          "local_motion": "最多推近 1%；最后 2 秒归零，不新增尾帧时长。",
+          "guard": "不添加关注文案；结束时间、字幕、声音保持。",
+          "id": "ending-11",
+          "start_sample": 25933200,
+          "end_sample": 26026752,
+          "start_seconds": 1080.55,
+          "end_seconds": 1084.448,
+          "start_frame": 27014,
+          "end_frame": 27111,
+          "status": "design_only_assets_pending"
+        }
+      ],
+      "start_sample": 24181200,
+      "start_seconds": 1007.55,
+      "end_seconds": 1084.448,
+      "render_ready": false,
+      "before_evidence": [
+        {
+          "id": "directed-074",
+          "image_id": "unit-062",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\b05a39e87daf2ad67dfd517dd763683af0048cc9c368bd85f5d0a94dda75af81\\unit-062.png",
+          "sample_start": 24181200,
+          "sample_end": 24600480,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "push",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.025,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-e925b50c3693d110",
+            "text_start": 0
+          },
+          "purpose": "十九年逐字对勘",
+          "animation": {
+            "version": 1,
+            "source_sha256": "af82d28b49af7185d4bd69ff5744b4e712bee1c8209b831d493e2c7e5e2b49c6",
+            "seed": 20261022,
+            "protected": [
+              [
+                [
+                  0.01,
+                  0.32
+                ],
+                [
+                  0.79,
+                  0.32
+                ],
+                [
+                  0.79,
+                  0.99
+                ],
+                [
+                  0.01,
+                  0.99
+                ]
+              ]
+            ],
+            "layers": [
+              {
+                "kind": "parallax",
+                "polygon": [
+                  [
+                    0.68,
+                    0.04
+                  ],
+                  [
+                    0.94,
+                    0.04
+                  ],
+                  [
+                    0.94,
+                    0.24
+                  ],
+                  [
+                    0.68,
+                    0.24
+                  ]
+                ],
+                "feather": 0.012,
+                "travel": [
+                  0.004,
+                  0
+                ],
+                "progress": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0.12,
+                    0
+                  ],
+                  [
+                    0.88,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              },
+              {
+                "kind": "glow",
+                "polygon": [
+                  [
+                    0.84,
+                    0.57
+                  ],
+                  [
+                    0.98,
+                    0.57
+                  ],
+                  [
+                    0.98,
+                    0.72
+                  ],
+                  [
+                    0.84,
+                    0.72
+                  ]
+                ],
+                "feather": 0.02,
+                "strength": 0.025,
+                "envelope": [
+                  [
+                    0,
+                    0.3
+                  ],
+                  [
+                    0.35,
+                    0.65
+                  ],
+                  [
+                    0.7,
+                    0.4
+                  ],
+                  [
+                    1,
+                    0.3
+                  ]
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "id": "directed-075",
+          "image_id": "unit-063",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5a0214a9e8ff40907a86aaafa81671462f8cd8a73eba92a12c5a9af758511ff0\\unit-063.png",
+          "sample_start": 24600480,
+          "sample_end": 24831840,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-fa7cf5d8f23f4e30",
+            "text_start": 0
+          },
+          "purpose": "部数卷数读清楚"
+        },
+        {
+          "id": "directed-076",
+          "image_id": "unit-064",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\2f7e13f01fef969ba50e5f25583cd878d3385017b0a8728b433b644bb080332f\\unit-064.png",
+          "sample_start": 24831840,
+          "sample_end": 25457760,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-23f5ab1ea072a2db",
+            "text_start": 0
+          },
+          "purpose": "遗命与薄葬"
+        },
+        {
+          "id": "directed-077",
+          "image_id": "unit-064",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\2f7e13f01fef969ba50e5f25583cd878d3385017b0a8728b433b644bb080332f\\unit-064.png",
+          "sample_start": 25457760,
+          "sample_end": 25501680,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-8769aa8a0cc92125",
+            "text_start": 0
+          },
+          "purpose": "圆寂处保持静止"
+        },
+        {
+          "id": "directed-078",
+          "image_id": "unit-065",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bf7892707ea67fb05eb04d742f2aa8f90c6cdad8eea936a32d3c3db68de28474\\unit-065.png",
+          "sample_start": 25501680,
+          "sample_end": 25933200,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "text_start": 0
+          },
+          "purpose": "送葬后落到粗竹席"
+        },
+        {
+          "id": "directed-079",
+          "image_id": "new-bamboo-mat",
+          "image_path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bf7892707ea67fb05eb04d742f2aa8f90c6cdad8eea936a32d3c3db68de28474\\unit-065.png",
+          "sample_start": 25933200,
+          "sample_end": 26026752,
+          "motion": {
+            "geometry_version": "fit_cover_v2",
+            "max_zoom": 1.6,
+            "type": "static",
+            "intensity": 0.08,
+            "start_xy": [
+              0.5,
+              0.5
+            ],
+            "end_xy": [
+              0.5,
+              0.5
+            ],
+            "start_zoom": 1.0,
+            "end_zoom": 1.0,
+            "easing": "ease_in_out",
+            "grade": null
+          },
+          "source_anchor": {
+            "unit_id": "narr-e8f9072bdf61b42e",
+            "text_start": 76
+          },
+          "purpose": "末句落在遗物，不再回用旧片尾姿态"
+        }
+      ]
+    }
+  ],
+  "next_steps": [
+    "先审四处动作顺序与构图方案",
+    "只准备缺失的母版、人物姿态和透明层；保留全部旧素材",
+    "实现当前引擎缺少的图层／遮罩能力后，按已有音轨做少量局部试排",
+    "视听审核后才接入新版本；不覆盖现有 workflow、directing、音轨和视频"
+  ],
+  "latest_source_checks": [
+    {
+      "role": "authoring",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_西行五万里：被通缉的硬汉玄奘.md",
+      "sha256": "a301046ad79f17be20fb8c8c54f6e2352fa232fd8b95263690b9baa74e6e5a74",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "tts_reference",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_Gemini_TTS专版.md",
+      "sha256": "cfb7c4a446713da773c3ba8b98582fdcb5c7ea86b14b5330a2bad8a4b124947e",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "writing_rule",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\Writing-DNA.md",
+      "sha256": "c65fd8d7c36cc9283954fa7c0ff683139f73554417274036d2767a145c364296",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "writing_rule",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\语言DNA.md",
+      "sha256": "3ef127086d03987362d6356efe387702fffc1c2cd72d3d3cac4fc2dba7f58e3c",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "writing_rule",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\文章结构模板.md",
+      "sha256": "04e5d87b934cd4706cda1f974cc1e5f10e8c156fa4d1e18451f890e63f11ba92",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    }
+  ],
+  "existing_asset_references": [
+    {
+      "id": "unit-000",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\0907b92b18b554ad12836efd28a8789b523d3c7fd77e62849847f70647b51912\\unit-000.png",
+      "sha256": "9abb52c65f6fe489e3006255156dcdf6047f745a59ba953f6f4408cf922a2f1d",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-001",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\94bf12bf2f7a77b0e37de5d828f5847c29b01be00c4632138788ca5faf74e9bd\\unit-001.png",
+      "sha256": "526ecde071251637411bbf8222306c0cc705c0d6ab7900e1897d6fb7f328e3ba",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-009",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\9f26c67a0aef705ad0fadf33e972b413e1981c4b346474a1034e6bd7f55d2d07\\unit-009.png",
+      "sha256": "e83503a0c5d2600e425954b08474739e649926edf628bb074f44bd7992888b64",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-012",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\d899be603cf279b90546c678bd3f6b44527c0a09ae46f3e02e9be9d197539177\\unit-012.png",
+      "sha256": "b5e6d0fab477100f6ffbf7170e251b70f5caded884e9b996dbbbb2c5ac2156f5",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-015",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\ff3017362d5c0e803196551067b889f63b51bbbeba96729396c6b860b9db53d2\\unit-015.png",
+      "sha256": "6fa431310c16dade8d3fea36fdf592acbaa9f30339f31ed420dd74ba7365e913",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-016",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5712f55d74668ddc48586085842d20c29ded138e5efcf76433e29fc90056cbb4\\unit-016.png",
+      "sha256": "a4a9c75a65ba23dd6172a8559648582485fbff49fd915827527d4d58bf32fa45",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-017",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bbca0c199eb69047db618ca98e1dba994023430fd3a5bccce5ceca302f0f4a93\\unit-017.png",
+      "sha256": "b8c9f34ee731b7a44834285e63a80a81517c47da199b4ad033f1397255154dab",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-019",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\f30603909a1d45ebafec32317407d41eb37e056e595f3bf45a7757f9f182f591\\unit-019.png",
+      "sha256": "65b4c7b02ff5baa525e778b9bc9f0bca87a0a5c7f5e3c480cc5495f18e8bc680",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-025",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\554ec7c00a0b85039277616e855203c012b606f885a02c1660a436c4e4513640\\unit-025.png",
+      "sha256": "e274cb43fc17f663726896612f802a3b845efe9d986c93a2748429417a848da0",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-026",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\681fb9c7a357ab559a428b7461c4075a77360b03281bce875dd55ffc3524bca0\\unit-026.png",
+      "sha256": "2490c2749d6cc61a592dc84e3b626845f8b9c40ef6f2e1ebc6f1995936d07423",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-062",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\b05a39e87daf2ad67dfd517dd763683af0048cc9c368bd85f5d0a94dda75af81\\unit-062.png",
+      "sha256": "af82d28b49af7185d4bd69ff5744b4e712bee1c8209b831d493e2c7e5e2b49c6",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-063",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5a0214a9e8ff40907a86aaafa81671462f8cd8a73eba92a12c5a9af758511ff0\\unit-063.png",
+      "sha256": "d42384aadc8f519f3c520ea6a8cb2365205baf2216b9173e2c3fa94dfaf6c612",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-064",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\2f7e13f01fef969ba50e5f25583cd878d3385017b0a8728b433b644bb080332f\\unit-064.png",
+      "sha256": "dbdf3858de017d9369f5577d80eb6e8d380ed89f6e872bcb127857ba0662c238",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "unit-065",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bf7892707ea67fb05eb04d742f2aa8f90c6cdad8eea936a32d3c3db68de28474\\unit-065.png",
+      "sha256": "38afcacfaecd364404674075bba6c8d686907059f079b27f85abff62f89ac42a",
+      "role": "unchanged_existing_reference_not_new_asset"
+    },
+    {
+      "id": "new-refugee-gate",
+      "path": "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\production\\v2\\images\\b613cd87c8ac29ceef06a02b7b92a859c2c91d7b267c722f9e25cb430afb9353\\new-refugee-gate.png",
+      "sha256": "9b08b61f433dee61b3cc1cb98607802d7d4dfb45b4536aad655c95adb94a7b6b",
+      "role": "unchanged_existing_reference_not_new_asset"
+    }
+  ]
+}

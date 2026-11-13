@@ -80,10 +80,6 @@ def artifacts_current(receipt):
 # renderer itself, its pinned runtime, its configuration). Everything else
 # (episode media, plans, bindings, fonts, voice assets) is content: if it
 # drifted, the bytes on disk may no longer be what the inputs describe.
-# NOTE: RENDERER_PARTS is documentation, not logic; _is_renderer decides.
-RENDERER_PARTS = ("app/", "requirements", "bin/local_asr_worker.py",
-                  "bin/local_alignment_worker.py", "app/config/")
-
 
 def _is_renderer(path: str) -> bool:
     try:

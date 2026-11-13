@@ -51,12 +51,11 @@ def test_public_prepare_preserves_source_without_migrating_old_frames(production
 
 
 def test_voice_resolution_uses_registered_asset_without_design(production_episode,monkeypatch):
-    from app.services import cosyvoice
-    monkeypatch.setattr(cosyvoice,'design_voice',lambda **kw:pytest.fail('must not redesign voice'))
-    assert cosyvoice.get_voice_id('cosyvoice-v3.5-flash')=='cosyvoice-fixture'
-    with pytest.raises(ValueError,match='model differs'):cosyvoice.get_voice_id('wrong-model')
+    from app.services.voice_assets import resolve_voice_asset
+    assert resolve_voice_asset('cosyvoice-v3.5-flash')[1]['voice_id']=='cosyvoice-fixture'
+    with pytest.raises(ValueError,match='model differs'):resolve_voice_asset('wrong-model')
     asset=production_episode[2]; data=N.read(asset);data['voice_id']='tampered';atomic_json(asset,data)
-    with pytest.raises(ValueError,match='version'):cosyvoice.get_voice_id('cosyvoice-v3.5-flash')
+    with pytest.raises(ValueError,match='version'):resolve_voice_asset('cosyvoice-v3.5-flash')[1]['voice_id']
 
 
 def test_public_default_budget_blocks_before_provider(production_episode,monkeypatch):
@@ -76,13 +75,12 @@ def offline_provider(request,raw):
 
 def test_v2_tts_reuses_exact_master_and_never_falls_back(production_episode,monkeypatch):
     from app.orchestrator import produce
-    from app.services import asr_check,voice
+    from app.services import asr_check
     calls=[]
     def provider(req,path):calls.append(req);return offline_provider(req,path)
     monkeypatch.setattr(N,'_provider',provider)
     monkeypatch.setattr(asr_check,'check',lambda audio,text:{'status':'unavailable',
         'audio_sha256':file_sha256(audio),'expected_sha256':fingerprint(text)})
-    monkeypatch.setattr(voice,'_one_edge',lambda *a:pytest.fail('no voice fallback'))
     ep,directory,_=production_episode
     # 2 个旁白单元（头部引用块是元数据，不产生 TTS 调用）→ 恰好 2 次供应商调用。
     # 断言精确次数是本测试的重点：多一次就意味着发生了 fallback 或重复合成。
@@ -99,11 +97,39 @@ def test_v2_tts_reuses_exact_master_and_never_falls_back(production_episode,monk
 
 def test_cosyvoice_failure_cannot_call_edge(production_episode,monkeypatch):
     from app.orchestrator import produce
-    from app.services import voice
     monkeypatch.setattr(N,'_provider',lambda *a:(_ for _ in ()).throw(RuntimeError('provider failed')))
-    monkeypatch.setattr(voice,'_one_edge',lambda *a:pytest.fail('unexpected Edge call'))
     r=produce(production_episode[0].id,stages=['tts'],max_requests=3,max_characters=100)
     assert not r['run_ok'] and 'provider failed' in r['error']
+
+
+def test_changed_external_master_cannot_reuse_old_manifest(production_episode,monkeypatch,tmp_path):
+    from app.orchestrator import produce
+    from app.services import episode_production as EP, external_narration as EN
+    ep,directory,_=production_episode
+    assert produce(ep.id,stages=['script'])['run_ok']
+    old=tmp_path/'old.wav';new=tmp_path/'new.wav'
+    offline_provider({},old);offline_provider({},new)
+    # Different immutable WAV bytes are enough to identify a changed recording.
+    new.write_bytes(new.read_bytes()+b'new-version')
+    state_path=directory/'production/v2/run.json';state=N.read(state_path)
+    old_manifest=tmp_path/'old.json';new_manifest=tmp_path/'new.json'
+    base={'plan_sha256':file_sha256(state['plan_path']),'technical_quality':'pending',
+          'provenance':'external_recording','takes':[],'master_path':str(old),
+          'source_recording':{'delivered_sha256':file_sha256(old)}}
+    atomic_json(old_manifest,base);state['manifest_path']=str(old_manifest);atomic_json(state_path,state)
+    monkeypatch.setattr(N,'validate_assembly',lambda p:N.read(p))
+    monkeypatch.setattr(N,'require_usable',lambda m:None)
+    monkeypatch.setattr(EP,'check_narration_binding',lambda *a,**k:None)
+    monkeypatch.setattr(EP,'resolve_voice_asset',lambda **k:pytest.fail('external audio must not resolve another voice'))
+    calls=[]
+    def build(plan,master,destination,**kwargs):
+        calls.append((str(master),kwargs['cache_dir']))
+        atomic_json(new_manifest,dict(base,master_path=str(new),source_recording={'delivered_sha256':file_sha256(new)}))
+        return new_manifest
+    monkeypatch.setattr(EN,'build',build)
+    result=produce(ep.id,stages=['tts'],external_master=str(new))
+    assert result['run_ok'] and N.read(state_path)['manifest_path']==str(new_manifest.resolve())
+    assert calls[0][0]==str(new) and calls[0][1].name==file_sha256(new)
 
 
 @pytest.mark.NEEDS_FFMPEG
@@ -122,8 +148,9 @@ def test_public_entry_renders_and_verifies_without_touching_legacy(production_ep
     atomic_json(timeline,{'shots':[{'id':'s1','sample_start':0,'sample_end':m['samples'],'image_path':str(image)}],
         'subtitles':[dict(unit_id=u['unit_id'],sample_start=u['sample_start'],sample_end=u['sample_end'],
                           text_start=0,text_end=len(u['text']),text=u['text']) for u in m['alignment']]})
-    r=produce(ep.id,stages=['compose','verify'],timeline=str(timeline))
-    assert r['run_ok'] and r['status']=='CANDIDATE' and not r['approved']
+    # Title-card authoring now requires the real quality timing report.
+    r=produce(ep.id,stages=['quality','compose','verify'],timeline=str(timeline))
+    assert r['run_ok'] and r['status']=='CANDIDATE' and not r['approved'], r
     before=state_path.read_bytes()
     assert produce(ep.id,stages=['verify'])['run_ok']
     assert state_path.read_bytes()==before
@@ -157,6 +184,44 @@ def test_image_reference_content_invalidates_cache(tmp_path):
     job=ImageJob('a',ImageGenRequest(model='gpt-image-2',prompt='ref'),tmp_path/'a.png',(str(ref),))
     job.install(png());assert job.is_done()
     ref.write_bytes(png(color='blue'));assert not job.is_done()
+
+
+@pytest.mark.parametrize('stage', ['images', 'tts', 'assets'])
+def test_retired_paid_legacy_stages_cannot_be_called_directly(stage):
+    from app.orchestrator import produce_legacy
+    with pytest.raises(ValueError, match='retired'):
+        produce_legacy('retired-fixture', stages=[stage])
+
+
+def test_failed_new_brief_cannot_reuse_same_key_old_plate(production_episode, monkeypatch):
+    from app.services import episode_production as E, image as I
+    ep, directory, _ = production_episode
+    root = directory/'production/v2'
+    source = '将士整顿队伍。'
+    brief = dict(source_sha256=fingerprint(source), images={
+        'unit-000': {'en': 'Soldiers regroup beside a camp at dawn.'}})
+    atomic_json(root/'source_image_briefs.json', brief)
+    def generated(jobs, **kwargs):
+        for job in jobs: job.install(png())
+        return {j.id:str(j.out) for j in jobs}
+    monkeypatch.setattr(I, 'generate_many', generated)
+    first = E.run(ep.id, stages=['images'], script_md=source, max_images=1)
+    assert first['run_ok'], first
+    old = N.read(root/'run.json')['image_assets']['unit-000']
+    brief['images']['unit-000']['en'] = 'Soldiers cross a bridge at sunset.'
+    atomic_json(root/'source_image_briefs.json', brief)
+    monkeypatch.setattr(I, 'generate_many', lambda jobs, **kw: {j.id:None for j in jobs})
+    second = E.run(ep.id, stages=['images'], script_md=source, max_images=1)
+    assert not second['run_ok'] and second['image_assets_incomplete'] == ['unit-000']
+    assert N.read(root/'run.json')['image_assets'] == {}
+    assert Path(old).is_file()
+
+
+def test_raw_narration_never_dispatches_a_new_image(production_episode, monkeypatch):
+    from app.services import episode_production as E
+    monkeypatch.setattr('app.services.image.generate_many', lambda *a, **kw: pytest.fail('raw narration dispatched'))
+    result = E.run(production_episode[0].id, stages=['images'], max_images=3)
+    assert not result['run_ok'] and 'missing visual briefs' in result['error']
 
 
 def test_v2_images_preserve_historical_assets(production_episode,monkeypatch):

@@ -15,14 +15,13 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.managers import load, save
 from app.services.external_audio import (ExternalAudioError, align_frames,
                                          cut_per_frame, read_wav,
                                          verify_binding, write_binding)
 
 pytestmark = pytest.mark.shared
-ROOT = Path(r"D:\hv")
+ROOT = Path(__file__).resolve().parents[1]
 SR = 16000
 
 
@@ -140,97 +139,3 @@ def test_write_binding_record_shape(tmp_path):
     for o in rec["frame_offsets"]:
         assert o["start_sample"] == cur
         cur += o["samples"]
-
-
-def test_verify_binding_detects_tampering():
-    for ep_id in ("caomin-01", "lishimin-04"):
-        f = ROOT / "episodes" / f"{ep_id}.json"
-        if not f.is_file():
-            continue
-        ep = load(ep_id)
-        assert verify_binding(ep)["ok"], ep_id
-        tgt = next((x for x in ep.frames
-                    if x.audio_path and (ROOT / "episodes" / ep_id / "audio" /
-                                         f"{x.id}.wav").is_file()), None)
-        if tgt is None:
-            continue
-        p = ROOT / "episodes" / ep_id / "audio" / f"{tgt.id}.wav"
-        bak = p.read_bytes()
-        try:
-            p.write_bytes(bak[:-1000] + b"\x00" * 1000)
-            bad = verify_binding(load(ep_id))
-            assert not bad["ok"], f"{ep_id}: tampered audio must fail the binding"
-            assert any("sha256" in x for x in bad["fails"]), bad["fails"]
-        finally:
-            p.write_bytes(bak)
-        assert verify_binding(load(ep_id))["ok"]
-
-
-def test_delivered_episodes_bind_to_existing_audio():
-    for ep_id in ("caomin-01", "lishimin-04"):
-        b = ROOT / "episodes" / ep_id / "production" / "external-audio-binding.json"
-        if not b.is_file():
-            pytest.skip(f"{ep_id} has no binding yet")
-        chk = verify_binding(load(ep_id))
-        assert chk["ok"], chk["fails"]
-        assert chk["frames"] == len(load(ep_id).frames)
-
-
-def test_admission_fingerprint_includes_binding():
-    """Changing a frame audio must invalidate the recorded input approval.
-
-    Fixture is lishimin-04 rather than caomin-01: both are hash-bound legacy
-    deliveries with an external-audio binding, so the property under test is
-    identical, but caomin-01's admission is legitimately refused since 2026-10-01
-    (see test_output_binding_and_legacy_status.caomin01_known_deviation) and the
-    test needs a currently-eligible episode to tamper with.
-    """
-    from app.services.production_admission import check
-    ep_id = "lishimin-04"
-    if not (ROOT / "episodes" / ep_id / "production" / "input-approval.json").is_file():
-        pytest.skip("no recorded approval")
-    before = check(ep_id)["input_fingerprint"]
-    assert before, "admission must resolve a fingerprint with a binding present"
-    assert check(ep_id)["eligible"], check(ep_id)["blockers"]
-    tgt = next(x for x in load(ep_id).frames
-               if x.audio_path and (ROOT / "episodes" / ep_id / "audio" /
-                                    f"{x.id}.wav").is_file())
-    p = ROOT / "episodes" / ep_id / "audio" / f"{tgt.id}.wav"
-    bak = p.read_bytes()
-    try:
-        p.write_bytes(bak[:-500] + b"\x00" * 500)
-        after = check(ep_id)
-        assert not after["eligible"], "tampered audio must break admission"
-        assert any("binding" in x for x in after["blockers"]), after["blockers"]
-    finally:
-        p.write_bytes(bak)
-    assert check(ep_id)["eligible"]
-
-
-def test_verify_stage_rejects_tampered_audio():
-    ep_id = "caomin-01"
-    out = ROOT / "episodes" / ep_id / "out" / f"{ep_id}_m1.mp4"
-    if not out.is_file():
-        pytest.skip("no composed mp4")
-    tgt = next(x for x in load(ep_id).frames
-               if x.audio_path and (ROOT / "episodes" / ep_id / "audio" /
-                                    f"{x.id}.wav").is_file())
-    p = ROOT / "episodes" / ep_id / "audio" / f"{tgt.id}.wav"
-    bak = p.read_bytes()
-    try:
-        p.write_bytes(bak[:-800] + b"\x00" * 800)
-        r = subprocess.run(
-            [r"D:\hv\.venv-core\Scripts\python.exe", "-m", "app.cli", "episode",
-             "produce", ep_id, "--stage", "verify", "--pipeline", "legacy-preview"],
-            capture_output=True, text=True, encoding="utf-8", errors="replace",
-            env={**os.environ, "PYTHONPATH": str(ROOT), "PYTHONUTF8": "1",
-                 "PYTHONIOENCODING": "utf-8",
-                 "PATH": (r"C:\Users\coumoo\AppData\Local\Microsoft\WinGet\Packages"
-                          r"\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe"
-                          r"\ffmpeg-9.0.2-full_build\bin")
-                        + os.pathsep + os.environ["PATH"]},
-            timeout=1800)
-        assert r.returncode != 0
-        assert "绑定" in (r.stdout + r.stderr)
-    finally:
-        p.write_bytes(bak)

@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services.script_document import parse_document
 
 pytestmark = pytest.mark.shared

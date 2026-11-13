@@ -1,6 +1,6 @@
 schema_version: 1
-project: hv
-scope: local historical-video candidate production
+project: hv-studio
+scope: source-bound editorial planning, pilot review, local historical-video candidate production and manual publication feedback
 source_of_truth: app/services/episode_production.py
 runtime: requirements.core.lock.txt
 asr_runtime: requirements.asr.lock.txt
@@ -9,6 +9,10 @@ test_scope: production
 optional_component_checks: scripts/ai-project-check.ps1 -Suite shared
 optional_compatibility_checks: scripts/ai-project-check.ps1 -Suite legacy
 invariants:
+  - Active work lives in workspace; copied episode receipts remain historical.
+  - Never write to the original checkout through copied absolute paths.
+  - Generation requires current key-fact confirmation; pilots and detailed claim tables are optional.
+  - Frozen source snapshots remain authoritative; external updates do not silently replace them.
   - Preserve source narration, historical images and raw audio takes.
   - Never call a paid provider without a durable remaining request budget.
   - Reuse only matching input identities and output hashes.

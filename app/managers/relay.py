@@ -26,12 +26,14 @@ from app.config.config import Channel, get_settings
 from app.models import QuotaSnapshot
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-STATE_DIR = ROOT / "state"
+from app.paths import state_dir
+STATE_DIR = state_dir()
 HEALTH_PATH = STATE_DIR / "relay_health.json"
 
 WINDOW_SIZE = 32
 QUOTA_TTL = timedelta(hours=1)
 REQUEST_COOLDOWN_AFTER_FAIL = timedelta(seconds=30)
+HEALTH_WINDOW_SECONDS = 3600
 
 # score() 的惩罚权重（2026-09-23 修正）。约束：**错误必须压倒延迟**——
 # 否则「慢但可靠」会被「快但全错」挤到后面，且错误率饱和后不再恶化 → 永不自愈。
@@ -68,14 +70,15 @@ class ChannelHealth:
         新权重让「错」压倒「慢」：全失败渠道必落到慢但可靠的渠道之后，
         同时新渠道（无历史=100）仍保留一次被尝试的机会。
         """
-        if not self.history:
+        recent = [row for row in list(self.history) if row[2] >= time.time() - HEALTH_WINDOW_SECONDS]
+        if not recent:
             return 100.0
-        n = len(self.history)
-        ok = sum(1 for h in self.history if h[0])
+        n = len(recent)
+        ok = sum(1 for h in recent if h[0])
         err_rate = 1 - ok / n
-        p50 = sorted(h[1] for h in self.history)[n // 2]
+        p50 = sorted(h[1] for h in recent)[n // 2]
         # 最近一次失败时间：失败后 30s 内大幅降权
-        last_fail = max((h[2] for h in self.history if not h[0]), default=0)
+        last_fail = max((h[2] for h in recent if not h[0]), default=0)
         cooldown_penalty = 0
         if last_fail and time.time() - last_fail < REQUEST_COOLDOWN_AFTER_FAIL.total_seconds():
             cooldown_penalty = -1000
@@ -88,12 +91,27 @@ class ChannelHealth:
 
     @property
     def is_healthy(self) -> bool:
-        """健康度门槛：error rate < 50% 且 p50 < 60s"""
-        if len(self.history) < 3:
+        """按最近一小时的请求判断，过期记录不永久阻断渠道。"""
+        recent = [row for row in list(self.history) if row[2] >= time.time() - HEALTH_WINDOW_SECONDS]
+        if len(recent) < 3:
             return True
-        n = len(self.history)
-        ok = sum(1 for h in self.history if h[0])
+        n = len(recent)
+        ok = sum(1 for h in recent if h[0])
         return (ok / n) > 0.5
+
+    @property
+    def dispatch_capacity(self) -> int:
+        """Recover using one new job, then restore slots after two successes.
+
+        Historical error ratios remain diagnostic, not an hour-long dispatch ban.
+        Cooldown is measured from the last outcome, including a failed probe.
+        """
+        recent = [r for r in list(self.history) if r[2] >= time.time() - HEALTH_WINDOW_SECONDS]
+        if self.is_healthy or (len(recent) >= 2 and all(r[0] for r in recent[-2:])):
+            return self.channel.max_concurrency
+        if recent and time.time() - recent[-1][2] >= 60:
+            return 1
+        return 0
 
     def to_dict(self) -> dict:
         return {
@@ -113,7 +131,8 @@ class ChannelHealth:
     @classmethod
     def from_dict(cls, channel: Channel, d: dict) -> "ChannelHealth":
         h = cls(channel)
-        h.history = deque(d.get("history", []), maxlen=WINDOW_SIZE)
+        # JSON arrays must return to the same immutable representation as record().
+        h.history = deque((tuple(row) for row in d.get("history", [])), maxlen=WINDOW_SIZE)
         if d.get("last_quota"):
             h.last_quota = QuotaSnapshot.model_validate(d["last_quota"])
         if d.get("last_quota_fetch"):
@@ -139,33 +158,39 @@ class RelayManager:
         if not chs:
             raise RuntimeError("没有可用渠道，请检查 .env 中 *_gpt-image-2 密钥")
         self._channels: dict[str, ChannelHealth] = {c.name: ChannelHealth(c) for c in chs}
-        self._slots = {c.name: threading.BoundedSemaphore(c.max_concurrency) for c in chs}
         self._load()
 
     def request_slot(self, name: str):
-        """All entry points and processes share one supplier lane.
-
-        Conservative cap of one remains safe during configuration changes.
-        Different suppliers still run concurrently.
-        """
+        """Share the supplier's configured slots across threads, models and processes."""
         from contextlib import contextmanager
         from app.services.process_lock import file_lock
         from app.services.provenance import fingerprint
         import time
 
+        slots = self._channels[name].channel.max_concurrency
+        base = STATE_DIR/'provider-slots'/fingerprint(name.casefold())
+        # Slot zero uses the original lock path so a running older worker is counted.
+        locks = [base.with_suffix('.lock')] + [
+            base.with_name(f'{base.name}-{i}.lock') for i in range(1, slots)]
+
         @contextmanager
         def acquire():
-            deadline = time.monotonic() + 900
+            started = time.monotonic()
             while True:
-                lock = file_lock(STATE_DIR/'provider-slots'/(fingerprint(name.casefold())+'.lock'))
-                try:
-                    lock.__enter__()
-                    break
-                except RuntimeError:
-                    if time.monotonic() >= deadline: raise RuntimeError('supplier lane wait deadline exceeded')
-                    time.sleep(.05)
-            try: yield
-            finally: lock.__exit__(None, None, None)
+                for path in locks:
+                    lock = file_lock(path)
+                    try:
+                        lock.__enter__()
+                    except RuntimeError:
+                        continue
+                    try:
+                        yield time.monotonic()-started
+                    finally:
+                        lock.__exit__(None, None, None)
+                    return
+                if time.monotonic()-started >= 900:
+                    raise RuntimeError('supplier slot wait deadline exceeded')
+                time.sleep(.05)
         return acquire()
 
     # ---- 持久化 ----
@@ -211,6 +236,7 @@ class RelayManager:
                 "models": h.channel.models or [h.channel.model],
                 "max_concurrency": h.channel.max_concurrency,
                 "healthy": h.is_healthy,
+                "dispatch_capacity": h.dispatch_capacity,
                 "n_history": len(h.history),
                 "ok_rate": (sum(1 for x in h.history if x[0]) / len(h.history))
                            if h.history else 1.0,
@@ -261,9 +287,33 @@ class RelayManager:
     def _save_locked(self) -> None:
         """内部用：调用方必须已持锁。"""
         STATE_DIR.mkdir(parents=True, exist_ok=True)
-        data = {name: h.to_dict() for name, h in self._channels.items()}
         from app.services.provenance import atomic_json
-        atomic_json(HEALTH_PATH, data)
+        from app.services.process_lock import file_lock
+        deadline = time.monotonic() + 10
+        while True:
+            lock = file_lock(HEALTH_PATH.with_suffix('.lock'))
+            try:
+                lock.__enter__()
+                break
+            except RuntimeError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.03)
+        try:
+            data = json.loads(HEALTH_PATH.read_text(encoding='utf-8')) if HEALTH_PATH.exists() else {}
+            for name, health in self._channels.items():
+                previous = data.get(name, {})
+                history = {tuple(row) for row in previous.get('history', [])}
+                history.update(health.history)
+                health.history = deque(sorted(history, key=lambda row: row[2])[-WINDOW_SIZE:], maxlen=WINDOW_SIZE)
+                row = health.to_dict()
+                if previous.get('last_quota_fetch') and (not row['last_quota_fetch'] or
+                        previous['last_quota_fetch'] > row['last_quota_fetch']):
+                    row.update(last_quota=previous.get('last_quota'), last_quota_fetch=previous['last_quota_fetch'])
+                data[name] = row
+            atomic_json(HEALTH_PATH, data)
+        finally:
+            lock.__exit__(None, None, None)
 
 
 # ---------------------------------------------------------------------------

@@ -80,20 +80,8 @@ profiles:
       # 起伏改用 SSML 逐句 rate（确定性）。留空；实验时可临时填回。
       instruction: null
 
-      # ---- qwen-audio-3.0-tts ----
-      # 官方示例指令（纪录片解说场景原话），W1 实测效果最佳
-      qwen_model: qwen-audio-3.0-tts-flash
       cosyvoice_model: cosyvoice-v3.5-flash
       voice_asset: state/voice_assets/cosyvoice-v3.5-flash-hvndrama.json
-      # 逐句 SSML（rate 定起伏 + phoneme 定读音），引擎无关，开即生效。
-      # ⚠️ 开着 SSML 时不要同时配 instruction：实测两者叠加会打架（W4 更差）。
-      tts_ssml: true
-      qwen_rate: null
-      qwen_instruction: "沉稳的中年男性，语速缓慢，音色低沉有磁性，适合朗读历史纪录片解说。"
-      qwen_hot_fix:
-        replace:
-          - 万石: 万担
-          - 晋阳令刘文静: 晋阳县令刘文静
 
     # 2026-09-05 整改 C2 起，本段**真正生效**（此前 compose.py 里全是硬编码，
     # 改这里完全不起作用）。改完记得它确实会影响出片。
@@ -137,17 +125,7 @@ profiles:
       fade_out_sec: 5
 
 # ===========================================================================
-# （顶层 tts 死配置已删：voice.py 实际用 cosyvoice 主 / edge 回退，由
-#  profile.voice 塑形参数 + voice.py 常量驱动；旧 qwen3-tts/kokoro 段无生产
-#  代码读取，保留误导。）
-# ===========================================================================
 
-# ===========================================================================
-# ===========================================================================
-# 生图（继承自旧 models.yaml.image，重大修订）
-# ===========================================================================
-# Supplier availability checked with bounded real requests on 2026-09-22.
-# Model variants share a supplier key and its concurrency limit.
 image_channels:
   - name: cxk
     key_env: cxk_gpt-image-2
@@ -157,7 +135,9 @@ image_channels:
     # ⚠️ 模型清单**只放用户提供的**（2026-09-26 用户明确要求）。
     #    即使 GET /v1/models 探测到服务端还有别的模型（gemini-3-*/grok-imagine-image），
     #    也不得擅自登记使用 —— 需用户显式提供后方可加入。
-    models: [gpt-image-2, gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst]
+    models: [gpt-image-2, gpt-image-2.5, gpt-image-2.5-flare, gpt-image-2.5-sunburst,
+             gpt-image-2.6, gpt-image-2.6-flare, gpt-image-2.6-sunburst,
+             gpt-image-2.6-4k, gpt-image-2.6-flare-4k, gpt-image-2.6-sunburst-4k]
   - name: aicost
     key_env: aicost_gpt-image-2
     enabled: false
@@ -169,30 +149,19 @@ image_channels:
     models: [gpt-image-2]
   - name: qcyc  # QC_YC
     key_env: qcyc_gpt-image-2
-    # 2026-09-23 恢复启用（用户决定）：分担 cxk 的串行压力
-    # （此前只有 cxk 一条渠道 + max_concurrency 1，是生图 ~50s/img 的直接原因）。
-    # ⚠️ models 必须与服务端**实际**能力一致 —— 用 GET /v1/models 当场核对
-    #    （免费、即时，比翻历史成功率可靠）。2026-09-23 15:22 实测该 key 返回：
-    #      ['gpt-image-2', 'gpt-image-2.5-sunburst']
-    #    故**不写 gpt-image-2.5-flare**（用户明确说它今天还不能用，服务端列表
-    #    里也确实没有）。写进去会让 supports() 误判为可用 → 派活后失败。
-    #    同一次探测里 cxk 返回 5 个模型（含 flare），说明列表是按 key 区分的真数据。
-    # 历史：2026-09-07 审计 ok_rate=0.4375（n_history=32）故被暂停；
-    #      同日 15:0x 首次探测该 key 返回 0 个模型，15:22 复测返回 2 个
-    #      —— 服务端能力会随时变化，**每次启用前都要当场核对**。
     enabled: true
     # 并发 1→3（2026-09-26 实测成功率 94%，远优于 cxk 的 59%）
     max_concurrency: 3
-    # 模型清单保持用户 2026-09-23 提供的版本（不得擅自增删）。
-    # ⚠️ 2026-09-26 探测：本 key 的 GET /v1/models 只返回 gpt-image-2，
-    #    2.5-sunburst 可能已不可用 —— 若派活失败会 failover 到 cxk（cxk 也支持 sunburst）。
-    #    是否保留由用户决定，不擅自删除。
-    models: [gpt-image-2, gpt-image-2.5-sunburst]
+    # 用户提供并经本渠道 2026-11-10 模型列表核对。
+    models: [gpt-image-2, gpt-image-2.5-flare, gpt-image-2.5-sunburst,
+             gpt-image-2.6-flare, gpt-image-2.6-sunburst]
 
 image:
+  scene_models:
+    large_crop: [gpt-image-2.6-sunburst-4k, gpt-image-2.6-flare-4k, gpt-image-2.6-4k]
   primary:
     engine: gpt-image-2
-    model: gpt-image-2
+    model: gpt-image-2.6-sunburst
     api_base: https://subrouter.ai          # 由 .env 中 gpt-image-2_API_BASE 覆盖
     api_key_env: null                       # 走三渠道池，不再用单一 env
     endpoint_generate: /v1/images/generations
@@ -203,7 +172,6 @@ image:
     response_format: b64_json
     timeout_s: 300                          # 实测 33s，留 9× 余量
     max_reference_images: 16
-    concurrency: 6
     # 注：requires_upscale 已删——它在全仓零消费者，超分由 compose/motion 内部
     # 经 app/services/upscale.py 惰性完成。不要加回来（同坑 #38）。
     supports_seed: false
@@ -238,7 +206,6 @@ image:
       device: cuda
       enable_attention_slicing: true
       enable_vae_tiling: true
-      concurrency: 1
       note: 临界可行，上线前必须跑 bin/probe_sdxl_vram.py 实测确认
     - engine: diffusers_sd15
       dtype: fp16

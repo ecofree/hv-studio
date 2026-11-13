@@ -712,11 +712,8 @@ def _encode_video_span_once(
                 n_frames = len(boxes)
                 for n, box in enumerate(boxes):
                     x0, y0, x1, y1 = box
-                    cw, ch = x1 - x0, y1 - y0
-                    if cw == W and ch == H:
-                        frame = img.crop(box)
-                    else:
-                        frame = img.crop(box).resize((W, H), Image.LANCZOS)
+                    from app.services.motion import camera_crop
+                    frame = camera_crop(img,box)
                     # 光线调色在已裁帧上做（峰值内存 ~1/3，低 pagefile 避免与编码器争）
                     if grade:
                         frame = apply_grade(frame, grade)

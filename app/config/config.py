@@ -168,9 +168,6 @@ class ProfileVoice(BaseModel):
     voice_asset: str | None = None
     """音色塑形（CosyVoice v3.5 合成参数，可选；None = 服务端默认）。"""
     engine: str
-    # fallback_engine 已删（P1-3 审计）：全仓零消费者，配置在撒谎。
-    # 2026-09-08 起引擎失败直接 raise（--no-fallback 语义）。
-    fallback_engine: str | None = None  # 已废弃，勿配置
     speaker: str
     speed: float = 1.0
     pitch: float = 0.0
@@ -184,25 +181,9 @@ class ProfileVoice(BaseModel):
     volume: int | None = None
     instruction: str | None = None
 
-    # ---- qwen-audio-3.0-tts（engine: qwen 时生效）----
-    # qwen_model      : qwen-audio-3.0-tts-plus / -flash
-    # qwen_instruction: 全局风格指令（W1 实测：全程一条最稳，组间不漂移）
-    # qwen_hot_fix    : 官方多音字修复 {"pronunciation":[{词:拼音}],
-    #                   "replace":[{词:替换文本}]}。
-    #                   ⚠️ pronunciation 是全局替换，量词类（石 dan4/shí）
-    #                   必须用短语级 replace，否则误伤同形字（磨刀石踩坑）。
-    qwen_model: str | None = None
-    qwen_instruction: str | None = None
-    qwen_hot_fix: dict | None = None
-    qwen_rate: float | None = None
     # cosyvoice 侧模型（None → cosyvoice.DEFAULT_COSYVOICE_MODEL / env）
     cosyvoice_model: str | None = None
 
-    # 逐句 SSML（rate 定起伏 + phoneme 定读音）——**引擎无关**：
-    # cosyvoice-v3.5 与 qwen-audio-3.0 都实测支持。原名 qwen_ssml 语义太窄
-    # （2026-09-09 切回 cosyvoice 时发现：只对 qwen 生效会让切引擎后静默
-    # 退回指令模式 → 组间漂移）。
-    tts_ssml: bool = False
 
 
 # H 批（2026-09-05）：ProfileRhythm 整段删除。
@@ -253,7 +234,7 @@ class ProfileBGM(BaseModel):
 
 
 class ProfileASR(BaseModel):
-    backend: str = "dashscope"
+    backend: str = "local-whisper"
     python_executable: str = ".venv-asr/Scripts/python.exe"
     model_dir: str = ".cache/asr/faster-whisper-small"
     threads: int = Field(default=4, ge=1, le=16)
@@ -297,7 +278,6 @@ class ImageEngineConfig(BaseModel):
     response_format: str | None = "b64_json"
     timeout_s: int | None = 300
     max_reference_images: int | None = 16
-    concurrency: int | None = 6
     # 注：requires_upscale 已删（2026-10-13）。它在全仓零消费者——超分实际在
     # compose/motion 内部由 app/services/upscale.py 惰性完成并带缓存，shots/
     # 里本来就没有 @2x 文件。留着只会让人以为有独立产物（同坑 #38）。
@@ -323,8 +303,13 @@ class ImagePostprocessUpscale(BaseModel):
 # 它是「定妆包 + 人脸相似度」那套已删能力的配置项，留着只会让人以为能力还在。
 
 
+class SceneModels(BaseModel):
+    large_crop: list[str] = Field(default_factory=list)
+
+
 class ImageConfig(BaseModel):
     primary: ImageEngineConfig
+    scene_models: SceneModels = Field(default_factory=SceneModels)
     postprocess_upscale: ImagePostprocessUpscale
     fallbacks: list[ImageEngineConfig]
 
@@ -481,30 +466,6 @@ class Settings(BaseSettings):
     def get_profile(self) -> StyleProfile:
         return self.profiles[self.profile_name]
 
-    def get_image_size_requested(self) -> tuple[int, int]:
-        """请求的 size（仅用于长宽比）。"""
-        w, h = self.image_size.split("x")
-        return int(w), int(h)
-
-    def predict_actual_image_dims(self) -> tuple[int, int]:
-        """预测 subrouter 返回图的真实像素。
-
-        公式与真源（SUBROUTER_PIXEL_CAP / predict_actual_dims）都在
-        app/services/spec.py —— H 批收口：此前这里有一份 MP_FIXED = 1024*1536
-        和一份照抄的公式，与 app/models/relay.py 的 SUBROUTER_PIXEL_CAP
-        互为副本，改一处忘一处就会让「hv config 打印的尺寸」和「relay
-        按尺寸算配额」对不上。
-        """
-        from app.services.spec import predict_actual_dims
-        w, h = self.get_image_size_requested()
-        return predict_actual_dims(w, h)
-
-    def predict_upscaled_dims(self) -> tuple[int, int]:
-        """超分后尺寸 = 实测像素 × scale。"""
-        w, h = self.predict_actual_image_dims()
-        scale = self.image.postprocess_upscale.scale
-        return w * scale, h * scale
-
 
 # ---------------------------------------------------------------------------
 # 单例
@@ -526,8 +487,6 @@ if __name__ == "__main__":
     print(f"profile      : {s.profile_name}")
     print(f"image model  : {s.image_model}")
     print(f"image size   : {s.image_size}  (请求)")
-    print(f"actual dims  : {s.predict_actual_image_dims()}  (subrouter 预测)")
-    print(f"upscaled     : {s.predict_upscaled_dims()}")
     print(f"channels     : {[c.name for c in s.channels]}")
     print(f"video        : {s.video.primary.engine} ({s.video.primary.endpoint})")
     print(f"vram         : measured={s.runtime.vram.measured_usable_GB}GB")

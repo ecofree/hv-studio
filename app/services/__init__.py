@@ -24,7 +24,7 @@ H 批（2026-09-05）：从「顶层 import 全部子模块」改成 PEP 562 惰
 ----------
 - `from app.services import compose` 语义不变：首次访问属性时才真正导入。
 - `from app.services.spec import FPS` 不再拉起 compose 等重模块。
-- `import app.services.compose` / `from app.services.voice import x` 照常。
+- `import app.services.compose` 照常。
 
 D2（2026-09-05）：alignment / subtitle 已删——两个都是空壳，零调用点，
 只在 __init__ 里被导出。真正在做的是 compose 里的烧字幕与 script 里的切分。
@@ -36,7 +36,7 @@ import importlib
 # app/services/ 下的全部子模块。列在这里 ≠ 立刻导入。
 _LAZY = (
     "bgm", "compose", "cosyvoice", "image", "motion", "polyphone",
-    "script", "shot_builder", "spec", "timing_assert", "upscale", "voice",
+    "script", "shot_builder", "spec", "timing_assert", "upscale",
 )
 
 __all__ = list(_LAZY)

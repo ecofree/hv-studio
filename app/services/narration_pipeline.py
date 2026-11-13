@@ -25,16 +25,52 @@ def read(path):
 
 def prepare(source, destination, max_units=None):
     source, destination = Path(source), Path(destination)
-    document = parse_document(source.read_text(encoding="utf-8"), str(source.resolve()))
+    handoff = None
+    if (source.parent / "manifest.json").exists():
+        manifest = read(source.parent / "manifest.json")
+        if manifest.get("schema_version", "").startswith("writing-handoff-"):
+            from app.services.script_handoff import verify_revision
+            verify_revision(source.parent)
+            if source.name != "narration.md":
+                raise ValueError("Prepare the derived narration.md from the writing handoff")
+            handoff = {"manifest_path": str((source.parent / "manifest.json").resolve()),
+                       "manifest_sha256": file_sha256(source.parent / "manifest.json")}
+    document = (read(source.parent / 'document.json') if handoff else
+                parse_document(source.read_text(encoding="utf-8"), str(source.resolve())))
     units = document["units"][:max_units] if max_units else document["units"]
     plan = {"schema_version":"2.0", "source_sha256":document["source_sha256"],
             "units":units, "rewrites":[], "delivery_cues":document["delivery_cues"],
             "source_path":str(source.resolve()), "status":"prepared"}
+    if handoff:
+        plan["writing_handoff"] = handoff
     plan["plan_id"] = fingerprint(plan)
     target = destination / plan["plan_id"]
     atomic_json(target/"document.json",document)
     atomic_json(target/"plan.json",plan)
     return target/"plan.json"
+
+
+def _require_writing_handoff(plan):
+    """Recheck the authored version at dispatch, even if a plan predates edits."""
+    binding = plan.get("writing_handoff")
+    if not binding:
+        return  # Existing source-frozen plans retain their original contract.
+    path = Path(binding["manifest_path"])
+    if not path.is_file() or file_sha256(path) != binding["manifest_sha256"]:
+        raise ValueError("Handoff manifest drift; import a new editorial revision")
+    from app.services.script_handoff import verify_revision
+    verify_revision(path.parent)
+    if Path(plan["source_path"]).resolve() != (path.parent / "narration.md").resolve():
+        raise ValueError("Handoff source path differs from bound revision")
+    canonical = read(path.parent / "document.json")
+    if (plan["source_sha256"] != canonical["source_sha256"]
+            or plan.get("delivery_cues") != canonical["delivery_cues"]):
+        raise ValueError("Handoff text or director cues differ from bound revision")
+    actual = {u["unit_id"]: u for u in canonical["units"]}
+    for unit in plan["units"]:
+        if unit["unit_id"] not in actual or any(unit[k] != actual[unit["unit_id"]][k]
+                for k in ("source_text", "source_map", "approved_spoken_text", "display_text")):
+            raise ValueError("Handoff unit differs from bound source")
 
 
 def import_voice(cache_path, destination):
@@ -134,6 +170,7 @@ def generation_quote(plan_path, asset_path):
     """Check every missing actual request before a multi-stage paid run."""
     from app.services.delivery import effective_unit
     plan, asset = read(plan_path), read(asset_path)
+    _require_writing_handoff(plan)
     base = Path(plan_path).parent
     document = read(base/'document.json')
     if fingerprint(document['source']) != plan['source_sha256']: raise ValueError('plan/source mismatch')
@@ -163,6 +200,7 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                provider=None, checker=None, budget=None):
     from app.services.asr_check import check
     plan,asset=read(plan_path),read(asset_path)
+    _require_writing_handoff(plan)
     document=read(Path(plan_path).with_name("document.json"))
     if fingerprint(document["source"])!=plan["source_sha256"]:
         raise ValueError("plan/source mismatch")
@@ -306,6 +344,10 @@ def validate_assembly(manifest_path):
     if samples!=manifest["samples"]: raise ValueError("master sample count mismatch")
     for take in manifest["takes"]:
         if file_sha256(take["raw_path"])!=take["raw_sha256"] or file_sha256(take["audio_path"])!=take["audio_sha256"]: raise ValueError("raw audio changed")
+    from app.services.narration_continuity import validate_continuous
+    validate_continuous(manifest)
+    from app.services.studio_narration_handoff import validate_manifest
+    validate_manifest(manifest)
     if manifest.get('base_manifest_path'):
         if file_sha256(manifest['base_manifest_path']) != manifest['base_manifest_sha256']:
             raise ValueError('base narration manifest changed')

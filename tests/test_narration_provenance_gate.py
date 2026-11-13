@@ -14,7 +14,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services.episode_production import check_narration_binding
 from app.services.external_narration import PROVENANCE
 

@@ -1,8 +1,7 @@
 """
 命令行入口。提供子命令：
   status   [id]                  查看进度和下一步
-  episode  init/show/produce/reshot/shots/checkpoint/audit-wav
-           run = 已废弃（2026-09-05 双轨编排器删除，仅打印指路提示后 exit 1）
+  episode  init/show/produce/shots/checkpoint/audit-wav
   relay    status/sync/pick
   clean    --all | --episode ID  [--segments] [--apply]
                                  build/ 中间产物清理（默认 dry-run；图片资产永不删）
@@ -42,33 +41,10 @@ def cmd_episode(args):
         ep = load(args.episode_id)
         p = checkpoint(ep, args.label)
         print(f"checkpoint: {p}")
-    elif args.action == "run":
-        # C3（2026-09-05）：双轨编排器 app/managers/pipeline.py 已删。
-        # `run` 只保留一个版本的路标，不再静默执行任何东西——直接退出，
-        # 避免「以为跑了其实跑的是另一套逻辑」这种最坏情况。
-        raise SystemExit(
-            "[deprecated] `hv episode run` 已移除（旧的双轨编排器 pipeline.py 已删）。\n"
-            "  全流程重跑 → hv episode produce <id> [--stage tts] [--no-fallback]\n"
-            "  单镜重建   → hv episode reshot <id> --key LGT01 [--key LGT02]\n"
-            "  分镜装配   → hv episode shots <id> [--dry-run]")
-    elif args.action == "reshot":
-        # C3：单镜重建（删旧图 → 只重生成这几个 key → 重新装配 → 重新合成）。
-        # 这是旧 `run --only` 的唯一替代路径，实现在 orchestrator.reshot。
-        from app.orchestrator import reshot
-        import json
-        keys = args.key or []
-        if not keys:
-            raise SystemExit("error: reshot 至少一个 --key（底图 key，如 LGT01）")
-        res = reshot(args.episode_id, keys,
-                     do_verify=not getattr(args, "no_verify", False), budget_id=args.budget_id, max_images=args.max_images)
-        print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
     elif args.action == "produce":
         # P0-3：真实生产链（script→tts→compose→verify），状态由产物推进。
         from app.orchestrator import produce
         import json
-        # --no-fallback（B2-3）：cosyvoice 失败不再静默降级 edge。
-        # 默认降级是为了「跑得完」，但代价是一部片子里混两种声音且无声无息；
-        # 交付集应显式关掉，让失败暴露在 TTS 阶段而不是等成片后被人耳发现。
         options = dict(max_requests=args.max_requests, max_characters=args.max_characters,
                        max_images=args.max_images, timeline=args.timeline, timeout=args.timeout, budget_id=args.budget_id,
                        max_image_retries=args.max_image_retries)
@@ -78,25 +54,20 @@ def cmd_episode(args):
             # was accepted and then ignored -- the parameter existed, appeared in
             # --help, and changed nothing (同坑 #38).
             options["image_keys"] = set(args.image_key)
+        if args.audio_mode!='auto' and not args.external_master:
+            raise SystemExit('--audio-mode 需要指定 --external-master 文件或目录')
         if args.external_master:
             # Only v2 can narrate from a recording. legacy-preview retires its
             # paid stages, so accepting this there would be another silent no-op.
             if args.pipeline != "v2":
                 raise SystemExit("--external-master 需要 --pipeline v2")
             options["external_master"] = args.external_master
+            options["audio_mode"] = args.audio_mode
         if args.pipeline == "legacy-preview":
-            # ⚠️ 这里原来**整份替换** options，max_images/budget_id 被静默丢弃 ——
-            #   后果是 legacy 路径拿不到生图预算，CLI 参数形同虚设（同坑 #38：
-            #   --merge-short 当年也是这样失效的）。改为只覆盖 tts 相关项。
-            options = dict(tts_fallback=args.allow_edge_fallback and not args.no_fallback,
-                           merge_short=args.merge_short, tts_granularity=args.tts_granularity,
-                           tts_group_chars=args.tts_group_chars, tts_workers=args.tts_workers,
-                           max_images=args.max_images, budget_id=args.budget_id,
+            options = dict(merge_short=args.merge_short,
                            image_only=(set(args.image_key) if args.image_key else None))
             if args.image_key:
                 options.pop("image_keys", None)  # legacy spells it image_only
-        elif args.allow_edge_fallback:
-            raise SystemExit("v2 production never changes the voice engine")
         res = produce(args.episode_id, stages=args.stage or None, pipeline=args.pipeline, **options)
         print(json.dumps(res, ensure_ascii=False, indent=2, default=str))
         if res.get("run_ok") is False or res.get("status") in ("FAILED","BLOCKED"):
@@ -323,17 +294,13 @@ def cmd_clean(args):
 
 
 def cmd_image(args):
-    import time, base64
-    from app.services.image import get_image, save_b64_image
-    from app.models import ImageGenRequest, predict_actual_dims
+    import time
+    from app.models import ImageGenRequest
 
-    img = get_image()
     req = ImageGenRequest(
         model=args.model, prompt=args.prompt,
         size=args.size, quality=args.quality,
     )
-    w, h = predict_actual_dims(args.size)
-    print(f"请求 size={args.size}  → 预测实际 {w}x{h}")
     t0 = time.time()
     from app.services.image import run_probe
     out = run_probe(req, args.budget_id, args.max_images)
@@ -401,8 +368,8 @@ def cmd_config(_args):
         "profile": s.profile_name,
         "image_model": s.image_model,
         "image_size": s.image_size,
-        "actual_dims": s.predict_actual_image_dims(),
-        "upscaled_dims": s.predict_upscaled_dims(),
+        "video_dimensions": [1080, 1920],
+        "image_fit": "measure source image, then scale and crop to cover",
         "channels": [c.name for c in s.channels],
         "video": {"engine": s.video.primary.engine, "endpoint": s.video.primary.endpoint},
         "vram_GB": s.runtime.vram.measured_usable_GB,
@@ -433,8 +400,10 @@ def cmd_api(args):
 
 def cmd_webui(args):
     import subprocess
+    from app import paths
+    page='app/webui/Studio.py' if (paths.ROOT/'.studio-project.json').is_file() else 'app/webui/Main.py'
     subprocess.run([
-        sys.executable, "-m", "streamlit", "run", "app/webui/Main.py",
+        sys.executable, "-m", "streamlit", "run", page,
         "--server.port", str(args.port),
     ], check=False)
 
@@ -445,12 +414,10 @@ def main():
 
     # episode
     p = sub.add_parser("episode", help="管理 episode.json")
-    # 注：run 已废弃（C3），仍留在 choices 里只为打印一段指路提示，不执行任何逻辑。
-    p.add_argument("action", choices=["init", "show", "run", "produce", "reshot",
+    p.add_argument("action", choices=["init", "show", "produce",
                                       "shots", "checkpoint", "audit-wav"],
-                   help="init/show/produce/reshot/shots/checkpoint/audit-wav；"
-                        "run=已废弃(仅打印指路提示)；produce=真实生产链；"
-                        "reshot=单镜重建(删图+重生成+重合成)；"
+                   help="init/show/produce/shots/checkpoint/audit-wav；"
+                        "produce=当前生产链；"
                         "shots=按 scene_plan 装配；"
                         "audit-wav=孤儿wav清理(默认dry-run)")
     p.add_argument("episode_id", nargs="?", default=None,
@@ -460,38 +427,23 @@ def main():
                    help="[audit-wav] 实际删除（默认只 dry-run 列出）")
     p.add_argument("--all", action="store_true",
                    help="[audit-wav] 扫全部集（省略 episode_id）")
-    p.add_argument("--key", action="append", default=None,
-                   help="[reshot] 要重建的底图 key，可多次：--key LGT01 --key LGT02")
-    p.add_argument("--no-verify", action="store_true",
-                   help="[reshot] 合成后跳过 verify（默认会跑时序断言）")
     p.add_argument("--stage", action="append", default=None,
                    help="[produce] 指定阶段，可多次：--stage tts --stage compose")
     p.add_argument("--merge-short", action="store_true",
                    help="仅 legacy-preview：合并短帧；不控制 v2 旁白单元")
-    p.add_argument("--tts-granularity", choices=["paragraph", "frame"], default="paragraph",
-                   help="仅 legacy-preview：旧配音切分粒度；v2 使用源稿旁白单元")
-    p.add_argument("--tts-group-chars", type=int, default=None,
-                   help="仅 legacy-preview：旧配音分组字数；不控制 v2 请求")
-    p.add_argument("--tts-workers", type=int, default=None,
-                   help="仅 legacy-preview：旧配音并发数；不控制 v2 请求")
-    p.add_argument("--no-fallback", action="store_true",
-                   help="仅 legacy-preview：禁止换引擎；v2 始终禁止静默更换声音")
     p.add_argument("--pipeline", choices=["v2", "legacy-preview"], default="v2")
-    p.add_argument("--allow-edge-fallback", action="store_true", help="仅旧预览允许显式换人声")
     p.add_argument("--max-requests", type=int, default=0, help="本轮最多新增 TTS 请求，默认 0")
     p.add_argument("--max-characters", type=int, default=0)
-    p.add_argument("--max-images", type=int, default=0, help="实际图片调用上限（成功落盘数），默认 0")
+    p.add_argument("--max-images", type=int, default=0, help="图片调用总上限（包含失败和结果不确定的尝试），默认 0")
     p.add_argument("--max-image-retries", type=int, default=0,
-                   help="失败/重试的额外调用额度。失败会挤掉正常图（xlc-01 实测 27/27 耗尽丢 4 张），"
-                        "放宽重试时用它而不是虚增 --max-images。默认 0 即沿用旧行为")
+                   help="兼容旧参数：增加总尝试上限，与 --max-images 相加；不是重试专用池，默认 0")
     p.add_argument("--image-key", action="append", default=None,
                    help="只生成这些 image key（可重复）。补单张图时用，"
                         "避免把其余缺图一起拉进来抢预算。v2 与 legacy-preview 均生效")
     p.add_argument("--budget-id", default=None, help="显式新授权的预算标识；续跑复用同一标识")
+    p.add_argument("--audio-mode", choices=["auto","master","parts"], default="auto", help="目录优先完整母带，或明确选编号分段")
     p.add_argument("--external-master", default=None,
-                   help="[produce] 用这条外部解说母带代替 CosyVoice 配音。"
-                        "仅 v2 生效：整轨 ASR 定位每个 unit，按 unit 切片并产出 "
-                        "provenance=external_recording 的 manifest，不消耗 TTS 预算。")
+                   help="[produce] 已录好的旁白文件或 WAV 文件夹。默认优先完整母带，也支持只交编号分段。")
     p.add_argument("--timeline", default=None, help="v2 样本时间轴 JSON")
     p.add_argument("--timeout", type=int, default=300)
     p.add_argument("--plan", default=None,

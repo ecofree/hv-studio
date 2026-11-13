@@ -1,0 +1,87 @@
+{
+  "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/flat/infographic/photorealistic/3d render/chiaroscuro/silk-scroll 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。",
+  "XL01": {
+    "en": "A dust-covered courier galloping through the gate of Chang'an at dawn, imperial palace roofs behind in morning mist, a sealed dispatch tube on his back"
+  },
+  "XL02": {
+    "en": "A middle-aged Tang emperor gripping his forehead on the dragon throne in a dim hall, candles guttering, court officials blurred into shadows"
+  },
+  "XL03": {
+    "en": "Piles of memorial scrolls stacked on an imperial desk, a vermilion brush dropped beside them, a single candle burning low"
+  },
+  "XL04": {
+    "en": "Tang court officials in dark robes whispering in rows inside a hall, a small eight-year-old boy in princely robes standing alone at the front"
+  },
+  "XL05": {
+    "en": "A woman in plain grey nun robes walking out of a mountain temple gate toward distant palace walls, cold clean dawn, mist"
+  },
+  "XL06": {
+    "en": "A Tang empress in phoenix robes brushing vermilion over memorials by lamplight, a folding screen behind her, a sick emperor's silhouette in the back room"
+  },
+  "XL07": {
+    "en": "Imperial guards with unfamiliar faces at a palace gate at night, lanterns swaying, an emperor watching from a dark corridor, cold sweat on his brow"
+  },
+  "XL08": {
+    "en": "A ragged street Daoist in patched robes slipping through a palace side gate at dusk, paper talismans tucked in his sleeve"
+  },
+  "XL09": {
+    "en": "A secret altar with burning talismans and straw figures in a dark palace bedchamber, smoke curling toward the ceiling beams"
+  },
+  "XL10": {
+    "en": "An elderly palace eunuch hiding behind a lacquered pillar, eyes fixed on a distant bedchamber door, torchlight flickering"
+  },
+  "XL11": {
+    "en": "A Tang emperor standing alone on palace steps at night, rows of armored guards below, wind lifting his sleeves"
+  },
+  "XL12": {
+    "en": "An old minister with a grey beard reading by lamplight, stacks of poetry scrolls around him, a night window open behind"
+  },
+  "XL13": {
+    "en": "Two figures facing each other in an empty lamplit audience hall at night, an old minister kneeling, a young emperor leaning forward"
+  },
+  "XL14": {
+    "en": "An imperial writing desk with yellow edict paper spread wide, a writing brush lifted mid-stroke, candle flame leaning sideways"
+  },
+  "XL15": {
+    "en": "A withered old hand gripping a writing brush over yellow edict paper, bold characters like blades, a brazier burning beside"
+  },
+  "XL16": {
+    "en": "A palace eunuch pressed against a wall slipping out of a lamplit hall into wind-driven snow at night"
+  },
+  "XL17": {
+    "en": "A Tang emperor gripping a desk corner in an empty hall, an overturned wine cup, candles guttering in drafts"
+  },
+  "XL18": {
+    "en": "A Tang empress in winter robes striding through snow toward palace steps with no retinue, wind lifting her sleeves"
+  },
+  "XL19": {
+    "en": "A Tang empress and a kneeling old minister facing off across a single lamp in a vast cold hall, the young emperor standing between them"
+  },
+  "XL20": {
+    "en": "Close-up of a Tang emperor's cold narrowed eyes above a hand twisting a jade thumb ring, lamplight reflected"
+  },
+  "XL21": {
+    "en": "A Tang emperor in dragon robes pointing down at a kneeling minister, mouth open mid-speech, courtiers' heads bowed to the floor"
+  },
+  "XL22": {
+    "en": "An old minister frozen mid-kneel staring at an edict paper on the stone floor, snow blowing through the doorway, torchlight"
+  },
+  "XL23": {
+    "en": "A prison gate opening at night, guards with torches, a clerk hunched over writing charges by lamplight"
+  },
+  "XL24": {
+    "en": "Deserted west market of Chang'an at dawn under snow, empty stalls, a few crows on beams, cold grey light"
+  },
+  "XL25": {
+    "en": "A prison cart on a snowy road with a swaddled newborn among straw, a young mother in chains beside it, guards walking ahead, bleak winter"
+  },
+  "XL26": {
+    "en": "A Tang imperial audience with two thrones, a pearl curtain hanging behind the front seat, a veiled female silhouette behind it, officials kowtowing"
+  },
+  "XL27": {
+    "en": "A half-blind Tang emperor sitting alone in a vast empty palace, one hand trailing over memorials he cannot read, a single candle"
+  },
+  "XL28": {
+    "en": "A young crown prince in ceremonial robes reaching toward a palace door, behind him a pearl curtain and two watching shadows, low dusk light"
+  }
+}

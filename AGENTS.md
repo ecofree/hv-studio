@@ -1,4 +1,26 @@
+# 当前工作台流程（用户整改指令，2026-11-05）
+
+- 流程及写作证据粒度以 `docs/studio-workflow-policy.md` 为准，覆盖下文和复制的 Writing-DNA 中冲突的逐句考据、逐段主张与强制样片要求。
+- 保留当前作者正文与素材。冻结快照作为已选版本；外部文件更新不自动替换本集。史实确认保留，样片可选；配音不以画面完成为前提。
+- 不改原项目 D:/hv。本工作台的新政策不要求同步回写其规则。
+
+# 当前剧本创作来源（用户同步，2026-10-21）
+
+- 后续创作以用户在原项目 `D:/hv/resource/风趣历史.writing-DNA/` 修改的规则和文案为准。本项目对应目录中的副本已逐字同步；继续工作前先读取当前文件，不使用旧记忆代替。
+- 玄奘当前正文：`resource/风趣历史.writing-DNA/scripts/初唐异人传_第一集_西行五万里：被通缉的硬汉玄奘.md`；配套文本：同目录 `初唐异人传_第一集_Gemini_TTS专版.md`。二者本次仅按原字节复制，没有改写。
+- 不使用助手之前的 `workspace/editorial-reviews/ytrm-01-story-revision-20261021/` 修订稿作为创作或制作输入。旧样片（包括 `ytrm-01-xz-1p2-pilot-02-factcheck`）及其文案只保留用于追溯，不是后续创作底稿。
+- 本次仅同步来源文件。当前旧音轨、字幕、画面和单集生产绑定均保留，不能称为新版文案对应的产物。用户要求暂不配音、不渲染；在新的制作指令到来前不得启动这些工序。
+- 不为适配工具而擅自改写、删去标注或改动用户原文。同步与旧版本备份记录见 `workspace/state/source-sync-20261021/manifest.json` 和 `同步说明.txt`。
+
 # Production changes
+
+- This is the independent studio copy. Active episodes and run state live under
+  `workspace/episodes` and `workspace/state`, via `app.paths`. Root `episodes/`
+  is the preserved historical library. Never promote copied approvals or run
+  copied live queue state. Start `studio.bat`; keep the original `D:/hv` unchanged.
+- New studio production uses current source-bound key-fact confirmation; pilots are optional.
+  Imported drafts remain unapproved. The Qwen model service is an external local
+  dependency; do not start it or spend generation budget as part of UI tests.
 
 - Preserve source narration, old raw takes, approved media, and image caches.
 - Use `.venv-core/Scripts/python.exe`; local ASR runs in `.venv-asr`.
@@ -64,6 +86,14 @@
 - Provider calls use separate connect/read timeouts (`HV_IMAGE_CONNECT_TIMEOUT`,
   default 20s; `HV_IMAGE_READ_TIMEOUT`, default 180s). Keep them split: a hung
   connect cannot be rescued by a long read timeout.
+- **Every v2 episode opens with a title card and marks every act.** The sidecar
+  is `episodes/<id>/overlays.json`; A full run checks it before paid image dispatch; compose-only work applies
+  the same authoring and validation, preserving an edited file. Act copy
+  is editorial: title ≤18 characters, subtitle ≤26, and cards sit in the upper
+  sky band unless the plate has faces there (`anchor_y` moves one card). See
+  `app/services/overlay_author.py` and
+  `docs/douyin-attention-playbook.md`; legacy episodes keep using
+  `bin/build_overlays.py`.
 - **The project look is fixed: never restyle it.** `episodes/*/image_prompts.json`
   `en` describes subject matter only — people, action, setting, props, light. The
   look comes from `profile.image.style_suffix` + `negative_clause`, which

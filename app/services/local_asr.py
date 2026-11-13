@@ -2,7 +2,6 @@
 import json
 from pathlib import Path
 import subprocess
-import tempfile
 from app.config.config import ROOT, get_settings
 from app.services.provenance import atomic_json, fingerprint, file_sha256
 
@@ -30,49 +29,31 @@ def preflight(config=None):
     model_manifest=json.loads((model/'model_manifest.json').read_text(encoding='utf-8'))
     if not {'model.bin','config.json','tokenizer.json','vocabulary.txt'}.issubset(model_manifest['files']):
         raise ValueError('local ASR model manifest is incomplete')
+    from app.services.acoustic_session import current
+    session = current()
+    lock = ROOT/'requirements.asr.lock.txt'
+    files = [model/'model_manifest.json',lock]+[model/n for n in model_manifest['files']]
+    if any(Path(n).name != n for n in model_manifest['files']):
+        raise ValueError('invalid model manifest path')
+    signature = (str(model),str(resolve(config.python_executable)),
+                 tuple((p.stat().st_size,p.stat().st_mtime_ns,p.stat().st_ctime_ns) for p in files))
+    if session and session.context and session.context[0] == signature:
+        return session.context[1]
+    if session: session.close_worker()
     for name,record in model_manifest['files'].items():
-        if Path(name).name!=name:raise ValueError('invalid model manifest path')
         if file_sha256(model/name)!=record['sha256']:
             raise ValueError('local ASR model file changed: '+name)
-    runtime_lock=ROOT/'requirements.asr.lock.txt'
-    runtime=runtime_versions(resolve(config.python_executable),runtime_lock)
-    return model,runtime
+    result = model, runtime_versions(resolve(config.python_executable),lock)
+    if session: session.context = (signature,result)
+    return result
 
 
-_BUST_HINTED = False
-
-
-def _hint_cache_miss_reason(request):
-    """One-line hint when perf params (not audio/model) busted the cache.
-
-    `threads`/`python` are part of the cache key, so retuning them silently
-    re-recognizes everything. Bounded scan (64 most-recent records), once per
-    process, read-only. Never blocks or alters the miss path.
-    """
-    global _BUST_HINTED
-    if _BUST_HINTED:
-        return
-    try:
-        from app import paths
-        cached = sorted(paths.state_dir().glob('local_asr/*.json'),
-                        key=lambda p: p.stat().st_mtime, reverse=True)[:64]
-        for path in cached:
-            try:
-                record = json.loads(path.read_text(encoding='utf-8'))
-            except (OSError, ValueError):
-                continue
-            other = record.get('request') or {}
-            if (other.get('audio_sha256') == request.get('audio_sha256')
-                    and other.get('model_manifest_sha256') == request.get('model_manifest_sha256')
-                    and other.get('threads') != request.get('threads')):
-                print(f"  [asr] 缓存未命中：同音频已有识别结果，但 threads "
-                      f"{other.get('threads')}->{request.get('threads')} 改变了缓存键；"
-                      f"改回即命中，无需重识别", flush=True)
-                break
-    except OSError:
-        pass
-    finally:
-        _BUST_HINTED = True
+# Known transport-only migration: inference options and model output fields are unchanged.
+OLD_ASR_WORKER = 'd4b66999dd2a3730ce226e1db47a249b9e3f4823ac33b4554a35b1e3748f3c14'
+RESIDENT_ASR_WORKER = 'f8f2b8daff975db948990f1b097f257a3d85de5a32b8c2b5f18aaa5694348276'
+OLD_ALIGNMENT_WORKER = '4aa0dfdd26b38c3db3e6b67e50d1af072ede49e90af547a762d3f2158f3c770b'
+RESIDENT_ALIGNMENT_WORKER = 'a48e964feaafb0722a80538b27f1906724192cd51c482998fd5d6a1f30ddf629'
+OLD_ALIGNMENT_ADAPTER = 'b2ff4bf0b84a28cdd08cabf6ea78afa28240d744cc347ddef0ef71b392d7bd62'
 
 
 def recognize(audio, *, config=None, context=None):
@@ -87,28 +68,37 @@ def recognize(audio, *, config=None, context=None):
         'options':{'language':'zh','beam_size':5,'temperature':0,'word_timestamps':True,
                    'vad_filter':True,'condition_on_previous_text':False,'device':'cpu','compute_type':'int8'},
         'threads':config.threads,'python':str(resolve(config.python_executable)),'runtime':runtime}
+    from app.services import recognition_cache as C, model_resources as R
     key=fingerprint(request)
     cache=paths.state_dir()/'local_asr'/f'{key}.json'
-    if cache.exists():
-        record=json.loads(cache.read_text(encoding='utf-8'))
-        if record.get('request')==request and record.get('result_sha256')==fingerprint(record['result']):
-            return record['result'],cache
-    _hint_cache_miss_reason(request)
-    with tempfile.TemporaryDirectory(prefix='hv-asr-') as tmp:
-        output=Path(tmp)/'result.json'
-        run=subprocess.run([str(resolve(config.python_executable)),str(worker),'--audio',str(Path(audio).resolve()),
-            '--model',str(model.resolve()),'--output',str(output),'--threads',str(config.threads)],
-            capture_output=True,text=True,encoding='utf-8',errors='replace',timeout=config.timeout_seconds,
-            creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
-        if run.returncode:
-            raise RuntimeError('local ASR failed: '+run.stderr[-1200:])
-        result=json.loads(output.read_text(encoding='utf-8'))
-    if result['audio_sha256']!=request['audio_sha256'] or file_sha256(audio)!=request['audio_sha256']:
-        raise ValueError('audio changed during local recognition')
-    if any(runtime.get(k)!=v for k,v in result['runtime'].items()):
-        raise ValueError('local ASR runtime changed during recognition')
-    if not result.get('text','').strip():raise ValueError('local ASR returned no transcript')
-    result['request_id']='local-'+key
-    result['checker_version']='faster-whisper-'+result['runtime']['faster-whisper']+'-'+request['model_manifest_sha256'][:16]
-    atomic_json(cache,{'request':request,'result':result,'result_sha256':fingerprint(result)})
-    return result,cache
+    from app.services.acoustic_session import infer
+    from app.services.production_metrics import count
+    found=C.lookup(request,cache)
+    if not found and request['worker_sha256']==RESIDENT_ASR_WORKER:
+        prior=dict(request,worker_sha256=OLD_ASR_WORKER)
+        found=C.lookup(prior,cache.parent/(fingerprint(prior)+'.json'))
+    if found:
+        count('asr_cache_hits')
+        return found
+    from app.services.acoustic_session import job_session
+    with job_session() as session:
+        session.acquire()
+        found=C.lookup(request,cache)
+        if found:
+            count('asr_cache_hits')
+            if not session.reusable:session.close_worker()
+            return found
+        result=infer(config,model,dict(operation='recognize',audio=str(Path(audio).resolve())),
+                     R.timeout_for(audio,config.timeout_seconds))
+        count('asr_inferences')
+        if result['audio_sha256']!=request['audio_sha256'] or file_sha256(audio)!=request['audio_sha256']:
+            raise ValueError('audio changed during local recognition')
+        if any(runtime.get(k)!=v for k,v in result['runtime'].items()):
+            raise ValueError('local ASR runtime changed during recognition')
+        if not result.get('text','').strip():raise ValueError('local ASR returned no transcript')
+        result['request_id']='local-'+key
+        result['checker_version']='faster-whisper-'+result['runtime']['faster-whisper']+'-'+request['model_manifest_sha256'][:16]
+        atomic_json(cache,{'request':request,'result':result,'result_sha256':fingerprint(result)})
+        C.promote(cache)
+        if not session.reusable:session.close_worker()
+        return result,cache

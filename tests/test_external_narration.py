@@ -16,7 +16,6 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services import external_narration as EN
 from app.services.narration_pipeline import SAMPLE_RATE
 
@@ -196,6 +195,7 @@ def test_validate_external_requires_a_delivered_recording(tmp_path):
 
 # --- master canonicalisation -------------------------------------------------
 
+@pytest.mark.NEEDS_FFMPEG
 def test_canonical_master_normalises_rate_and_rejects_drift(tmp_path):
     src = _wav(tmp_path / "raw.wav", 3.0, rate=44100)
     out = tmp_path / "master.wav"
@@ -217,3 +217,43 @@ def test_canonical_master_rejects_an_unreadable_source(tmp_path):
     bad.write_bytes(b"not a wav at all")
     with pytest.raises(EN.ExternalNarrationError, match="不是可读的 WAV"):
         EN.canonical_master(bad, tmp_path / "out.wav")
+
+
+def test_choose_whole_or_numbered_delivery_once_and_reject_changed_inputs(tmp_path):
+    import struct,wave
+    from app.services import recording_input as inputs
+    def clip(name,sample):
+        p=tmp_path/name
+        with wave.open(str(p),'wb') as w:
+            w.setparams((1,2,24000,0,'NONE','not compressed'))
+            w.writeframes(struct.pack('<h',sample)*12)
+        return p
+    for i in range(1,11):clip(f'act{i}_幕.wav',i)
+    master=clip('完整解说母带.wav',99)
+    assert inputs.select(tmp_path)==('master',[master])
+    current=inputs.bind(tmp_path,'parts')
+    assert [Path(r['path']).name for r in current['files']]==[f'act{i}_幕.wav' for i in range(1,11)]
+    dest=tmp_path/'derived'
+    result=inputs.materialize(current,dest)
+    with wave.open(str(result),'rb') as w:
+        assert w.getnframes()==120
+        assert w.readframes(120)==b''.join(struct.pack('<h',i)*12 for i in range(1,11))
+    assert inputs.parts_receipt(result)['spans'][-1]['end_sample']==120
+    assert inputs.materialize(current,dest)==result
+    selected_via_master=inputs.bind(master,'parts')
+    master.unlink()
+    inputs.validate(selected_via_master)
+    assert inputs.select(tmp_path)[0]=='parts'
+    clip('act2_幕.wav',77)
+    with pytest.raises(ValueError,match='源文件'):inputs.parts_receipt(result)
+    (tmp_path/'act3_幕.wav').unlink()
+    with pytest.raises(ValueError,match='不连续'):inputs.bind(tmp_path)
+
+def test_sample_edit_does_not_touch_adjacent_words_or_shift_earlier_chunks():
+    import struct
+    from app.services.recording_revision import SampleEdit
+    raw=struct.pack('<7h',10,20,30,40,50,60,70)
+    changed=raw[:4]+raw[8:]
+    edit=SampleEdit.compare(raw,changed)
+    assert edit.interval(0,2)==(0,2) and edit.interval(4,7)==(2,5)
+    assert edit.interval(1,3) is None and edit.boundary(3) is None

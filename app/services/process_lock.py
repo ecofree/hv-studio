@@ -63,3 +63,22 @@ def file_lock(path):
                     stream.close()
         finally:
             mutex.release()
+
+
+@contextmanager
+def wait_file_lock(path, *, timeout):
+    """Wait for a specific lock without swallowing exceptions from its owner."""
+    import time
+    deadline=time.monotonic()+timeout
+    while True:
+        handle=file_lock(path)
+        try:
+            handle.__enter__()
+            break
+        except RuntimeError:
+            if time.monotonic()>=deadline:raise
+            time.sleep(.03)
+    try:
+        yield
+    finally:
+        handle.__exit__(None,None,None)

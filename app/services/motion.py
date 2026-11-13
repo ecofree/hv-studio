@@ -172,41 +172,6 @@ def frame_box(iw: int, ih: int, z: float, px: float, py: float, geometry_version
     return x0, y0, x1, y1
 
 
-def legacy_motion(zoom: float, motion_type: str, intensity: float, grade: str | None = None):
-    """**冻结**的历史运镜口径 —— 逐位复刻 2026-09-10 之前各章硬编码脚本的写法。
-
-    为什么冻结而不删：hanwu_ch1 / hanwu_ch3 / hw-002 等已交付集的分镜是由
-    这套公式生成的。改它就等于改这些集的历史成片口径。它们各自的脚本里
-    各存着一份**逐字节相同**的副本（2026-09-26 审计发现），副本必然漂移 ——
-    修一处漏两处。这里收成唯一一份，行为一字不变。
-
-    ⚠️ 这套口径有个必须知道的陷阱，也是 2026-09-26「镜头衔接」缺陷的根因之一：
-    它写出的 ``end_zoom`` 在 legacy_pixel_crop_v1 下**根本不会被渲染采用** ——
-    resolve_motion 会用 ``type + start_zoom`` 乘自己的公式重算 z0/z1，
-    ``start_xy`` 也只对 drift/pan 生效、对 push/pull 无效。所以：
-
-      - **读不读得到渲染落点，必须问 resolve_motion，不能读 spec 字段**；
-      - 新片别用这个函数，用 shot_builder.build_episode_shots —— 它把同一
-        scene 内的镜头串成连续轨迹（``explicit_traj_v1``），并有硬校验兜住。
-    """
-    if motion_type == "push":
-        start_xy, end_xy = (0.50, 0.50), (0.50, 0.50)
-        start_zoom, end_zoom = zoom, zoom + intensity
-    elif motion_type == "pull":
-        start_xy, end_xy = (0.50, 0.50), (0.50, 0.50)
-        start_zoom, end_zoom = zoom, max(1.0, zoom - intensity)
-    elif motion_type == "drift":
-        start_xy, end_xy = (0.46, 0.50), (0.54, 0.50)
-        start_zoom, end_zoom = zoom, zoom
-    else:  # pan
-        start_xy, end_xy = (0.44, 0.48), (0.56, 0.52)
-        start_zoom, end_zoom = zoom, zoom
-    return MotionSpec(type=motion_type, intensity=round(intensity, 3),
-                      start_xy=start_xy, end_xy=end_xy,
-                      start_zoom=round(start_zoom, 3),
-                      end_zoom=round(end_zoom, 3), grade=grade)
-
-
 def frames_for_duration_ms(duration_ms: float, fps: int = FPS) -> int:
     """单镜帧数——全项目唯一真值口径，勿在别处另写一份。
 
@@ -219,6 +184,47 @@ def frames_for_duration_ms(duration_ms: float, fps: int = FPS) -> int:
     时 11 段不等，导致分段渲染的「已完成段跳过」永远判不中。
     """
     return max(1, int(round((duration_ms or 0) / 1000.0 * fps)))
+
+
+def camera_crop(image, box):
+    """The common, pixel-exact camera operation for both render paths."""
+    from PIL import Image
+    crop = image.crop(box)
+    if crop.size == (W,H):
+        return crop
+    try:
+        return crop.resize((W,H), Image.Resampling.LANCZOS)
+    finally:
+        crop.close()
+
+
+def camera_frames(image, boxes):
+    """Compute each consecutive geometry once. At most three native resizes run ahead."""
+    from collections import deque
+    from concurrent.futures import ThreadPoolExecutor
+    from itertools import groupby
+    groups = ((box,sum(1 for _ in group)) for box,group in groupby(boxes))
+    with ThreadPoolExecutor(max_workers=3,thread_name_prefix='studio-camera') as pool:
+        pending = deque()
+        def submit():
+            item = next(groups,None)
+            if item:
+                box,count=item
+                pending.append((box,count,pool.submit(camera_crop,image,box)))
+        for _ in range(3):submit()
+        try:
+            while pending:
+                box,count,future=pending.popleft()
+                frame=future.result()
+                try:
+                    for i in range(count):
+                        yield box,frame,i==count-1
+                finally:
+                    frame.close()
+                submit()
+        finally:
+            for _,_,future in pending:
+                if not future.cancel():future.result().close()
 
 
 def plan_frames(iw: int, ih: int, dur_s: float, spec, fps: int = FPS):
@@ -401,13 +407,9 @@ def render(shot: Shot, fps: int = FPS) -> str:
                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     written = 0
     try:
-        for (x0, y0, x1, y1) in boxes:
-            cw, ch = x1 - x0, y1 - y0
-            if cw == W and ch == H:
-                frame = img.crop((x0, y0, x1, y1))          # 1:1，不重采样
-            else:
-                frame = img.crop((x0, y0, x1, y1)).resize((W, H), Image.LANCZOS)
-            proc.stdin.write(frame.tobytes())
+        for box in boxes:
+            with camera_crop(img,box) as frame:
+                proc.stdin.write(frame.tobytes())
             written += 1
         proc.stdin.close()
     except BrokenPipeError:

@@ -7,4 +7,5 @@ if not exist "%HV_RUNTIME%" (
 )
 set PYTHONUTF8=1
 set PYTHONUNBUFFERED=1
+set "PATH=%~dp0tools\ffmpeg\bin;%PATH%"
 exit /b 0

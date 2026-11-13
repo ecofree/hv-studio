@@ -49,42 +49,9 @@ if episode_ids:
                 if text != blocker:
                     st.caption(blocker)
     if current.get('stages_done'): st.caption('已完成：'+' → '.join(current['stages_done']))
-    if current.get('candidate_path'): st.video(current['candidate_path'])
-    if current.get('quality_report_path'):
-        report = read(current['quality_report_path'])
-        for row in report['takes']:
-            if row['unit_id'] in current['quality_pending_units']:
-                with st.expander('语音待核查：'+row['source_text'][:25]):
-                    st.write('原文：'+row['source_text']); st.write('识别文字：'+row['quality'].get('transcript',''))
-                    st.audio(row['audio_path'])
-                    with st.form('quality-'+row['unit_id']):
-                        who=st.text_input('审核人')
-                        finding=st.text_area('试听发现')
-                        choice=st.radio('处置结论',['音频正确，识别有误','确有口误，需要重做'],index=None)
-                        if st.form_submit_button('保存本段核查结论'):
-                            if not who.strip() or not finding.strip() or choice is None: st.error('请填写审核人、发现和结论。')
-                            else:
-                                from app.services.production_quality import record_disposition
-                                record_disposition(current['quality_report_path'],row['unit_id'],who,finding,
-                                    'asr_false_positive' if choice=='音频正确，识别有误' else 'spoken_error')
-                                st.success('已保存；刷新后更新待处理列表。')
-    if current.get('delivery_pending'):
-        st.warning(f"还有 {len(current['delivery_pending'])} 项导演提示待核查。")
-        for row in current['delivery_pending']:
-            with st.expander(row['text']):
-                manifest=read(current['manifest_path'])
-                take=next((t for t in manifest['takes'] if t['unit_id']==row.get('unit_id')),None)
-                if take: st.audio(take['audio_path'])
-                with st.form('direction-'+row['cue_id']):
-                    who=st.text_input('审核人'); finding=st.text_area('实际效果与处理说明')
-                    choice=st.radio('导演提示处置',['接受当前效果','仍需要调整'],index=None)
-                    if st.form_submit_button('保存本项处置'):
-                        if not who.strip() or not finding.strip() or choice is None: st.error('请填写完整的核查结论。')
-                        else:
-                            from app.services.delivery import record_review
-                            record_review(current['manifest_path'],row['cue_id'],who,finding,
-                                          'accepted_existing' if choice=='接受当前效果' else 'needs_revision')
-                            st.success('已保存；刷新后更新待处理列表。')
+    if current.get('candidate_path'): st.video(current['candidate_path'],start_time=st.session_state.get('video-start-'+selected,0))
+    from app.webui.studio_finish import render_findings
+    render_findings(selected,current)
     if current.get('budget'):
         st.caption('累计实际调用：'+str(current['budget']['used']))
     if st.button('刷新进度'): st.rerun()
@@ -218,8 +185,8 @@ with st.expander("生图渠道、图像参数和多音字"):
                            f"quota ${h['last_quota_usd'] or '—'}")
     c1, c2, c3 = st.columns(3)
     c1.metric("请求 size", s.image_size)
-    c2.metric("预测实际", f"{s.predict_actual_image_dims()[0]}×{s.predict_actual_image_dims()[1]}")
-    c3.metric("超分后", f"{s.predict_upscaled_dims()[0]}×{s.predict_upscaled_dims()[1]}")
+    c2.metric("成片尺寸", "1080×1920")
+    c3.metric("底图适配", "等比放大并裁切")
     text = st.text_area("多音字原文", value="张骞被匈奴扣押十年，单于冒顿派阏氏看守")
     if text:
         st.code(preprocess(text), language="text")

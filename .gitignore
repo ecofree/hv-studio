@@ -81,3 +81,6 @@ tools/ffmpeg/
 resource/风趣历史.writing-DNA/scripts/audio/
 # 音色试听探针产物（与 episodes/_voicetone/ 同类：一次性比对用，不入库）
 resource/风趣历史.writing-DNA/scripts/test_*.wav
+# Independent studio working data and copy/verification evidence.
+/workspace/
+/.copy-setup/

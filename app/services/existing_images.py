@@ -8,13 +8,21 @@ from app.services.provenance import atomic_json,file_sha256,fingerprint
 
 def source_binding(eid):
     directory=paths.episode_dir(eid)
-    return {str(p.resolve()):file_sha256(p) for p in [directory/'script.md',directory/'scene_plan.json',directory/'image_prompts.json']}
+    from app.managers import load
+    ep=load(eid)
+    source=Path(ep.script_path) if ep.script_path else directory/'script.md'
+    if not source.is_absolute():source=paths.ROOT/source
+    return {str(p.resolve()):file_sha256(p) for p in [source,directory/'scene_plan.json',directory/'image_prompts.json']}
 
 
 def register(eid):
     """Use the exact existing scene references. This is reuse, not content approval."""
     directory=paths.episode_dir(eid);scene=read(directory/'scene_plan.json')
     used={s['image'] for s in scene.get('scenes',scene.get('unit_scenes',[]))};records={}
+    # Source-anchored direction can change plates inside a narration unit.
+    # Include the declared image briefs, not only each unit's starting plate.
+    prompts=directory/'image_prompts.json'
+    if prompts.is_file():used.update(read(prompts))
     if not used:raise ValueError('no explicit scenes')
     for key in sorted(used):
         paths.validate_episode_id(key)
@@ -40,7 +48,9 @@ def register(eid):
         with Image.open(path) as im:
             im.load();size=im.size
             if min(size)<256:raise ValueError('existing image is too small')
-        records[key]=dict(path=str(path),sha256=file_sha256(path),size=list(size))
+        digest=file_sha256(path)
+        if spec.get('sha256') and spec['sha256']!=digest:raise ValueError('declared image has changed: '+key)
+        records[key]=dict(path=str(path),sha256=digest,size=list(size))
     target=directory/'production/existing-images.json'
     atomic_json(target,dict(kind='explicit_existing_assets',sources=source_binding(eid),images=records,
                            generated_now=False,content_approved=False))

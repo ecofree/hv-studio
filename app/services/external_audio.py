@@ -1,31 +1,4 @@
-"""
-外部音频导入（P0-2，2026-09-29 caomin-01 / lishimin-04 实测缺失）
-
-为什么要有这个模块
-------------------
-`narration_pipeline` / `forced_alignment` / `subtitle_alignment` 里有 29/15/15 处
-sha256 绑定，但**全是给 v2 的 per-unit TTS 管线用的**。外部音频（用户提供的一
-条完整解说轨）没有任何等价物：legacy 路径只做了 `Path(f.audio_path).exists()`。
-
-后果（这几集全是外部音频）：
-  1. 音频与帧的对应关系**没有任何机器保证**。音轨被换、帧序被改、采样数对不上，
-     都不会被任何门禁拦住。
-  2. 「ASR → 对齐 → 逐帧切分 → 采样守恒」这套逻辑只存在于我的临时脚本里，
-     不在项目里。下一个人做新集必须重写一遍，且大概率重犯同样的错。
-
-本模块做的事
-------------
-把外部音轨导入做成正式 stage，产出 `production/external-audio-binding.json`：
-
-  source_sha256      原始音轨的 sha256（换文件即失效）
-  sample_rate / total_samples
-  frame_offsets      每帧 [起始采样, 采样数]，合计必须等于 total_samples
-  coverage           逐帧 token 覆盖率（ASR 与剧本的实测吻合度）
-  alignment_accuracy 对齐准确率
-
-绑定记录进 `admission.inputs()` 的指纹，于是：审批之后音频或帧序再动，
-`eligible` 立刻变 false。采样守恒（Σframe == 音轨，零丢失零重复）是**硬断言**。
-"""
+"""Recognize a recording on a stable sample clock and align it to source text."""
 from __future__ import annotations
 
 import re
@@ -107,103 +80,74 @@ def resample_to_16k(src, dst) -> dict:
                 duration_s=round(n1 / sr1, 3), drift_ms=round(drift * 1000, 2))
 
 
-def recognize_track(wav, *, cache_dir=None, progress=None) -> dict:
-    """整轨 ASR。超过 worker 硬超时的按**低能量点**切段，识别后按段偏移合并。
-
-    切在搜索窗内能量最低的 0.25s 上，尽量不切在词中。逐段识别后统一平移
-    word/segment 的时间戳，保证与整轨时间轴一致。
-    """
-    import json
-    import time
-
+def _chunk_bounds(samples, sr, anchors=()):
+    """Search around a fixed distance from the last cut, independent of the end of the recording."""
     import numpy as np
+    n=len(samples)
+    bounds=[0]
+    for stop in sorted({n,*[x for x in anchors if 0<x<n]}):
+        # Previously verified boundaries and numbered part boundaries are stable anchors.
+        while stop-bounds[-1]>int(CHUNK_SAMPLES_16K*1.25):
+            center=bounds[-1]+CHUNK_SAMPLES_16K
+            win=max(1,int(sr*.25)); radius=CHUNK_SAMPLES_16K//8
+            lo,hi=center-radius,min(stop,center+radius)
+            buf=samples[lo:hi].astype('float32')
+            blocks=len(buf)//win
+            quiet=int((buf[:blocks*win].reshape(blocks,win)**2).mean(axis=1).argmin()) if blocks else 0
+            bounds.append(lo+quiet*win+win//2)
+        bounds.append(stop)
+    return bounds
 
-    from app.services.local_asr import preflight, recognize
 
-    wav = Path(wav)
-    with wave.open(str(wav), "rb") as h:
-        sr = h.getframerate()
-        raw = h.readframes(h.getnframes())
-    n = len(raw) // 2
-    if n == 0:
-        raise ExternalAudioError(f"{wav.name} 无采样")
-    x = np.frombuffer(raw, dtype="<i2")
-
-    n_chunks = max(1, -(-n // CHUNK_SAMPLES_16K))
-    bounds = [0]
-    win = int(sr * 0.25)
-    for k in range(1, n_chunks):
-        lo = int(n * (k - 0.15) / n_chunks)
-        hi = int(n * (k + 0.15) / n_chunks)
-        seg = x[lo:hi].astype("float32") / 32768.0
-        nf = max(1, len(seg) // win)
-        e = np.sqrt((seg[:nf * win].reshape(nf, win) ** 2).mean(axis=1)) + 1e-9
-        bounds.append(lo + int(e.argmin()) * win + win // 2)
-    bounds.append(n)
-
-    ctx = preflight()
-    cache_dir = Path(cache_dir) if cache_dir else None
-    if cache_dir:
-        cache_dir.mkdir(parents=True, exist_ok=True)
-    segs: list[dict] = []
-    words: list[dict] = []
-    offset = 0.0
-    for i in range(len(bounds) - 1):
-        a, b = bounds[i], bounds[i + 1]
-        # 缓存命中要求 **wav 与 json 同时存在，且该段的采样区间与缓存一致**。
-        # 只认文件名会在两种情况下出错（2026-09-29 实测）：
-        #   1. 旧缓存目录只留了分段 wav，没有 json -> FileNotFoundError
-        #   2. 缓存分段数与当前 CHUNK 大小算出的段数不同（caomin 旧 6 段 /
-        #      新 10 段）-> part03.wav 明明存在但对应的是完全不同的区间，
-        #      拿它当命中就是静默错位。
-        # 所以把区间写进缓存文件，命中时逐段核对。
-        jf = cache_dir / f"part{i:02d}.json" if cache_dir else None
-        hit = False
-        if jf is not None and jf.is_file():
-            try:
-                got = json.loads(jf.read_text(encoding="utf-8"))
-                hit = (got.get("start_sample") == a and got.get("end_sample") == b
-                       and isinstance(got.get("segments"), list))
-            except (OSError, ValueError):
-                hit = False
-        if hit:
-            ss = got["segments"]
-            if progress:
-                progress(f"ASR 第 {i+1}/{len(bounds)-1} 段 命中缓存")
-        else:
-            p = cache_dir / f"part{i:02d}.wav" if cache_dir else None
-            if p:
-                with wave.open(str(p), "wb") as w:
-                    w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
-                    w.writeframes(x[a:b].tobytes())
-            t0 = time.time()
-            if progress:
-                progress(f"ASR 第 {i+1}/{len(bounds)-1} 段 "
-                         f"({(b-a)/sr:.0f}s) {time.time()-t0:.0f}s")
-            res, _ = recognize(str(p or wav), context=ctx)
-            ss = res.get("segments") or []
-            if cache_dir:
-                (cache_dir / f"part{i:02d}.json").write_text(json.dumps(
-                    dict(start_sample=a, end_sample=b, sample_rate=sr,
-                         segments=ss), ensure_ascii=False), encoding="utf-8")
-        for s in ss:
-            s["start"] += offset; s["end"] += offset
-            segs.append(s)
-            for w in (s.get("words") or []):
-                w["start"] += offset; w["end"] += offset
-                words.append(w)
-        offset += (b - a) / sr
-    if not words:
-        raise ExternalAudioError(
-            f"{wav.name} 全轨未识别出任何语音。"
-            "处置：确认这条音频确实是解说轨（含人声），而不是纯音乐或空轨。")
-    segs.sort(key=lambda s: s["start"])
-    words.sort(key=lambda w: w["start"])
-    return dict(sample_rate=sr, total_samples=n, duration=round(n / sr, 3),
-                chunks=[round(b / sr, 2) for b in bounds],
-                chunk_count=len(bounds) - 1,
-                segments=segs, words=words,
-                speech_end=round(words[-1]["end"], 2))
+def recognize_track(wav, *, cache_dir=None, progress=None, anchors=()):
+    """One independent recognition per exact chunk, using the model-bound content cache."""
+    import tempfile
+    import numpy as np
+    from app.services.local_asr import preflight,recognize
+    from app.services.provenance import atomic_json,fingerprint,replace_file
+    from app.services.acoustic_session import job_session
+    with wave.open(str(wav),'rb') as h:
+        if (h.getnchannels(),h.getsampwidth(),h.getframerate())!=(1,2,16000):
+            raise ExternalAudioError('整轨识别需要 16 kHz 单声道 PCM16')
+        sr=h.getframerate();raw=h.readframes(h.getnframes())
+    samples=np.frombuffer(raw,dtype='<i2')
+    if not len(samples):raise ExternalAudioError('整轨无采样')
+    bounds=_chunk_bounds(samples,sr,anchors)
+    segments=[]; words=[]
+    with tempfile.TemporaryDirectory(prefix='hv-chunks-') as tmp, job_session():
+        folder=Path(cache_dir)/('layout-'+fingerprint(bounds)[:24]) if cache_dir else Path(tmp)
+        folder.mkdir(parents=True,exist_ok=True)
+        ctx=preflight()
+        for i,(a,b) in enumerate(zip(bounds,bounds[1:])):
+            p=folder/f'part{i:02d}.wav';pcm=memoryview(raw)[a*2:b*2]
+            ok=False
+            if p.is_file():
+                try:
+                    with wave.open(str(p),'rb') as h:
+                        ok=(h.getnchannels(),h.getsampwidth(),h.getframerate(),h.getnframes())==(1,2,sr,b-a) and h.readframes(b-a)==pcm
+                except (OSError,EOFError,wave.Error):pass
+            if not ok:
+                import uuid
+                draft=p.with_name(p.name+'.'+uuid.uuid4().hex+'.tmp')
+                try:
+                    with wave.open(str(draft),'wb') as h:
+                        h.setparams((1,2,sr,0,'NONE','not compressed'));h.writeframes(pcm)
+                    replace_file(draft,p)
+                finally:draft.unlink(missing_ok=True)
+            record,evidence=recognize(p,context=ctx)
+            atomic_json(p.with_suffix('.json'),dict(start_sample=a,end_sample=b,sample_rate=sr,
+                                                    recognition_path=str(evidence),audio_sha256=record['audio_sha256']))
+            offset=a/sr
+            for seg in record['segments']:
+                shifted=[dict(w,start=w['start']+offset,end=w['end']+offset) for w in seg.get('words',[])]
+                words.extend(shifted)
+                segments.append(dict(seg,start=seg['start']+offset,end=seg['end']+offset,words=shifted))
+            if progress:progress(f'整轨语音定位 {i+1}/{len(bounds)-1}')
+    if not words:raise ExternalAudioError('全轨未识别出任何语音')
+    return dict(sample_rate=sr,total_samples=len(samples),duration=round(len(samples)/sr,3),
+                chunks=[round(b/sr,2) for b in bounds],chunk_count=len(bounds)-1,
+                cache_dir=str(folder.resolve()) if cache_dir else None,segments=segments,words=words,
+                speech_end=round(words[-1]['end'],2))
 
 
 def align_frames(frames, words) -> dict:

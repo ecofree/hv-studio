@@ -1,0 +1,339 @@
+{
+  "status": "plan_integrity_checks_passed_not_media_approval",
+  "source_sha256": "6ef9e6a3ec97a90e7c267549f69ea14320c28d7bb68d61cd2e5d2963e4b7b25a",
+  "scene_count": 4,
+  "beat_count": 33,
+  "checks": [
+    {
+      "id": "opening-01",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "opening-02",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "opening-03",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "opening-04",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "opening-05",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-01",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-02",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-03",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-04",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-05",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-06",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-07",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-08",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "knife-09",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-01",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-02",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-03",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-04",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-05",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-06",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-07",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "water-08",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-01",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-02",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-03",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-04",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-05",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-06",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-07",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-08",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-09",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-10",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    },
+    {
+      "id": "ending-11",
+      "verbatim_anchor": true,
+      "existing_audio_boundary": true,
+      "nonempty_frame_interval": true
+    }
+  ],
+  "latest_source_checks": [
+    {
+      "role": "authoring",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_西行五万里：被通缉的硬汉玄奘.md",
+      "sha256": "a301046ad79f17be20fb8c8c54f6e2352fa232fd8b95263690b9baa74e6e5a74",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "tts_reference",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_Gemini_TTS专版.md",
+      "sha256": "cfb7c4a446713da773c3ba8b98582fdcb5c7ea86b14b5330a2bad8a4b124947e",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "writing_rule",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\Writing-DNA.md",
+      "sha256": "c65fd8d7c36cc9283954fa7c0ff683139f73554417274036d2767a145c364296",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "writing_rule",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\语言DNA.md",
+      "sha256": "3ef127086d03987362d6356efe387702fffc1c2cd72d3d3cac4fc2dba7f58e3c",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    },
+    {
+      "role": "writing_rule",
+      "path": "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\文章结构模板.md",
+      "sha256": "04e5d87b934cd4706cda1f974cc1e5f10e8c156fa4d1e18451f890e63f11ba92",
+      "matches": {
+        "path": true,
+        "original_path": true,
+        "snapshot": true
+      }
+    }
+  ],
+  "protected_file_count": 42,
+  "protected_unchanged": {
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\production\\v2\\run.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\workflow.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\voice-contract.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\voice-direction-selection.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\playback-policy.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\review-editorial.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\review-pilot.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\directing.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\scene_plan.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\image_prompts.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\editorial\\source-binding.json": true,
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\overlays.json": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\production\\v2\\plans\\f3aec8898039bb163278321c5c6b5690cfb84eb91c4cff9103d47b919776c4c1\\plan.json": true,
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\manifest.json": true,
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\timeline.json": true,
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\alignment.json": true,
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\candidate.json": true,
+    "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\media\\full-1p2-leveled.wav": true,
+    "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\design\\direction-assets.json": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\0907b92b18b554ad12836efd28a8789b523d3c7fd77e62849847f70647b51912\\unit-000.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\94bf12bf2f7a77b0e37de5d828f5847c29b01be00c4632138788ca5faf74e9bd\\unit-001.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\9f26c67a0aef705ad0fadf33e972b413e1981c4b346474a1034e6bd7f55d2d07\\unit-009.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bbca0c199eb69047db618ca98e1dba994023430fd3a5bccce5ceca302f0f4a93\\unit-017.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\ff3017362d5c0e803196551067b889f63b51bbbeba96729396c6b860b9db53d2\\unit-015.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5712f55d74668ddc48586085842d20c29ded138e5efcf76433e29fc90056cbb4\\unit-016.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\554ec7c00a0b85039277616e855203c012b606f885a02c1660a436c4e4513640\\unit-025.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\681fb9c7a357ab559a428b7461c4075a77360b03281bce875dd55ffc3524bca0\\unit-026.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\b05a39e87daf2ad67dfd517dd763683af0048cc9c368bd85f5d0a94dda75af81\\unit-062.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5a0214a9e8ff40907a86aaafa81671462f8cd8a73eba92a12c5a9af758511ff0\\unit-063.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\2f7e13f01fef969ba50e5f25583cd878d3385017b0a8728b433b644bb080332f\\unit-064.png": true,
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bf7892707ea67fb05eb04d742f2aa8f90c6cdad8eea936a32d3c3db68de28474\\unit-065.png": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\README.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\Writing-DNA.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\写作视角与认知框架.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\文章结构模板.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\视觉风格指南.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\语言DNA.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\风趣历史风格与内容深度审计及顶流竞品研究报告.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_西行五万里：被通缉的硬汉玄奘.md": true,
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_Gemini_TTS专版.md": true,
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\editorial\\revisions\\737a718a95f12e84afee\\narration.md": true,
+    "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\render\\7cd795a9683404e1dcc531821b133345\\candidate.mp4": true
+  },
+  "asset_copies_identical": true,
+  "preserved_subtitle_count": 371,
+  "audio_samples_unchanged": 26026752,
+  "existing_frames_unchanged": 27111,
+  "provider_calls": 0,
+  "tts_runs": 0,
+  "asr_runs": 0,
+  "render_runs": 0,
+  "current_workflow_untouched": true,
+  "draft_registered_path": "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\visual-revisions\\xz-four-scenes-20261023\\plan.json",
+  "project_quick_acceptance": "not_run_start_rejected_by_automatic_approval_policy",
+  "browser_preview": "not_verified_file_protocol_rejected_by_browser_policy",
+  "remaining": [
+    {
+      "scene": "opening",
+      "finding": "current_rendered_context_label_mismatch",
+      "status": "proposal_only"
+    },
+    {
+      "scene": "knife",
+      "finding": "unit_017_close_distance_conflicts_with_narration",
+      "status": "replacement_layout_needed"
+    },
+    {
+      "scene": "water",
+      "finding": "missing_intermediate_action_layers",
+      "status": "assets_and_compositor_needed"
+    },
+    {
+      "scene": "ending",
+      "finding": "new_bamboo_mat_resolves_to_funeral_image",
+      "status": "real_bamboo_mat_asset_missing"
+    }
+  ],
+  "human_visual_review": "pending",
+  "limitations": "检查为文案锚点、范围、文件保留及方案结构检查；未检查新视频像素、未试播新声音、未声称史实或艺术通过。"
+}

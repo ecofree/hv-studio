@@ -1,0 +1,23 @@
+{
+  "type": "design",
+  "designSystems": [],
+  "primaryDesignSystem": null,
+  "assets": {
+    "玄奘四处画面方案对比": {
+      "versions": [
+        {
+          "path": "index.html",
+          "createdAt": "2026-10-23T09:44:18.717Z",
+          "status": "needs-review",
+          "subtitle": "旧图、动作顺序与分层规划；未渲染",
+          "viewport": {
+            "width": 1280,
+            "height": 960
+          }
+        }
+      ]
+    }
+  },
+  "createdAt": "2026-10-23T09:44:18.718Z",
+  "updatedAt": "2026-10-23T09:44:18.718Z"
+}

@@ -2,14 +2,12 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.controllers.v1.auth import require_token
-from app.models import ImageGenRequest, predict_actual_dims
-from app.services.image import get_image, save_b64_image
+from app.models import ImageGenRequest
 
 router = APIRouter()
 
@@ -30,7 +28,6 @@ def test(req: TestRequest, _tok=Depends(require_token)):
         model=req.model, prompt=req.prompt,
         size=req.size, quality=req.quality,
     )
-    w, h = predict_actual_dims(req.size)
     t0 = time.time()
     from app.services.image import run_probe
     try:
@@ -38,6 +35,9 @@ def test(req: TestRequest, _tok=Depends(require_token)):
     except (RuntimeError, ValueError) as exc:
         raise HTTPException(409, str(exc))
     dt = time.time() - t0
+    from PIL import Image
+    with Image.open(out) as image:
+        w, h = image.size
     return {
         "latency_s": round(dt, 2),
         "requested_size": req.size,

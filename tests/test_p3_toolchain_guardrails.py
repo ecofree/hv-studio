@@ -14,22 +14,9 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 
 pytestmark = pytest.mark.shared
-ROOT = Path(r"D:\hv")
-
-
-def test_stage_images_accepts_only_and_threads_it():
-    from app.orchestrator import produce_legacy, stage_images
-    sig = inspect.signature(stage_images)
-    assert "only" in sig.parameters, sig
-    # only 必须一路传到 dispatch 边界，否则参数静默失效（本项目已踩过两次同坑：
-    # merge_short、max_images）
-    assert "image_only" in inspect.signature(produce_legacy).parameters
-    src = inspect.getsource(produce_legacy)
-    # stage_images 的形参叫 only，所以闭包里是 only=image_only
-    assert "only=image_only" in src, "image_only 未透传到 stage_images"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_build_image_jobs_filters_by_only():

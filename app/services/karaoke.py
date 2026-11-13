@@ -48,9 +48,10 @@ class Index:
     def __init__(self, cues: list[_Cue]):
         self.cues = cues
         self._starts = [c.sample_start for c in cues]
+        self._has_words = any(c.words for c in cues)
 
     def __bool__(self) -> bool:
-        return any(c.words for c in self.cues)
+        return self._has_words
 
     def span_for(self, cue_index: int, sample: int) -> tuple[int, int] | None:
         if not (0 <= cue_index < len(self.cues)):
@@ -59,6 +60,7 @@ class Index:
 
     def close(self) -> None:
         self.cues.clear()
+        self._has_words = False
 
 
 EMPTY = Index([])

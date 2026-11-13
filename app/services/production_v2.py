@@ -18,7 +18,7 @@ def frame_boundary(sample, sr, fps=25):
     return (sample*fps*2+sr)//(2*sr)
 
 
-def validate_timeline(manifest, timeline):
+def validate_timeline(manifest, timeline, *, all_declared_proofs=False):
     sr, total = manifest["sample_rate"],manifest["samples"]
     shots=timeline["shots"]
     cursor=0
@@ -31,10 +31,18 @@ def validate_timeline(manifest, timeline):
         if frame_boundary(b,sr)<=frame_boundary(a,sr): raise ValueError("shot shorter than one video frame")
         cursor=b
     if cursor!=total: raise ValueError("shots must cover the complete narration")
+    proofs={}
+    if all_declared_proofs and timeline.get('alignment_review_path'):
+        from app.services.subtitle_alignment import require_review
+        proofs.update(require_review(manifest,timeline))
+    if all_declared_proofs and timeline.get('alignment_evidence_path'):
+        from app.services.forced_alignment import require_evidence
+        proofs.update(require_evidence(manifest,timeline))
+        return proofs  # Includes source coverage, sample clock and subtitle layout.
     units={u["unit_id"]:u for u in manifest["alignment"]}
     covered={u:[] for u in units}
     end=0
-    reviewed_alignment=False
+    reviewed_alignment=bool(proofs)
     for cue in timeline["subtitles"]:
         unit=units[cue["unit_id"]]
         a,b=cue["sample_start"],cue["sample_end"]
@@ -48,10 +56,10 @@ def validate_timeline(manifest, timeline):
             if not reviewed_alignment:
                 if timeline.get('alignment_evidence_path'):
                     from app.services.forced_alignment import require_evidence
-                    require_evidence(manifest, timeline)
-                else:
-                    from app.services.subtitle_alignment import require_review
-                    require_review(manifest,timeline)
+                    proofs.update(require_evidence(manifest,timeline))
+                    return proofs
+                from app.services.subtitle_alignment import require_review
+                proofs.update(require_review(manifest,timeline))
                 reviewed_alignment=True
         covered[cue["unit_id"]].append((i,j))
         end=b
@@ -63,6 +71,7 @@ def validate_timeline(manifest, timeline):
         if cursor!=len(units[uid]["text"]): raise ValueError("subtitle source coverage incomplete")
     from app.services.subtitle_layout import validate_cues
     validate_cues(timeline['subtitles'], sr)
+    return proofs
 
 
 def _segment_ranges(timeline, sample_rate, max_seconds=90.0):
@@ -108,45 +117,14 @@ def _probe_segment_frames(path):
         return -1
 
 
-def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout,
-                      overlays=None, karaoke=None):
-    """Encode one v2 shot range and atomically publish its video-only segment.
-
-    ``overlays`` is an ``overlay.Plan`` (absent when the episode has no
-    overlays.json) and ``karaoke`` a ``karaoke.Index``. Both are optional and
-    independently no-op, matching the other layers' contract.
-
-    The frame cache below is keyed on **everything that reaches the pixels**.
-    That is not an optimisation detail: the subtitle tile, the dim amount and the
-    overlay alpha all vary *within* a single cue and a constant camera box, so a
-    key of ``(box, cue_text)`` alone silently freezes the highlight on the first
-    word and never advances it.
-    """
+def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
+    """Yield final RGB24 frames; overlays and word highlights use the exact sample clock."""
     from PIL import Image
-    from app.services.compose import (
-        _fade_to_black, _kill_proc, _read_stderr,
-        _safe_close, _safe_unlink, _start_stderr_reader, _wait_proc,
-    )
-    from app.services.motion import apply_grade, plan_frames
+    from app.services.compose import _fade_to_black
+    from app.services.motion import apply_grade, plan_frames, camera_frames, camera_crop
+    from app.services.scene_animation import Scene, validate as validate_animation
 
-    expected = sum(last - first for _, first, last in rows)
-    temp = Path(out_path).with_suffix(Path(out_path).suffix + ".tmp")
-    _safe_unlink(temp)
-    cmd = [
-        "ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-        "-s", "1080x1920", "-r", "25", "-i", "-", *vcodec,
-        "-pix_fmt", "yuv420p", "-an", "-f", "mp4", str(temp),
-    ]
-    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-    _start_stderr_reader(proc)
-    watchdog = threading.Timer(timeout, _kill_proc, args=(proc,)) if timeout and timeout > 0 else None
-    if watchdog:
-        watchdog.daemon = True
-        watchdog.start()
-    written = 0
     cue_index = 0
-    encoded = False
     subtitle_tile = None
     subtitle_key = None
     # An 8-bit composite cannot show less than 1/255 of dim, so quantising here
@@ -158,6 +136,8 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
             shot = specs[index][0]
             spec = specs[index][1]
             image = Path(shot["image_path"])
+            if shot.get('animation') is not None:
+                validate_animation(shot['animation'], file_sha256(image))
             with Image.open(image) as opened:
                 original = opened.convert("RGB")
             if spec.grade:
@@ -166,13 +146,16 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
                 graded = apply_grade(original, spec.grade)
                 if graded is not original: original.close()
                 original = graded
+            frames = None
             try:
                 shot_first = frame_boundary(shot['sample_start'], sample_rate)
                 shot_last = frame_boundary(shot['sample_end'], sample_rate)
+                scene = Scene(original, shot['animation'], shot_first, shot_last) if shot.get('animation') is not None else None
                 # Compute the complete trajectory; splitting a shot must not restart motion.
                 boxes = plan_frames(*original.size, (shot_last-shot_first)/25.0, spec, 25)[first-shot_first:last-shot_first]
                 previous_key, pixels = None, None
-                for offset, box in enumerate(boxes):
+                frames = (((b,None,True) for b in boxes) if scene else camera_frames(original,boxes))
+                for offset, (box, base, last_use) in enumerate(frames):
                     global_frame = first + offset
                     sample = global_frame * sample_rate // 25
                     while cue_index < len(cues) and sample >= cues[cue_index]["sample_end"]:
@@ -192,12 +175,18 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
                         tiles = overlays.layers_at(g_ms)
                         dim = overlays.dim_at(g_ms)
                     ov_key = (tuple(id(t) for t, _b in tiles), dim_key(dim))
-                    key = (tuple(box), cue_text, hl, ov_key)
+                    key = (tuple(box), cue_text, hl, ov_key, global_frame if scene else None)
                     if key != previous_key:
-                        frame = original.crop(box).resize((1080, 1920), Image.Resampling.LANCZOS)
+                        if scene:
+                            with scene.frame(global_frame) as animated:
+                                frame = camera_crop(animated,box)
+                        else:
+                            frame = base.copy() if not last_use and (dim or tiles or cue_text) else base
                         if overlays:
                             if dim > 0.0:
-                                frame = _fade_to_black(frame, dim)
+                                faded = _fade_to_black(frame, dim)
+                                if frame is not base and frame is not faded: frame.close()
+                                frame = faded
                             for tile, at in tiles:
                                 frame.paste(tile, at, tile)
                         if cue_text:
@@ -208,12 +197,44 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
                                 subtitle_key = (cue_text, hl)
                             frame.paste(subtitle_tile, subtitle_box[:2], subtitle_tile)
                         pixels = frame.tobytes()
-                        frame.close()
+                        if frame is not base: frame.close()
                         previous_key = key
-                    proc.stdin.write(pixels)
-                    written += 1
+                    yield pixels
             finally:
+                if frames is not None: frames.close()
                 original.close()
+    finally:
+        if subtitle_tile is not None:subtitle_tile.close()
+
+
+def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout,
+                       overlays=None, karaoke=None):
+    """Feed one bounded frame stream and atomically install its finished segment."""
+    from contextlib import closing
+    from app.services.compose import (_kill_proc,_read_stderr,_safe_close,_safe_unlink,
+                                      _start_stderr_reader,_wait_proc)
+    expected = sum(last - first for _, first, last in rows)
+    temp = Path(out_path).with_suffix(Path(out_path).suffix + ".tmp")
+    _safe_unlink(temp)
+    cmd = [
+        "ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
+        "-s", "1080x1920", "-r", "25", "-i", "-", *vcodec,
+        "-pix_fmt", "yuv420p", "-an", "-f", "mp4", str(temp),
+    ]
+    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                            stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    _start_stderr_reader(proc)
+    watchdog = threading.Timer(timeout, _kill_proc, args=(proc,)) if timeout and timeout > 0 else None
+    if watchdog:
+        watchdog.daemon = True
+        watchdog.start()
+    written = 0
+    encoded = False
+    try:
+        with closing(frame_pixels(rows,specs,cues,sample_rate,overlays,karaoke)) as frames:
+            for pixels in frames:
+                proc.stdin.write(pixels)
+                written += 1
         proc.stdin.close()
         return_code = _wait_proc(proc, timeout or 0, "v2 segment")
         stderr = _read_stderr(proc)
@@ -230,7 +251,6 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
             f"v2 segment pipe closed after {written}/{expected} frames: {exc}; "
             f"ffmpeg={stderr[-1200:]}") from exc
     finally:
-        if subtitle_tile is not None: subtitle_tile.close()
         if watchdog:
             watchdog.cancel()
         if proc.poll() is None:
@@ -241,7 +261,7 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
             _safe_unlink(temp)
 
 
-def _render(manifest_path, timeline_path, output_dir, timeout=300):
+def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=None, on_verified=None):
     """Render a v2 candidate with resumable, shot-boundary video segments."""
     from PIL import Image
     from app.models.shot import MotionSpec
@@ -256,7 +276,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     manifest = validate_assembly(manifest_path)
     require_usable(manifest)
     timeline = read(timeline_path)
-    validate_timeline(manifest, timeline)
+    proofs=validate_timeline(manifest, timeline, all_declared_proofs=True)
     check_font_available()
 
     inputs = {
@@ -266,19 +286,17 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     for path, sha in timeline.get('inputs', {}).items():
         if file_sha256(path) != sha: raise ValueError('timeline source input changed')
         inputs[str(Path(path).resolve())] = sha
-    if timeline.get("alignment_review_path"):
-        from app.services.subtitle_alignment import require_review
-        inputs.update(require_review(manifest, timeline))
-    if timeline.get('alignment_evidence_path'):
-        from app.services.forced_alignment import require_evidence
-        inputs.update(require_evidence(manifest, timeline))
+    inputs.update(proofs)
     bgm_path = timeline.get('bgm_path')
+    if bgm_path and timeline.get('sound_design'):
+        raise ValueError('directed sound cannot be combined with legacy bgm')
     if bgm_path: inputs[str(Path(bgm_path).resolve())] = file_sha256(bgm_path)
     # The overlay sidecar changes pixels but lives outside app/, so hashing every
     # module below would not catch an edit to it. Without this, tuning a title
     # card would be declared "pixel-identical" and silently reuse the old render.
     try:
-        ep_id = Path(manifest_path).resolve().relative_to((ROOT / 'episodes').resolve()).parts[0]
+        from app.paths import episodes_dir
+        ep_id = Path(manifest_path).resolve().relative_to(episodes_dir().resolve()).parts[0]
     except ValueError:
         ep_id = None
     if ep_id:
@@ -286,6 +304,8 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
         sidecar = _ov_mod.path_for(ep_id)
         if sidecar.is_file():
             inputs[str(sidecar.resolve())] = file_sha256(sidecar)
+    if timeline.get('overlay_path'):
+        inputs[str(Path(timeline['overlay_path']).resolve())] = file_sha256(timeline['overlay_path'])
     for dependency in list((ROOT / "app").rglob("*.py")) + list((ROOT / "app/config").glob("*.yaml")):
         inputs[str(dependency.resolve())] = file_sha256(dependency)
     for dependency in [ROOT / "bin/local_asr_worker.py", ROOT / "requirements.asr.lock.txt"]:
@@ -293,11 +313,17 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             inputs[str(dependency.resolve())] = file_sha256(dependency)
 
     specs = []
+    checked_images = {}
     for shot in timeline["shots"]:
         image = Path(shot["image_path"])
-        inputs[str(image.resolve())] = file_sha256(image)
-        with Image.open(image) as im:
-            im.verify()
+        key = str(image.resolve())
+        if key not in checked_images:
+            checked_images[key] = file_sha256(image)
+            with Image.open(image) as im: im.verify()
+            inputs[key] = checked_images[key]
+        if shot.get('animation') is not None:
+            from app.services.scene_animation import validate as validate_animation
+            validate_animation(shot['animation'], checked_images[key])
         spec = MotionSpec(**dict(shot.get("motion", {}), geometry_version="fit_cover_v2"))
         from app.services.motion import resolve_motion
         resolve_motion(spec)
@@ -353,13 +379,21 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     # card re-encodes one segment instead of the film.
     from app.services import karaoke as _karaoke
     overlay_plan = None
-    if ep_id:
+    if timeline.get('overlay_path'):
+        from app.services.overlay import load_path
+        overlay_plan = load_path(timeline['overlay_path'])
+    elif ep_id:
         try:
             from app.services import compose as _C
             _C.overlay_plan(ep_id)
             overlay_plan = _C.overlay_plan()
         except (ValueError, OSError) as exc:
             raise ValueError(f'{ep_id} overlays.json 无效：{exc}') from exc
+    karaoke_index = _karaoke.EMPTY
+    alignment_path = timeline.get('alignment_evidence_path')
+    if alignment_path and Path(alignment_path).is_file():
+        plan_doc = read(manifest['plan_path'])
+        karaoke_index = _karaoke.load(timeline, plan_doc, alignment_path)
     reusable = cache.reusable_records(output_dir)
     max_seconds = getattr(compose_cfg, "v2_segment_max_sec", compose_cfg.segment_max_sec)
     ranges = _segment_ranges(timeline, sr, max_seconds)
@@ -382,7 +416,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             "last_frame": rows[-1][2],
             "expected_frames": sum(last - first for _, first, last in rows),
             "input_fingerprint": cache.segment_fingerprint(rows, specs, timeline['subtitles'], sr, inputs, shared,
-                                                           overlay_digest=_overlay_digest(rows)),
+                                                           overlay_digest=_overlay_digest(rows),karaoke=karaoke_index),
             "path": str((seg_dir / f"seg-{i:03d}.mp4").resolve()),
             "status": "pending",
         }
@@ -398,15 +432,9 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
     cues = timeline["subtitles"]
     state.update(encoder=vcodec, started_at=time.time(), last_error=None)
 
-    # The overlay Plan was already loaded (and validated) above for the segment
-    # fingerprints; reuse it here. Karaoke loads here as before.
-    karaoke_index = _karaoke.EMPTY
-    alignment_path = timeline.get('alignment_evidence_path')
-    if alignment_path and Path(alignment_path).is_file():
-        plan_doc = read(manifest['plan_path'])
-        karaoke_index = _karaoke.load(timeline, plan_doc, alignment_path)
     try:
         for i, rows in enumerate(ranges):
+            if progress: progress(dict(done=i, total=len(ranges), message='画面分段渲染'))
             record = state["segments"][i]
             path = Path(record["path"])
             expected = record["expected_frames"]
@@ -457,11 +485,15 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
 
         if sum(1 for x in state["segments"] if x["status"] == "complete") != len(ranges):
             raise RuntimeError("not all v2 segments completed")
+        if progress: progress(dict(done=len(ranges), total=len(ranges), message='拼接画面、混音与完整性校验'))
         concat_video = target / "concat.video.mp4"
         _concat_segments([Path(x["path"]) for x in state["segments"]], concat_video)
         candidate = target / "candidate.mp4"
         mux_timeout = max(timeout, 600) if timeout else 0
         mux_audio = Path(manifest['master_path'])
+        if timeline.get('sound_design'):
+            from app.services.sound_design import mix
+            mux_audio = mix(mux_audio, timeline['sound_design'], target/'directed-mix.wav')
         if bgm_path:
             from app.services.bgm import mix_voice_with_bgm
             bgm_cfg = get_settings().get_profile().bgm
@@ -475,12 +507,14 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
             expected_samples=manifest["samples"], sample_rate=sr,
             timeout=mux_timeout,
         )
+        if on_verified is not None:
+            on_verified(integrity)
         for path, sha in inputs.items():
             if file_sha256(path) != sha:
                 raise ValueError("input changed while rendering")
         receipt = {
             "candidate_path": str(candidate.resolve()),
-            "candidate_sha256": file_sha256(candidate),
+            "candidate_sha256": integrity["sha256"],
             "inputs": inputs,
             # Visibility only: segments keep the exact vcodec argv they were
             # encoded with; a mid-render NVENC->software fallback leaves a
@@ -510,12 +544,14 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300):
         raise
 
 
-def render(manifest_path, timeline_path, output_dir, timeout=300):
+def render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=None, on_verified=None):
     """All callers, including direct narration CLI, share the render-output lock."""
     from app.services.process_lock import file_lock
     key = fingerprint([str(Path(manifest_path).resolve()), str(Path(timeline_path).resolve())])
     with file_lock(Path(output_dir) / ('.render-'+key+'.lock')):
-        return _render(manifest_path, timeline_path, output_dir, timeout)
+        return _render(manifest_path, timeline_path, output_dir, timeout,
+                       **({'on_verified': on_verified} if on_verified else {}),
+                       **({'progress': progress} if progress else {}))
 
 
 def review_candidate(receipt_path, reviewer, findings, decision):
@@ -536,6 +572,9 @@ def review_candidate(receipt_path, reviewer, findings, decision):
 def _publish(receipt_path, review_path, listening_review_path, pointer_path):
     from app.services.media_integrity import verify_media
     receipt,review,listening=read(receipt_path),read(review_path),read(listening_review_path)
+    if receipt.get('kind') == 'metadata_amendment_v1':
+        from app.services.production_revision import verify_amendment
+        verify_amendment(receipt_path)
     manifest=validate_assembly(receipt["manifest_path"])
     from app.services.audio_disposition import require_usable
     require_usable(manifest)
@@ -551,8 +590,9 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
         raise ValueError("candidate approval hash mismatch")
     if listening.get("decision")!="approved" or listening.get("manifest_sha256")!=file_sha256(receipt["manifest_path"]) or listening.get("master_sha256")!=manifest["master_sha256"]:
         raise ValueError("master audio has no current human listening approval")
-    for path,sha in receipt["inputs"].items():
-        if file_sha256(path)!=sha: raise ValueError("candidate input changed after review")
+    from app.services.production_identity import split_receipt_drift
+    content_drift,renderer_drift=split_receipt_drift(receipt["inputs"])
+    if content_drift: raise ValueError("candidate input changed after review")
     if file_sha256(receipt["candidate_path"])!=receipt["candidate_sha256"]:
         raise ValueError("candidate bytes changed after review")
     verified=verify_media(receipt["candidate_path"],expected_frames=receipt["expected_frames"],
@@ -560,7 +600,8 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
     if verified["sha256"]!=receipt["candidate_sha256"]:raise ValueError("candidate changed during verification")
     atomic_json(pointer_path,{"candidate_path":receipt["candidate_path"],"sha256":receipt["candidate_sha256"],
                 "receipt":str(Path(receipt_path).resolve()),"review":str(Path(review_path).resolve()),
-                "listening_review":str(Path(listening_review_path).resolve()),"approved":True})
+                "listening_review":str(Path(listening_review_path).resolve()),"approved":True,
+                "renderer_drift":renderer_drift})
     return Path(pointer_path)
 
 

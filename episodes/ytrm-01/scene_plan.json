@@ -1,0 +1,280 @@
+{
+  "episode": "ytrm-01",
+  "authored": true,
+  "authored_by": "ytrm-01: 68 authored plates, one per narration unit, character continuity restated per prompt",
+  "review_required": true,
+  "unit_scenes": [
+    {
+      "image": "unit-000",
+      "unit_id": "narr-bf83264fe958cdea"
+    },
+    {
+      "image": "unit-001",
+      "unit_id": "narr-ba6b16e3a1de821e"
+    },
+    {
+      "image": "unit-002",
+      "unit_id": "narr-c165111bec53a4a5"
+    },
+    {
+      "image": "unit-003",
+      "unit_id": "narr-5e10d2464d4403d9"
+    },
+    {
+      "image": "unit-004",
+      "unit_id": "narr-3629d9ed14739841"
+    },
+    {
+      "image": "unit-005",
+      "unit_id": "narr-bed0c84240f444a7"
+    },
+    {
+      "image": "unit-006",
+      "unit_id": "narr-781a5e6eed492a27"
+    },
+    {
+      "image": "unit-007",
+      "unit_id": "narr-6aa560a13735f839"
+    },
+    {
+      "image": "unit-008",
+      "unit_id": "narr-7e42005d5a83aa36"
+    },
+    {
+      "image": "unit-009",
+      "unit_id": "narr-588e30bff72c98f6"
+    },
+    {
+      "image": "unit-010",
+      "unit_id": "narr-818554c1e8f91fff"
+    },
+    {
+      "image": "unit-011",
+      "unit_id": "narr-73c1edbcb524ec91"
+    },
+    {
+      "image": "unit-012",
+      "unit_id": "narr-17967a3cb6b6b8cb"
+    },
+    {
+      "image": "unit-013",
+      "unit_id": "narr-cb0f3ce42e843d4a"
+    },
+    {
+      "image": "unit-014",
+      "unit_id": "narr-47a900db0f50d224"
+    },
+    {
+      "image": "unit-015",
+      "unit_id": "narr-427a72f80d458902"
+    },
+    {
+      "image": "unit-016",
+      "unit_id": "narr-65fdf2630c3c8e7a"
+    },
+    {
+      "image": "unit-017",
+      "unit_id": "narr-977da4d853902dda"
+    },
+    {
+      "image": "unit-018",
+      "unit_id": "narr-8e6c8a9cf30c7ece"
+    },
+    {
+      "image": "unit-019",
+      "unit_id": "narr-7d4fad09c2bd1b2e"
+    },
+    {
+      "image": "unit-020",
+      "unit_id": "narr-9b3286fc17c41716"
+    },
+    {
+      "image": "unit-021",
+      "unit_id": "narr-0963c5dbc7753ed6"
+    },
+    {
+      "image": "unit-022",
+      "unit_id": "narr-e30f0ce43d21c431"
+    },
+    {
+      "image": "unit-023",
+      "unit_id": "narr-e428793adbcb17f5"
+    },
+    {
+      "image": "unit-024",
+      "unit_id": "narr-da23d0649a3daf47"
+    },
+    {
+      "image": "unit-025",
+      "unit_id": "narr-f093ad5169cf7a69"
+    },
+    {
+      "image": "unit-026",
+      "unit_id": "narr-56fdd233cd66aa3a"
+    },
+    {
+      "image": "unit-027",
+      "unit_id": "narr-085bc6d6fb362733"
+    },
+    {
+      "image": "unit-028",
+      "unit_id": "narr-e1e6153e89cded5e"
+    },
+    {
+      "image": "unit-029",
+      "unit_id": "narr-4ba7b969d8f474e5"
+    },
+    {
+      "image": "unit-030",
+      "unit_id": "narr-6aa2735a3c135b7c"
+    },
+    {
+      "image": "unit-031",
+      "unit_id": "narr-0d0f25794773cd7c"
+    },
+    {
+      "image": "unit-032",
+      "unit_id": "narr-7edbf66379282c17"
+    },
+    {
+      "image": "unit-033",
+      "unit_id": "narr-7b0bfd9be8345ceb"
+    },
+    {
+      "image": "unit-034",
+      "unit_id": "narr-79fb0fa4e1030897"
+    },
+    {
+      "image": "unit-035",
+      "unit_id": "narr-02455a8d7ad8ee49"
+    },
+    {
+      "image": "unit-036",
+      "unit_id": "narr-e80acd5cf838196f"
+    },
+    {
+      "image": "unit-037",
+      "unit_id": "narr-c917674652589c07"
+    },
+    {
+      "image": "unit-038",
+      "unit_id": "narr-437db499e21a8f9a"
+    },
+    {
+      "image": "unit-039",
+      "unit_id": "narr-a5b55c7083a8f276"
+    },
+    {
+      "image": "unit-040",
+      "unit_id": "narr-c9c22620eb275563"
+    },
+    {
+      "image": "unit-041",
+      "unit_id": "narr-c7f778cb19f82fa6"
+    },
+    {
+      "image": "unit-042",
+      "unit_id": "narr-eba9ed43bf5a43af"
+    },
+    {
+      "image": "unit-043",
+      "unit_id": "narr-0a3c20eca2a87171"
+    },
+    {
+      "image": "unit-044",
+      "unit_id": "narr-bf1a85ef631a8b53"
+    },
+    {
+      "image": "unit-045",
+      "unit_id": "narr-30019d827cadb3bf"
+    },
+    {
+      "image": "unit-046",
+      "unit_id": "narr-e66e5f8cffc0a73c"
+    },
+    {
+      "image": "unit-047",
+      "unit_id": "narr-68f5393638ca74ea"
+    },
+    {
+      "image": "unit-048",
+      "unit_id": "narr-168a7c3ad00834fc"
+    },
+    {
+      "image": "unit-049",
+      "unit_id": "narr-a22492216e4308a1"
+    },
+    {
+      "image": "unit-050",
+      "unit_id": "narr-49dbb3c2c031c9f0"
+    },
+    {
+      "image": "unit-051",
+      "unit_id": "narr-4ca30befefa2030c"
+    },
+    {
+      "image": "unit-052",
+      "unit_id": "narr-840b52136ce35523"
+    },
+    {
+      "image": "unit-053",
+      "unit_id": "narr-07943f986c1fc958"
+    },
+    {
+      "image": "unit-054",
+      "unit_id": "narr-4643025768058ddd"
+    },
+    {
+      "image": "unit-055",
+      "unit_id": "narr-e9b9404a13a036e6"
+    },
+    {
+      "image": "unit-056",
+      "unit_id": "narr-133400094d4f1573"
+    },
+    {
+      "image": "unit-057",
+      "unit_id": "narr-f0765e9d7e909b50"
+    },
+    {
+      "image": "unit-058",
+      "unit_id": "narr-30bb406fbbe822fa"
+    },
+    {
+      "image": "unit-059",
+      "unit_id": "narr-d5841dafe8361c19"
+    },
+    {
+      "image": "unit-060",
+      "unit_id": "narr-6b5ff8dff047a88d"
+    },
+    {
+      "image": "unit-061",
+      "unit_id": "narr-53ec4d4d125d6689"
+    },
+    {
+      "image": "unit-062",
+      "unit_id": "narr-29c6f908790dd673"
+    },
+    {
+      "image": "unit-063",
+      "unit_id": "narr-950bf6cc69588e71"
+    },
+    {
+      "image": "unit-064",
+      "unit_id": "narr-a4d92bff500cacc4"
+    },
+    {
+      "image": "unit-065",
+      "unit_id": "narr-aa7925e24cb561c6"
+    },
+    {
+      "image": "unit-066",
+      "unit_id": "narr-405ac0412027929f"
+    },
+    {
+      "image": "unit-067",
+      "unit_id": "narr-3d3fbeb997375d61"
+    }
+  ]
+}

@@ -2,22 +2,14 @@
 from __future__ import annotations
 
 import difflib
-import os
-import uuid
 from dataclasses import dataclass, asdict, field
 from app.services.provenance import file_sha256, fingerprint
 import re
-import tempfile
-import wave
 from pathlib import Path
 
-import numpy as np
 
 _PUNCT = re.compile(r"[，。！？；：、…—\s“”‘’（）《》〈〉·,.!?;:\-]")
 _LATIN = re.compile(r"[A-Za-z]{2,}")
-
-# ASR 模型（paraformer 实时版，中文，带标点预测）
-_ASR_MODEL = "paraformer-realtime-v2"
 
 
 def _env(name: str, default: str) -> str:
@@ -31,45 +23,6 @@ def _env(name: str, default: str) -> str:
 
 def enabled() -> bool:
     return _env("HV_ASR_CHECK", "1").strip() not in ("0", "", "false", "False")
-
-
-def downgrade_enabled() -> bool:
-    """回检不合格时是否**自动降级重合成**（去掉指令重来）。
-
-    默认 **关闭**：阈值目前没有标注数据可标定（2026-09-08 实测，
-    「常何→常和」这种纯同音误判能算出 11.9%，比真读错的 4.9% 还高 ——
-    说明离线构造的对照不可信）。贸然自动降级会让 1/4 的段落失去情感，
-    代价远大于收益。先只告警，等有真实听感反馈再拿数据标定并开启。
-    """
-    return _env("HV_ASR_DOWNGRADE", "0").strip() not in ("0", "", "false", "False")
-
-
-def _to_16k_wav(data: np.ndarray, sr: int) -> Path:
-    """read_wav 返回的是 **±32768 整数标度**（不是 [-1,1]）。
-
-    ⚠️ 这里绝不能做任何缩放/裁剪到 ±1 —— 2026-09-08 我正是这么写，
-       把波形削成方波，导致后面所有 ASR 结论全错（"模型念出英文 No." 纯属自造）。
-    """
-    if sr != 16000:
-        n = int(round(len(data) * 16000 / sr))
-        data = np.interp(np.linspace(0, len(data) - 1, n), np.arange(len(data)), data)
-        sr = 16000
-    # ⚠️ 2026-09-10 P0：原为固定文件名，paragraph 档 4 线程并发
-    #    会互相覆盖 → 听写串台。改为 pid+uuid 唯一命名。
-    p = (Path(tempfile.gettempdir())
-         / f"hv_asr_16k_{os.getpid()}_{uuid.uuid4().hex[:8]}.wav")
-    with wave.open(str(p), "wb") as w:
-        w.setnchannels(1)
-        w.setframerate(sr)
-        w.setsampwidth(2)
-        w.writeframes(np.clip(data, -32768, 32767).astype("<i2").tobytes())
-    return p
-
-
-class ASRServiceError(RuntimeError):
-    def __init__(self, status, request_id, code):
-        self.request_id=request_id
-        super().__init__(f"ASR status={status} request_id={request_id} code={code}")
 
 
 class Transcript(str):
@@ -88,30 +41,7 @@ def transcribe(wav: Path) -> str:
         transcript.checker_version=result['checker_version']
         transcript.recognition_path=str(path.resolve())
         return transcript
-    if backend != "dashscope":
-        raise ValueError('unknown ASR backend: '+backend)
-    from app.services import tts_group as G
-    from app.services.cosyvoice import _dashscope_key
-    import dashscope
-    from dashscope.audio.asr import Recognition, RecognitionCallback
-    data, sr = G.read_wav(wav)
-    if len(data) < sr // 2:
-        raise ValueError("audio_too_short")
-    derived = _to_16k_wav(data, sr)
-    try:
-        dashscope.api_key = _dashscope_key()
-        res = Recognition(model=_ASR_MODEL, callback=RecognitionCallback(),
-                          format="wav", sample_rate=16000).call(file=str(derived))
-        if res.status_code != 200:
-            raise ASRServiceError(res.status_code,getattr(res,"request_id",None),getattr(res,"code",None))
-        text = "".join(s.get("text", "") for s in ((res.output or {}).get("sentence") or []))
-        if not text.strip():
-            raise ValueError("empty_transcript")
-        transcript=Transcript(text)
-        transcript.request_id=getattr(res,"request_id",None)
-        return transcript
-    finally:
-        derived.unlink(missing_ok=True)
+    raise ValueError('only local-whisper ASR is supported; cloud ASR dispatch is retired')
 
 
 def normalize_numbers(text: str) -> str:
@@ -174,16 +104,10 @@ def cer(ref: str, hyp: str) -> float:
     return err / len(a)
 
 
-# 数字词：ASR 会把「十一月」写成「11月」、「三千五百」写成「3500」，
-# 读音其实一致但字符/音节数都不同 → 比较前两边都剥掉，避免误判。
-_NUM_TOKEN = re.compile(r"[0-9]+|[〇零一二三四五六七八九十百千万亿两0-9]+")
-
-
 def _pinyin(text: str) -> list[str]:
     """汉字 → 拼音（含声调）。pypinyin 缺失时退化成「按字符比较」。
 
-    数字词先剥掉：它们的读音在 ref/hyp 里表达形式不同（十一月 vs 11月），
-    留着会制造大量假阳性（实测把「武德七年十一月」判成 4.7% 的错）。
+    比较前统一显式数字的写法；保留数量差异供听审。
     """
     clean = _PUNCT.sub("", normalize_numbers(text))
     try:
@@ -219,7 +143,7 @@ def has_latin(hyp: str) -> bool:
 
 
 def max_per() -> float:
-    """PER 阈值。用于告警；只有开启 HV_ASR_DOWNGRADE 时才用于降级。
+    """PER 阈值仅用于提出听审疑点，不触发重新配音。
 
     ⚠️ 尚未标定：离线构造的对照文本不可信 —— 实测「常何→常和」这种
        纯同音误判能算出 11.9%，比真读错的 4.9% 还高。
@@ -229,14 +153,6 @@ def max_per() -> float:
         return float(_env("HV_ASR_MAX_PER", "0.08"))
     except ValueError:
         return 0.08
-
-
-def suspicious(hyp: str) -> bool:
-    """**不依赖阈值**的硬信号：中文旁白里出现英文单词。
-
-    破折号被念成 "No." 那一类靠它抓。
-    """
-    return has_latin(hyp)
 
 
 @dataclass

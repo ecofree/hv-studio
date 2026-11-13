@@ -11,6 +11,8 @@ pytestmark=pytest.mark.production
 
 def test_snapshot_restore_preserves_v2_assets_and_exhausted_budget(tmp_path,monkeypatch):
     root=tmp_path/'project';root.mkdir();monkeypatch.setattr(paths,'ROOT',root)
+    monkeypatch.setattr(paths,'episodes_dir',lambda:root/'episodes')
+    monkeypatch.setattr(paths,'state_dir',lambda:root/'state')
     atomic_json(paths.episode_json('one'),{'id':'one'})
     media=paths.episode_dir('one')/'production/v2/images/paid.png';media.parent.mkdir(parents=True);media.write_bytes(b'paid image bytes')
     atomic_json(media.with_suffix('.png.response.json'),{'response':'received'})

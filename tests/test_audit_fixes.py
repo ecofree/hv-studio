@@ -16,6 +16,16 @@ sys.path.insert(0, str(ROOT))
 pytestmark = pytest.mark.production
 
 
+@pytest.fixture(autouse=True)
+def isolated_audit_episodes(tmp_path, tmp_episodes, monkeypatch):
+    """These regressions own fixtures only, never historical media or live locks."""
+    from app.models import Episode
+    from app.managers import save
+    monkeypatch.setattr(sys.modules[__name__], 'ROOT', tmp_path)
+    for eid in ('synthetic-scoped', 'synthetic-scoped2', 'synthetic-partial', 'synthetic-full'):
+        save(Episode(id=eid, title='Offline fixture', episode_number=1))
+
+
 @pytest.fixture
 def no_baseline_episode(monkeypatch):
     """An approved, composed episode that has no frames to compare subtitles to.
@@ -44,8 +54,6 @@ def no_baseline_episode(monkeypatch):
     monkeypatch.setattr("app.services.subtitle_fidelity._narration_source", lambda ep: "")
     monkeypatch.setattr("app.managers.load", lambda eid: NoFrames())
     yield PS
-    import shutil
-    shutil.rmtree(ROOT / "episodes/synthetic-approval", ignore_errors=True)
 
 
 def test_missing_baseline_is_not_a_defect(no_baseline_episode):
@@ -74,14 +82,19 @@ def test_unverifiable_fidelity_fails_closed(no_baseline_episode, monkeypatch):
     assert any("subtitle fidelity" in b for b in out["blockers"])
 
 
-def test_every_status_shape_exposes_content_approved():
+def test_started_statuses_expose_content_approved():
     """get_status must always answer the delivery-level question.
 
     Consumers (readiness, operator_flow, WebUI) cannot special-case which branch
     produced the status.
     """
     from app.services.production_status import get_status
-    for eid in sorted(p.stem for p in (ROOT / "episodes").glob("*.json"))[:8]:
+    from app.services.provenance import atomic_json
+    for eid in ('synthetic-scoped', 'synthetic-scoped2', 'synthetic-partial', 'synthetic-full'):
+        # A deliberately incomplete started run must expose delivery truth and
+        # fail closed. Use isolated records, not the first historical episodes.
+        atomic_json(ROOT / 'episodes' / eid / 'production/v2/run.json',
+                    {'source_sha256':'stale-source', 'last_result':{'status':'PREPARED'}})
         status = get_status(eid)
         assert "content_approved" in status, eid
         assert isinstance(status["content_approved"], bool), eid
@@ -166,9 +179,6 @@ def test_scoped_run_dispatches_only_requested_keys(monkeypatch, tmp_path):
     assert set(state["image_assets"]) == {"B"}
     assert state["declared_image_keys"] == ["A", "B", "C"], \
         "timeline needs to know what the episode declares without re-running prepare()"
-    import shutil
-    shutil.rmtree(ROOT / "episodes/synthetic-scoped2", ignore_errors=True)
-    (ROOT / "episodes/synthetic-scoped2.json").unlink(missing_ok=True)
 
 
 def test_timeline_refuses_a_partial_plate_set(monkeypatch):
@@ -187,9 +197,6 @@ def test_timeline_refuses_a_partial_plate_set(monkeypatch):
     result = EP.run("synthetic-partial", stages=["timeline"], script_md="旁白。")
     assert result["status"] == "BLOCKED"
     assert result["run_ok"] is False
-    import shutil
-    shutil.rmtree(ROOT / "episodes/synthetic-partial", ignore_errors=True)
-    (ROOT / "episodes/synthetic-partial.json").unlink(missing_ok=True)
 
 
 def test_unscoped_run_is_unchanged(monkeypatch):
@@ -210,6 +217,3 @@ def test_unscoped_run_is_unchanged(monkeypatch):
     assert dispatched == ["A", "B"]
     assert "scoped_image_keys" not in result
     assert "image_assets_incomplete" not in result
-    import shutil
-    shutil.rmtree(ROOT / "episodes/synthetic-full", ignore_errors=True)
-    (ROOT / "episodes/synthetic-full.json").unlink(missing_ok=True)

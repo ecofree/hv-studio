@@ -56,7 +56,7 @@ ROOT = Path(__file__).resolve().parent.parent  # D:/hv
 
 def episodes_dir() -> Path:
     """episodes/ 根目录。调用期求值——测试可 monkeypatch 本函数整体重定向。"""
-    return ROOT / "episodes"
+    return (ROOT / "workspace" if (ROOT / '.studio-project.json').is_file() else ROOT) / "episodes"
 
 
 def episode_dir(ep_id: str) -> Path:
@@ -71,4 +71,4 @@ def episode_json(ep_id: str) -> Path:
 
 def state_dir() -> Path:
     """state/ —— 健康度、台账、checkpoint 等运行态。"""
-    return ROOT / "state"
+    return (ROOT / "workspace" if (ROOT / '.studio-project.json').is_file() else ROOT) / "state"

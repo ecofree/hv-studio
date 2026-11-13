@@ -95,7 +95,6 @@ def test_produce_default_skips_script_when_frames_exist(tmp_episodes, monkeypatc
         "全新内容。不应被默认跑进 script 阶段。", encoding="utf-8")
     from app.orchestrator import produce_legacy as produce
     # 默认链（None）会先评估 script 适用性；无 assets/shots/compose 活 → 应仅跳过
-    monkeypatch.setattr("app.orchestrator.stage_assets",lambda *a,**k:None)
     res = produce(ep_id)   # stages=None
     assert "script" not in res["stages_done"], \
         f"已有 frames 不应默认重切 script: {res['stages_done']}"

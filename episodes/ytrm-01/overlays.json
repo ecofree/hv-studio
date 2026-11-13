@@ -1,0 +1,97 @@
+{
+  "version": 1,
+  "overlays": [
+    {
+      "kind": "title_card",
+      "start_ms": 0,
+      "end_ms": 3800,
+      "title": "玄奘是偷渡出境的",
+      "subtitle": "第一幕 · 一张走不通的文牒",
+      "episode": "初唐异人传 · 第一集",
+      "fade_ms": 400,
+      "dim": 0.32,
+      "scrim": true,
+      "fade_in_ms": 0,
+      "anchor_y": 0.2
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 152005,
+      "end_ms": 154805,
+      "title": "向导半夜拔出了刀",
+      "subtitle": "第二幕 · 荒原深处的试探",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true,
+      "anchor_y": 0.66
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 326820,
+      "end_ms": 329620,
+      "title": "五升水，洒进了流沙",
+      "subtitle": "第三幕 · 八百里莫贺延碛",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 460425,
+      "end_ms": 463225,
+      "title": "他掉头往回跑了十多里",
+      "subtitle": "第四幕 · 那一记耳光",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true,
+      "anchor_y": 0.66
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 603019,
+      "end_ms": 605819,
+      "title": "绝食到第四天",
+      "subtitle": "第五幕 · 高昌王宫的对峙",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 759583,
+      "end_ms": 762383,
+      "title": "翻过天山，少了三分之一",
+      "subtitle": "第六幕 · 凌山与那烂陀",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 867622,
+      "end_ms": 870422,
+      "title": "十八天，无人应战",
+      "subtitle": "第七幕 · 曲女城大论战",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true
+    },
+    {
+      "kind": "act_card",
+      "start_ms": 965209,
+      "end_ms": 968009,
+      "title": "十九年，一千三百多万字",
+      "subtitle": "第八幕 · 长安的最后一盏灯",
+      "episode": "",
+      "fade_ms": 400,
+      "dim": 0.22,
+      "scrim": true
+    }
+  ]
+}

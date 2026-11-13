@@ -1,9 +1,7 @@
 """Karaoke word highlighting: offset translation, degradation, and no-op safety.
 
-These run against the **real** ``caomin-02/word_timing.json`` when present: the
-offset translation is the part most likely to silently light the wrong glyph,
-and synthetic strings do not reproduce the punctuation and tail-stripping cases
-that make it tricky.
+Use isolated punctuation, quotation and tail-stripping cases. Historical episode
+folders are never inputs to the test suite.
 """
 import json
 import sys
@@ -19,7 +17,24 @@ from app.managers import load
 from app.services import compose as C
 from app.services import word_timing as W
 
-REAL = Path(r'D:\hv\episodes\caomin-02\word_timing.json')
+@pytest.fixture
+def aligned_episode(tmp_episodes):
+    from app.models.episode import Episode,Frame
+    from app.managers import save
+    from app.services.provenance import atomic_json
+    eid='word-alignment-fixture'
+    texts=['你好，世界。','“他说：出发！”','甲、乙；丙。','重复，重复。','第一段有十万人自卖身']
+    frames=[Frame(id=f'frame-{i:03}',text=text) for i,text in enumerate(texts)]
+    ep=Episode(id=eid,title='独立字幕夹具',episode_number=1,frames=frames);save(ep)
+    words={}
+    for frame in frames:
+        rows=[]
+        for i,char in enumerate(frame.text):
+            if char.isalnum():
+                a=len(rows)*100;rows.append([i,i+1,a,a+100])
+        words[frame.id]=rows
+    atomic_json(W.path_for(eid),dict(version=1,words=words))
+    return eid
 
 
 @pytest.fixture(autouse=True)
@@ -106,10 +121,9 @@ def test_highlight_changes_pixels_and_stays_in_bounds():
     assert display[0:5]
 
 
-@pytest.mark.skipif(not REAL.is_file(), reason='needs the real caomin-02 alignment')
-def test_real_data_maps_every_frame():
-    plan = W.load('caomin-02')
-    ep = load('caomin-02')
+def test_aligned_data_maps_every_frame(aligned_episode):
+    plan = W.load(aligned_episode)
+    ep = load(aligned_episode)
     frames = {f.id: f for f in ep.frames}
     missing = [k for k in plan.words if k not in frames]
     assert not missing, f'word_timing references unknown frames: {missing[:5]}'
@@ -125,10 +139,9 @@ def test_real_data_maps_every_frame():
     assert not bad, f'frames whose word offsets will not map: {bad[:8]}'
 
 
-@pytest.mark.skipif(not REAL.is_file(), reason='needs the real caomin-02 alignment')
-def test_highlight_span_resolves_for_real_frames():
-    ep = load('caomin-02')
-    plan = W.load('caomin-02')
+def test_highlight_span_resolves_for_aligned_frames(aligned_episode):
+    ep = load(aligned_episode)
+    plan = W.load(aligned_episode)
     hit = miss = 0
     for fid, ws in list(plan.words.items())[:60]:
         f = next(x for x in ep.frames if x.id == fid)

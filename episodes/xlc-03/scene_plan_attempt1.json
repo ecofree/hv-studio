@@ -1,0 +1,313 @@
+{
+  "episode": "xlc-03",
+  "images": {
+    "XL05": {
+      "path": "episodes/xlc-03/shots/XL05.png"
+    },
+    "XL17": {
+      "path": "episodes/xlc-03/shots/XL17.png"
+    },
+    "XL06": {
+      "path": "episodes/xlc-03/shots/XL06.png"
+    },
+    "XL10": {
+      "path": "episodes/xlc-03/shots/XL10.png"
+    },
+    "XL01": {
+      "path": "episodes/xlc-03/shots/XL01.png"
+    },
+    "XL12": {
+      "path": "episodes/xlc-03/shots/XL12.png"
+    },
+    "XL07": {
+      "path": "episodes/xlc-03/shots/XL07.png"
+    },
+    "XL14": {
+      "path": "episodes/xlc-03/shots/XL14.png"
+    },
+    "XL15": {
+      "path": "episodes/xlc-03/shots/XL15.png"
+    },
+    "XL08": {
+      "path": "episodes/xlc-03/shots/XL08.png"
+    },
+    "XL09": {
+      "path": "episodes/xlc-03/shots/XL09.png"
+    },
+    "XL13": {
+      "path": "episodes/xlc-03/shots/XL13.png"
+    },
+    "XL03": {
+      "path": "episodes/xlc-03/shots/XL03.png"
+    },
+    "XL16": {
+      "path": "episodes/xlc-03/shots/XL16.png"
+    },
+    "XL04": {
+      "path": "episodes/xlc-03/shots/XL04.png"
+    },
+    "XL11": {
+      "path": "episodes/xlc-03/shots/XL11.png"
+    },
+    "XL02": {
+      "path": "episodes/xlc-03/shots/XL02.png"
+    }
+  },
+  "unit_scenes": [
+    {
+      "unit_id": "narr-01f9cddede570239",
+      "image": "XL01",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-fb717c920c0f716c",
+      "image": "XL01",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-61b5e3b2519f3af2",
+      "image": "XL02",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-dda5b105c42411f5",
+      "image": "XL02",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-a4a520dd06bc887b",
+      "image": "XL03",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-6d9614ab699e03e8",
+      "image": "XL03",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-679db01e85ddf3cc",
+      "image": "XL04",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-27bf6a3623a13c7d",
+      "image": "XL04",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-f0650e7fcc79e276",
+      "image": "XL05",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-ad2a62a3dae807ae",
+      "image": "XL06",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-519264bde593af91",
+      "image": "XL06",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-e28df3be04cab53c",
+      "image": "XL07",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-75fdf3f01539d37f",
+      "image": "XL07",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-c26309c7f789ba4c",
+      "image": "XL08",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-9771078dd70ad13d",
+      "image": "XL08",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-9053d26bf6a96653",
+      "image": "XL09",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-ab6d7bbbbf20d0c9",
+      "image": "XL09",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-18d8daf8d19a3b92",
+      "image": "XL10",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-814954f8397793cc",
+      "image": "XL10",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-383471601afbf1ac",
+      "image": "XL11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-157be099aea90b9f",
+      "image": "XL11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-a5933fda62535503",
+      "image": "XL12",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-1dc8393ba6e1f0f6",
+      "image": "XL12",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-bba5dfb31aec8b36",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-8cdc88ee315fc454",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-5e062bf78665da9f",
+      "image": "XL14",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-decec46fa0c32680",
+      "image": "XL14",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-b5ace305d7298d61",
+      "image": "XL14",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-d515a0fbf30e567f",
+      "image": "XL15",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-3488cb59b69331cc",
+      "image": "XL15",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-0b2f4faa7e6e2b5a",
+      "image": "XL15",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-f67507ea48767025",
+      "image": "XL16",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-60a3e4ab465ff026",
+      "image": "XL16",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-11584ba85fb1355c",
+      "image": "XL16",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-d1748ce8dd0784bf",
+      "image": "XL17",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-e06fb8bca4f1874e",
+      "image": "XL17",
+      "grades": [
+        "night"
+      ]
+    }
+  ],
+  "authored": true,
+  "authored_by": "option B high density",
+  "review_required": true
+}

@@ -13,6 +13,7 @@ $expectedRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimE
 if ([IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\') -ne $expectedRoot) { throw 'ProjectRoot does not match this checker' }
 $runtime = if ($env:HV_PYTHON) { $env:HV_PYTHON } else { Join-Path $ProjectRoot '.venv-core\Scripts\python.exe' }
 $env:PYTHONUTF8 = '1'
+$env:PATH = (Join-Path $ProjectRoot 'tools\ffmpeg\bin') + [IO.Path]::PathSeparator + $env:PATH
 $arguments = @((Join-Path $ProjectRoot 'bin\check_project.py'))
 $executeTests = if ($PSBoundParameters.ContainsKey('RunGates')) { [bool]$RunGates } else { -not $Quick }
 if ($executeTests) { $arguments += @('--tests', '--suite', $Suite) }

@@ -1,23 +1,19 @@
-r"""Quarantine a paid-but-unusable saved image response.
+r"""Quarantine a genuinely unusable saved image response, preserving evidence.
 
-Why this script exists
----------------------
-A provider response is paid evidence: once `*.response.json` exists, the image
-pipeline refuses to issue another request for that fingerprint. When the saved
-response itself is bad (xlc-01 XL22b1, 2026-10-13: provider returned 1086x1448
-for a 1080x1920 request), the job is stuck forever -- retrying is impossible
-and deleting the receipt would destroy the proof that money was spent.
+Size/aspect differences alone are NOT a reason to quarantine or pay again.
+Use bin/recover_image_receipt.py first: valid source plates are locally fitted
+to the delivery canvas. This command is for corrupt/unrecoverable responses.
 
-This moves the whole candidate directory to `images/_quarantine/<fp>/` with an
-event record. Nothing is deleted. After quarantine the job is simply missing
-again, so the next run re-requests it against the retry allowance
-(`--max-image-retries`).
+This preserves irrecoverable responses for investigation. Quarantine makes the
+job missing again, so a later explicitly budgeted run can request a replacement.
+Do not use it to work around a normal size/aspect difference; recover and fit
+existing image bytes first.
 
 Usage
 -----
     .venv-core\Scripts\python.exe bin\quarantine_image_receipt.py \
         --receipt episodes/xlc-01/production/v2/images/<fp>/XL22b1.png.response.json \
-        --reason "provider returned 1086x1448 for 1080x1920; dimensions rejected"
+        --reason "saved response bytes cannot be decoded; original evidence retained"
 """
 from __future__ import annotations
 

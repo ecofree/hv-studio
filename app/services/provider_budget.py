@@ -17,6 +17,7 @@ class BudgetExceeded(RuntimeError): pass
 
 _image_budget = ContextVar('image_budget', default=None)
 _image_receipt = ContextVar('image_receipt', default=None)
+_image_guard = ContextVar('image_guard', default=None)
 _tts_budget = ContextVar('tts_budget', default=None)
 
 
@@ -35,11 +36,13 @@ def current_tts_budget():
 
 
 @contextmanager
-def image_budget_scope(budget, response_path=None, request_fp=None):
+def image_budget_scope(budget, response_path=None, request_fp=None, guard=None):
     token = _image_budget.set(budget)
     receipt_token = _image_receipt.set((response_path, request_fp) if response_path else None)
+    guard_token = _image_guard.set(guard)
     try: yield
     finally:
+        _image_guard.reset(guard_token)
         _image_receipt.reset(receipt_token)
         _image_budget.reset(token)
 
@@ -53,16 +56,10 @@ def current_image_budget():
 
 @contextmanager
 def ledger_lock(path):
-    from app.services.process_lock import file_lock
-    deadline = time.monotonic()+10
-    while True:
-        lock = file_lock(Path(path).with_suffix('.budget.lock'))
-        try: lock.__enter__(); break
-        except RuntimeError:
-            if time.monotonic() >= deadline: raise
-            time.sleep(.03)
-    try: yield
-    finally: lock.__exit__(None, None, None)
+    from app.services.process_lock import wait_file_lock
+    with wait_file_lock(Path(path).with_suffix('.budget.lock'),timeout=10):
+        yield
+
 
 
 class ProviderBudget:
@@ -70,10 +67,8 @@ class ProviderBudget:
                  image_retries=0):
         self.path = Path(path)
         self.limits = dict(tts_requests=tts_requests, characters=characters, image_requests=image_requests)
-        # Retry allowance is a separate, explicit cap: without it a 400-policy
-        # rejection plus its retries consume the success quota and starve the
-        # plates behind it (xlc-01, 2026-10-13: 27/27 exhausted, 4 plates lost).
-        # The key is only present when nonzero so old ledgers keep their shape.
+        # Compatibility: legacy image_retries extends the TOTAL attempt cap.
+        # Both new requests and repeats consume that same cap; no separate pool.
         if type(image_retries) is not int or image_retries < 0:
             raise ValueError('invalid budget limits')
         if image_retries:
@@ -84,7 +79,7 @@ class ProviderBudget:
                 if read(self.path)['limits'] != self.limits: raise ValueError('budget limits changed; use a new explicit budget ID')
             else: atomic_json(self.path, dict(limits=self.limits, used=dict.fromkeys(self.limits, 0), attempts=[]))
 
-    def reserve(self, kind, request_fingerprint, characters=0):
+    def reserve(self, kind, request_fingerprint, characters=0, *, supplier=None, queue_seconds=None):
         if kind not in ('tts', 'image') or type(characters) is not int or characters < 0:
             raise ValueError('invalid provider reservation')
         charge = {kind+'_requests': 1}
@@ -104,6 +99,8 @@ class ProviderBudget:
             token = uuid.uuid4().hex
             state['attempts'].append(dict(id=token, kind=kind, request_fingerprint=request_fingerprint,
                                           characters=characters, reserved_at=time.time(), status='reserved'))
+            if supplier is not None:
+                state['attempts'][-1].update(supplier=supplier,queue_seconds=round(queue_seconds or 0.,3))
             atomic_json(self.path, state)
         return token
 
@@ -121,10 +118,10 @@ class ProviderBudget:
         with ledger_lock(self.path):
             state=read(self.path)
             for key, count in requested.items():
-                if state['used'][key]+count>self.limits[key]: raise BudgetExceeded(
+                if count and state['used'][key]+count>self.limits[key]+(self.limits.get('image_retries',0) if key=='image_requests' else 0): raise BudgetExceeded(
                     'remaining provider budget insufficient: '+key
                     +f' ({state["used"][key]}/{self.limits[key]} used)'
-                    +(' (retries are drawn from the separate image_retries allowance, not from this preflight)'
+                    +(' (legacy image_retries is included in the total attempt allowance)'
                        if key == 'image_requests' and self.limits.get('image_retries', 0) else ''))
 
 

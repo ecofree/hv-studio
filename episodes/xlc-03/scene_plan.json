@@ -1,0 +1,583 @@
+{
+  "episode": "xlc-03",
+  "images": {
+    "XL01": {
+      "path": "episodes/xlc-03/shots/XL01.png"
+    },
+    "XL18": {
+      "path": "episodes/xlc-03/shots/XL18.png"
+    },
+    "XL19": {
+      "path": "episodes/xlc-03/shots/XL19.png"
+    },
+    "XL20": {
+      "path": "episodes/xlc-03/shots/XL20.png"
+    },
+    "XL21": {
+      "path": "episodes/xlc-03/shots/XL21.png"
+    },
+    "XL02": {
+      "path": "episodes/xlc-03/shots/XL02.png"
+    },
+    "XL22": {
+      "path": "episodes/xlc-03/shots/XL22.png"
+    },
+    "XL23": {
+      "path": "episodes/xlc-03/shots/XL23.png"
+    },
+    "XL24": {
+      "path": "episodes/xlc-03/shots/XL24.png"
+    },
+    "XL03": {
+      "path": "episodes/xlc-03/shots/XL03.png"
+    },
+    "XL25": {
+      "path": "episodes/xlc-03/shots/XL25.png"
+    },
+    "XL26": {
+      "path": "episodes/xlc-03/shots/XL26.png"
+    },
+    "XL04": {
+      "path": "episodes/xlc-03/shots/XL04.png"
+    },
+    "XL27": {
+      "path": "episodes/xlc-03/shots/XL27.png"
+    },
+    "XL05": {
+      "path": "episodes/xlc-03/shots/XL05.png"
+    },
+    "XL28": {
+      "path": "episodes/xlc-03/shots/XL28.png"
+    },
+    "XL29": {
+      "path": "episodes/xlc-03/shots/XL29.png"
+    },
+    "XL06": {
+      "path": "episodes/xlc-03/shots/XL06.png"
+    },
+    "XL30": {
+      "path": "episodes/xlc-03/shots/XL30.png"
+    },
+    "XL31": {
+      "path": "episodes/xlc-03/shots/XL31.png"
+    },
+    "XL07": {
+      "path": "episodes/xlc-03/shots/XL07.png"
+    },
+    "XL32": {
+      "path": "episodes/xlc-03/shots/XL32.png"
+    },
+    "XL08": {
+      "path": "episodes/xlc-03/shots/XL08.png"
+    },
+    "XL33": {
+      "path": "episodes/xlc-03/shots/XL33.png"
+    },
+    "XL34": {
+      "path": "episodes/xlc-03/shots/XL34.png"
+    },
+    "XL35": {
+      "path": "episodes/xlc-03/shots/XL35.png"
+    },
+    "XL36": {
+      "path": "episodes/xlc-03/shots/XL36.png"
+    },
+    "XL09": {
+      "path": "episodes/xlc-03/shots/XL09.png"
+    },
+    "XL10": {
+      "path": "episodes/xlc-03/shots/XL10.png"
+    },
+    "XL37": {
+      "path": "episodes/xlc-03/shots/XL37.png"
+    },
+    "XL38": {
+      "path": "episodes/xlc-03/shots/XL38.png"
+    },
+    "XL39": {
+      "path": "episodes/xlc-03/shots/XL39.png"
+    },
+    "XL11": {
+      "path": "episodes/xlc-03/shots/XL11.png"
+    },
+    "XL12": {
+      "path": "episodes/xlc-03/shots/XL12.png"
+    },
+    "XL40": {
+      "path": "episodes/xlc-03/shots/XL40.png"
+    },
+    "XL13": {
+      "path": "episodes/xlc-03/shots/XL13.png"
+    },
+    "XL14": {
+      "path": "episodes/xlc-03/shots/XL14.png"
+    },
+    "XL41": {
+      "path": "episodes/xlc-03/shots/XL41.png"
+    },
+    "XL42": {
+      "path": "episodes/xlc-03/shots/XL42.png"
+    },
+    "XL43": {
+      "path": "episodes/xlc-03/shots/XL43.png"
+    },
+    "XL15": {
+      "path": "episodes/xlc-03/shots/XL15.png"
+    },
+    "XL44": {
+      "path": "episodes/xlc-03/shots/XL44.png"
+    },
+    "XL16": {
+      "path": "episodes/xlc-03/shots/XL16.png"
+    },
+    "XL17": {
+      "path": "episodes/xlc-03/shots/XL17.png"
+    }
+  },
+  "unit_scenes": [
+    {
+      "unit_id": "narr-01f9cddede570239",
+      "image": "XL01",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-853c6614ac59e891",
+      "image": "XL01",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-3345704582d1308a",
+      "image": "XL18",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-bc2bcc2f09333a08",
+      "image": "XL19",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-781dba1c520a2fc6",
+      "image": "XL20",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-61b5e3b2519f3af2",
+      "image": "XL21",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-f0ae4ed2bd51fdb3",
+      "image": "XL02",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-c2d100b09f8c6673",
+      "image": "XL22",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-d1f160c4e789b0b7",
+      "image": "XL22",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-08b5f083749e741d",
+      "image": "XL23",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-59d388db80721dcc",
+      "image": "XL24",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-68be4ed594975e57",
+      "image": "XL03",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-875ac63d5bed3ac1",
+      "image": "XL03",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-7f436f0a1c42613a",
+      "image": "XL25",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-44b97cb1ca5131d7",
+      "image": "XL25",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-ec3b85dca35a698a",
+      "image": "XL26",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-d0a6cab5490af926",
+      "image": "XL04",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-55edf935134ef396",
+      "image": "XL27",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-27bf6a3623a13c7d",
+      "image": "XL27",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-87b6c741499b76b6",
+      "image": "XL05",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-fc00956ea418851b",
+      "image": "XL28",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-e163619bd1445785",
+      "image": "XL29",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-f1dd5ddafdfcc6e6",
+      "image": "XL06",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-d7751fc20116784d",
+      "image": "XL30",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-14d626fc06d3fba7",
+      "image": "XL31",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-cf5da03aa11d1496",
+      "image": "XL31",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-53ee4525e8b9ec19",
+      "image": "XL07",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-32d0cac86265b4e2",
+      "image": "XL07",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-e5cc4a02f6500740",
+      "image": "XL32",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-c926b1ef94437c44",
+      "image": "XL32",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-c26309c7f789ba4c",
+      "image": "XL08",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-e30408a98022a720",
+      "image": "XL08",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-080df43621ef320d",
+      "image": "XL33",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-03fa6039603c3e40",
+      "image": "XL34",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-314f91347f81ea5d",
+      "image": "XL35",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-9053d26bf6a96653",
+      "image": "XL36",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-ab6d7bbbbf20d0c9",
+      "image": "XL09",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-59a797d66be4b37c",
+      "image": "XL10",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-1cd549dbe00aec2c",
+      "image": "XL37",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-814954f8397793cc",
+      "image": "XL38",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-92906150ecb6cc29",
+      "image": "XL39",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-40c475da617e99be",
+      "image": "XL39",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-2ddec0832fc26eb3",
+      "image": "XL11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-70591aab8091af78",
+      "image": "XL11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-8fbb919417ad932f",
+      "image": "XL12",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-bdc9e38bebd465e8",
+      "image": "XL12",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-1dc8393ba6e1f0f6",
+      "image": "XL40",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-a71622921ae55b83",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-032186b37aa695e6",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-8cdc88ee315fc454",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-5e062bf78665da9f",
+      "image": "XL14",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-af91be7c7f2ac663",
+      "image": "XL14",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-1498a9e592b2ed30",
+      "image": "XL41",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-b5ace305d7298d61",
+      "image": "XL41",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-d515a0fbf30e567f",
+      "image": "XL42",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-3c436c9f700fcac1",
+      "image": "XL43",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-88b7225f3d9300e5",
+      "image": "XL15",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-0b2f4faa7e6e2b5a",
+      "image": "XL15",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-f67507ea48767025",
+      "image": "XL44",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-60a3e4ab465ff026",
+      "image": "XL44",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-11584ba85fb1355c",
+      "image": "XL16",
+      "grades": [
+        "noon"
+      ]
+    },
+    {
+      "unit_id": "narr-d1748ce8dd0784bf",
+      "image": "XL17",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-e06fb8bca4f1874e",
+      "image": "XL17",
+      "grades": [
+        "night"
+      ]
+    }
+  ],
+  "authored": true,
+  "authored_by": "44 plates / cap 28s, beat-aligned",
+  "review_required": true
+}

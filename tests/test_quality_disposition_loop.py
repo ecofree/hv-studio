@@ -12,7 +12,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services.production_quality import record_disposition, pending
 
 pytestmark = pytest.mark.production
@@ -29,7 +28,7 @@ def _report(tmp_path):
         "manifest_path": str(tmp_path / "manifest.json"),
         "manifest_sha256": file_sha256(tmp_path / "manifest.json"),
         "checker_sha256": file_sha256(
-            Path(r"D:\hv/app/services/asr_check.py")),
+            Path(__file__).resolve().parents[1]/"app/services/asr_check.py"),
         "takes": [
             {"unit_id": "narr-a",
              "audio_path": str(tmp_path / "a.wav"),
@@ -59,6 +58,20 @@ def test_disposition_clears_exactly_one_unit(tmp_path, monkeypatch):
     record_disposition(str(rp), "narr-a", "reviewer",
                        "master says 贞观, ASR misheard; take kept", "asr_false_positive")
     assert pending(str(rp)) == ["narr-b"]
+
+
+def test_batch_review_validates_all_selected_audio_before_writing(tmp_path,monkeypatch):
+    import app.services.production_quality as Q
+    from app.services.provenance import file_sha256
+    monkeypatch.setattr(Q,'validate_assembly',lambda p:{'takes':[{'unit_id':'narr-a'},{'unit_id':'narr-b'}]})
+    rp=_report(tmp_path); expected=file_sha256(rp)
+    (tmp_path/'b.wav').write_bytes(b'changed')
+    with pytest.raises(ValueError,match='audio changed'):
+        Q.record_dispositions(rp,['narr-a','narr-b'],'reviewer','actually listened','asr_false_positive',expected_report_sha256=expected)
+    assert not list((rp.parent/'dispositions').glob('*.json'))
+    (tmp_path/'b.wav').write_bytes(b'b')
+    Q.record_dispositions(rp,['narr-a'],'reviewer','actually listened','asr_false_positive',expected_report_sha256=expected)
+    assert pending(rp)==['narr-b']
 
 
 def test_disposition_requires_a_named_reviewer_and_finding(tmp_path, monkeypatch):

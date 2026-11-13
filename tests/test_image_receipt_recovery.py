@@ -13,7 +13,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services.image import quarantine_saved_response
 
 pytestmark = pytest.mark.production
@@ -58,26 +57,8 @@ def test_quarantine_refuses_silence_and_double_jeopardy(tmp_path):
         quarantine_saved_response(dst / rp.name, "again")
 
 
-def test_quarantine_handles_the_real_xl22b1_receipt_shape(tmp_path):
-    """The real stuck receipt (4.15MB, valid JSON, wrong dims) must survive
-    quarantine byte-identical: it is the proof that the call was paid for."""
-    real = list(Path(r"D:\hv/episodes/xlc-01/production/v2/images").glob(
-        "4078b929e8248410e27458665fb3c96828aa39cb3197f7e608fac94fe5379618"
-        "/*.response.json"))
-    if not real:
-        pytest.skip("xlc-01 receipts not on disk")
-    work = tmp_path / "w"
-    shutil.copytree(real[0].parent, work / real[0].parent.name)
-    rp = work / real[0].parent.name / real[0].name
-    before = rp.stat().st_size
-    dst = quarantine_saved_response(rp, "provider returned 1086x1448 for 1080x1920")
-    assert (dst / rp.name).stat().st_size == before
-    event = json.loads((dst / "quarantine.json").read_text(encoding="utf-8"))
-    assert len(event["response_sha256"]) == 64
-
-
-def test_dimension_rejection_names_the_numbers(tmp_path):
-    """The gate that rejected XL22b1 must say what it saw, not just ValueError."""
+def test_source_dimensions_do_not_have_to_equal_video_canvas(tmp_path):
+    """A decodable source plate is locally fitted at compose time."""
     from PIL import Image
     from app.services.image import ImageJob
     from app.models import ImageGenRequest
@@ -86,5 +67,41 @@ def test_dimension_rejection_names_the_numbers(tmp_path):
     Image.new("RGB", (1086, 1448), (10, 10, 10)).save(p)
     job = ImageJob("odd", ImageGenRequest(model="gpt-image-2", prompt="x", size="1080x1920"),
                    tmp_path / "odd.png")
-    with pytest.raises(ValueError, match=r"1086.*1448.*1080x1920"):
-        job.validate_output(p)
+    assert job.validate_output(p)==(1086,1448)
+
+
+def test_offline_recovery_reconciles_cost_once_without_dispatch(tmp_path, monkeypatch):
+    import base64, io
+    from PIL import Image
+    from app.models import ImageGenRequest
+    from app.services import image as m
+    from app.services.provenance import atomic_json
+    job=m.ImageJob('recovery',ImageGenRequest(model='gpt-image-2',prompt='camp'),tmp_path/'source.png')
+    data=io.BytesIO();Image.new('RGB',(300,400)).save(data,format='PNG')
+    receipt=job.out.with_suffix('.png.response.json')
+    atomic_json(receipt,dict(request_fingerprint=job.request_fingerprint(),channel='offline',
+                            attempt_id='original-attempt',response={'data':[{'b64_json':base64.b64encode(data.getvalue()).decode()}]}))
+    monkeypatch.setattr(m,'_COST_PATH',tmp_path/'cost.json')
+    monkeypatch.setattr(m,'_PRICES_PATH',tmp_path/'prices.json')
+    monkeypatch.setattr(m,'get_image',lambda:pytest.fail('recovery cannot dispatch'))
+    m.recover_saved_response(job,receipt)
+    first=job.out.read_bytes()
+    m.recover_saved_response(job,receipt)
+    rows=json.loads((tmp_path/'cost.json').read_text())
+    assert job.is_done() and job.out.read_bytes()==first and len(rows)==1
+    assert rows[0]['attempt_id']=='original-attempt'
+    assert json.loads(job.out.with_suffix('.png.recovery.json').read_text())['new_provider_calls']==0
+    # Same prompt can return different pixels. A valid existing plate cannot vouch for another receipt.
+    prior=json.loads(receipt.read_text())
+    replacement=io.BytesIO();Image.new('RGB',(300,400),'navy').save(replacement,format='PNG')
+    prior['response']['data']=[{'b64_json':base64.b64encode(replacement.getvalue()).decode()}]
+    prior['attempt_id']='second-attempt'
+    atomic_json(receipt,prior)
+    m.recover_saved_response(job,receipt)
+    assert job.is_done() and job.out.read_bytes()==replacement.getvalue()!=first
+    assert len(json.loads((tmp_path/'cost.json').read_text()))==2
+    prior['response']['data']=[]
+    atomic_json(receipt,prior)
+    with pytest.raises(m.ImageError,match='empty paid response'):
+        m.recover_saved_response(job,receipt)
+    assert job.out.read_bytes()==replacement.getvalue() and len(json.loads((tmp_path/'cost.json').read_text()))==2

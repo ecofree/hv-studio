@@ -1,0 +1,12 @@
+{
+  "html_parse": "passed",
+  "embedded_plan_matches_draft": true,
+  "embedded_check_matches_file": true,
+  "linked_files_found": 4,
+  "display_assets_found": 11,
+  "javascript_syntax": "passed",
+  "external_network_requests": false,
+  "autoplay_media": false,
+  "browser_layout_and_clicks": "not_verified_policy_blocked",
+  "page_sha256": "e1527d78431fe751f4140fdc3f283f8d419d344e0870ffc21597b894c91ff02f"
+}

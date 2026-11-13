@@ -1,0 +1,563 @@
+{
+  "episode": "xlc-02",
+  "images": {
+    "XL27": {
+      "path": "episodes/xlc-02/shots/XL27.png"
+    },
+    "XL21": {
+      "path": "episodes/xlc-02/shots/XL21.png"
+    },
+    "XL03": {
+      "path": "episodes/xlc-02/shots/XL03.png"
+    },
+    "XL17": {
+      "path": "episodes/xlc-02/shots/XL17.png"
+    },
+    "XL08": {
+      "path": "episodes/xlc-02/shots/XL08.png"
+    },
+    "XL05": {
+      "path": "episodes/xlc-02/shots/XL05.png"
+    },
+    "XL14": {
+      "path": "episodes/xlc-02/shots/XL14.png"
+    },
+    "XL16": {
+      "path": "episodes/xlc-02/shots/XL16.png"
+    },
+    "XL10": {
+      "path": "episodes/xlc-02/shots/XL10.png"
+    },
+    "XL09": {
+      "path": "episodes/xlc-02/shots/XL09.png"
+    },
+    "XL28": {
+      "path": "episodes/xlc-02/shots/XL28.png"
+    },
+    "XL12": {
+      "path": "episodes/xlc-02/shots/XL12.png"
+    },
+    "XL23": {
+      "path": "episodes/xlc-02/shots/XL23.png"
+    },
+    "XL24": {
+      "path": "episodes/xlc-02/shots/XL24.png"
+    },
+    "XL06": {
+      "path": "episodes/xlc-02/shots/XL06.png"
+    },
+    "XL19": {
+      "path": "episodes/xlc-02/shots/XL19.png"
+    },
+    "XL04": {
+      "path": "episodes/xlc-02/shots/XL04.png"
+    },
+    "XL11": {
+      "path": "episodes/xlc-02/shots/XL11.png"
+    },
+    "XL15": {
+      "path": "episodes/xlc-02/shots/XL15.png"
+    },
+    "XL02": {
+      "path": "episodes/xlc-02/shots/XL02.png"
+    },
+    "XL01": {
+      "path": "episodes/xlc-02/shots/XL01.png"
+    },
+    "XL25": {
+      "path": "episodes/xlc-02/shots/XL25.png"
+    },
+    "XL22": {
+      "path": "episodes/xlc-02/shots/XL22.png"
+    },
+    "XL20": {
+      "path": "episodes/xlc-02/shots/XL20.png"
+    },
+    "XL13": {
+      "path": "episodes/xlc-02/shots/XL13.png"
+    },
+    "XL18": {
+      "path": "episodes/xlc-02/shots/XL18.png"
+    },
+    "XL26": {
+      "path": "episodes/xlc-02/shots/XL26.png"
+    },
+    "XL07": {
+      "path": "episodes/xlc-02/shots/XL07.png"
+    }
+  },
+  "unit_scenes": [
+    {
+      "unit_id": "narr-7c30875dec0de07e",
+      "image": "XL01",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "unit_id": "narr-2bf492dadcbdb20e",
+      "image": "XL01",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "unit_id": "narr-22757708246b62da",
+      "image": "XL02",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-a1080bf458256a8c",
+      "image": "XL02",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-7c69874487b43652",
+      "image": "XL03",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-c7e4139a6bb47dd3",
+      "image": "XL03",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-de9eea2d93599cc2",
+      "image": "XL04",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-15006e899e7a2674",
+      "image": "XL04",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-9ab917c542bb4065",
+      "image": "XL04",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-3a7e0dbe303a0b95",
+      "image": "XL05",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "unit_id": "narr-70c8753deccd1bbc",
+      "image": "XL05",
+      "grades": [
+        "dawn"
+      ]
+    },
+    {
+      "unit_id": "narr-96b236e28c94d749",
+      "image": "XL06",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-56f049c8a417bf6a",
+      "image": "XL06",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-055044ff4cce25b4",
+      "image": "XL06",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-8820611ac5597b3c",
+      "image": "XL07",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-871bfb603346f9e3",
+      "image": "XL07",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-76b8ad96a12e1f97",
+      "image": "XL08",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-02a2bca4d77e5a6c",
+      "image": "XL08",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-eba1f1c46e007d40",
+      "image": "XL09",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-6ebae99e71b21919",
+      "image": "XL09",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-2f21a83c53da64d1",
+      "image": "XL10",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-e38627465bfe6cf9",
+      "image": "XL10",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-79457f05cfc03cf1",
+      "image": "XL11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-d63ec567e8887324",
+      "image": "XL11",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-dfe700d050ee2d04",
+      "image": "XL12",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-de46e1b1433b681a",
+      "image": "XL12",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-3718a6a81cba7859",
+      "image": "XL12",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-8a51f3eb5108c57d",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-249a68f99db18366",
+      "image": "XL13",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-66d3380cb2dba6f1",
+      "image": "XL14",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-6dcd77edeeb5b560",
+      "image": "XL14",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-404893c551bbf86c",
+      "image": "XL15",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-b75aafbfedb0fca6",
+      "image": "XL15",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-a7305067d1b8823e",
+      "image": "XL16",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-02fe7d0c30c2b676",
+      "image": "XL16",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-8868702342e170a4",
+      "image": "XL16",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-4b51e928906c5bc6",
+      "image": "XL17",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-9a3d72d649d00aad",
+      "image": "XL17",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-6f3c580c832bf653",
+      "image": "XL18",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-a7d2926428b088b9",
+      "image": "XL18",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-dffff83de1116c68",
+      "image": "XL19",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-298e4c47de23b900",
+      "image": "XL19",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-d31715d7be7fc618",
+      "image": "XL20",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-5a7bc40ecf1904f4",
+      "image": "XL20",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-3bcd9a9e0fe57bfc",
+      "image": "XL20",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-3f2e9c959a3726dc",
+      "image": "XL21",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-c5cafba97ef1b39e",
+      "image": "XL21",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-3e5e7fb411d4f086",
+      "image": "XL21",
+      "grades": [
+        "fire"
+      ]
+    },
+    {
+      "unit_id": "narr-c4c94ae00c539069",
+      "image": "XL22",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-845c4d00f671cc0b",
+      "image": "XL22",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-4f5d1e7f5f6b2081",
+      "image": "XL22",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-51f7aa8dfc458f02",
+      "image": "XL23",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-25aa102092b01d1c",
+      "image": "XL23",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-2b0269a8886ed419",
+      "image": "XL24",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-ec8001fa4f0b7b3c",
+      "image": "XL24",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-a042b8e42d645da0",
+      "image": "XL25",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-e9f9ebe63fe8cf9f",
+      "image": "XL25",
+      "grades": [
+        "frost"
+      ]
+    },
+    {
+      "unit_id": "narr-1cb5f1d051539d5e",
+      "image": "XL26",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-fbc00dc61a465b9f",
+      "image": "XL26",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-e9f0a4a4577c8ebe",
+      "image": "XL26",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-c8f75d99747b5e32",
+      "image": "XL27",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-fad8cffbb078872f",
+      "image": "XL27",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-9499dfab94979d06",
+      "image": "XL27",
+      "grades": [
+        "night"
+      ]
+    },
+    {
+      "unit_id": "narr-90f97bf6f9b372b4",
+      "image": "XL28",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-8d950d1a407e129f",
+      "image": "XL28",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-9bb5c6f016a618db",
+      "image": "XL28",
+      "grades": [
+        "dusk"
+      ]
+    },
+    {
+      "unit_id": "narr-bd678d7430c11523",
+      "image": "XL28",
+      "grades": [
+        "dusk"
+      ]
+    }
+  ],
+  "authored": true,
+  "authored_by": "option B high density",
+  "review_required": true
+}

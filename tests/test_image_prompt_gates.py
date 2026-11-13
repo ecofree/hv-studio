@@ -17,6 +17,29 @@ pytestmark = pytest.mark.production
 from app.orchestrator import build_image_jobs, screen_prompt
 
 
+def test_source_brief_is_used_on_restart_and_rejects_source_drift(tmp_path, monkeypatch):
+    import json
+    from app.services.production_inputs import prepare
+    monkeypatch.setattr('app.orchestrator._episode_dir', lambda _: tmp_path/'ep')
+    root = tmp_path/'v2'; root.mkdir()
+    plan = tmp_path/'plan.json'
+    plan.write_text(json.dumps({'source_sha256':'source-a','units':[
+        {'unit_id':'u1','source_text':'旁白提到 cartoon 一词，画面仍为战后的军营。'}]}), encoding='utf-8')
+    brief = root/'source_image_briefs.json'
+    brief.write_text(json.dumps({'source_sha256':'source-a','images':{
+        'unit-000':{'en':'Soldiers regroup beside an abandoned banner after the rain.'}}}), encoding='utf-8')
+    ep = type('Ep', (), {'id':'brief-fixture'})()
+    first, _ = prepare(ep, plan, root)
+    second, _ = prepare(ep, plan, root)
+    assert first[0].request_fingerprint() == second[0].request_fingerprint()
+    assert 'Soldiers regroup' in second[0].req.prompt
+    assert 'Narration:' not in second[0].req.prompt
+    data = json.loads(brief.read_text()); data['source_sha256']='other-source'
+    brief.write_text(json.dumps(data), encoding='utf-8')
+    with pytest.raises(ValueError, match='another narration'):
+        prepare(ep, plan, root)
+
+
 def test_style_word_warns_by_default_and_blocks_in_strict():
     ok, reason, _ = screen_prompt("K", "A Tang general, photorealistic, cinematic.")
     assert ok and "风格词" in reason

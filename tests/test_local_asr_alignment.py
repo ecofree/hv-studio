@@ -125,12 +125,11 @@ def test_local_model_and_audio_identity_control_cache(tmp_path,monkeypatch):
     runtime={'faster-whisper':'test'};monkeypatch.setattr(L,'runtime_versions',lambda *a:runtime)
     config=ProfileASR(model_dir=str(model),python_executable='fixture-python')
     audio=tmp_path/'audio.wav';audio.write_bytes(b'first-audio');calls=[]
-    def execute(args,**kw):
-        calls.append(args)
-        atomic_json(args[args.index('--output')+1],{'text':'兵贵神速。','audio_sha256':file_sha256(audio),
-                    'segments':[],'runtime':runtime})
-        return SimpleNamespace(returncode=0,stderr='')
-    monkeypatch.setattr(L.subprocess,'run',execute)
+    def execute(config,model,payload,timeout):
+        calls.append(payload)
+        return {'text':'兵贵神速。','audio_sha256':file_sha256(audio),'segments':[],'runtime':runtime}
+    from app.services import acoustic_session
+    monkeypatch.setattr(acoustic_session,'infer',execute)
     first,_=L.recognize(audio,config=config);again,_=L.recognize(audio,config=config)
     assert first==again and len(calls)==1
     audio.write_bytes(b'changed-audio');L.recognize(audio,config=config);assert len(calls)==2

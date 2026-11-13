@@ -16,7 +16,8 @@ import yaml
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 CONFIG_PATH = ROOT / "app" / "config" / "polyphone.yaml"
-HITS_LOG = ROOT / "state" / "polyphone_hits.log"
+from app.paths import state_dir
+HITS_LOG = state_dir() / "polyphone_hits.log"
 
 # 规则 key 最短 2 字（D3）。单字规则等于对全文做无差别替换：一条坏规则
 # （比如 `氏: 支`）就能把整篇剧本改坏，且像「摩羯座 → 摩杰座」这种误伤在

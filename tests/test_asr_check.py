@@ -39,11 +39,13 @@ def test_real_misread_registered():
     assert v > 0.0, "真读错却算出 0，拼音比对失效"
 
 
-def test_downgrade_off_by_default():
-    """自动降级默认必须关闭 —— 阈值没标定就降级会毁掉大片情感。"""
+def test_retired_cloud_asr_cannot_dispatch(tmp_path, monkeypatch):
+    """An old setting cannot open an unbudgeted cloud request."""
     from app.services import asr_check as ac
-    assert ac.downgrade_enabled() is False
-    assert ac.enabled() is True      # 回检本身仍开着（只告警）
+    from app.config.config import get_settings
+    monkeypatch.setattr(get_settings().get_profile().asr, 'backend', 'dashscope')
+    with pytest.raises(ValueError, match='only local-whisper'):
+        ac.transcribe(tmp_path/'unused.wav')
 
 
 def test_per_below_cer_on_homophone_noise():
@@ -92,27 +94,3 @@ def test_check_unavailable_is_not_passed(tmp_path):
         assert not ok and "unavailable" in why
     finally:
         ac.transcribe = orig
-
-
-def test_transcription_calls_recognizer_and_cleans_temp(tmp_path,monkeypatch):
-    from app.services import asr_check as A, cosyvoice
-    import dashscope.audio.asr as sdk
-    from app.config.config import get_settings
-    from test_production_v2 import wav
-    from pathlib import Path
-    from types import SimpleNamespace
-    monkeypatch.setattr(get_settings().get_profile().asr, "backend", "dashscope")
-    p=tmp_path/'a.wav';wav(p)
-    paths=[]
-    class Recognition:
-        def __init__(self,**kw): pass
-        def call(self,file):
-            paths.append(Path(file));assert Path(file).exists()
-            return SimpleNamespace(status_code=200,output={'sentence':[{'text':'原文。'}]})
-    monkeypatch.setattr(sdk,'Recognition',Recognition)
-    monkeypatch.setattr(cosyvoice,'_dashscope_key',lambda:'test-key')
-    assert A.transcribe(p)=='原文。'
-    assert len(paths)==1 and not paths[0].exists()
-    monkeypatch.setattr(A,'_to_16k_wav',lambda *args:(_ for _ in ()).throw(ValueError('convert_failed')))
-    result=A.check(p,'原文。')
-    assert result.status=='unavailable' and 'convert_failed' in result.error

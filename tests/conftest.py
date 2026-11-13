@@ -31,6 +31,11 @@ def no_external_network(monkeypatch):
     def no_key():
         raise RuntimeError("provider credentials disabled in offline tests")
     monkeypatch.setattr(cosyvoice, "_dashscope_key", no_key)
+    from app.services import acoustic_session
+    def no_real_model(*args,**kwargs):
+        raise RuntimeError('real model workers disabled in offline tests; inject an acoustic result')
+    monkeypatch.setattr(acoustic_session,'_start_worker',no_real_model)
+
 
 
 # D5：真实编解码用例需要本机有 ffmpeg/ffprobe。没装时不该报失败——那不是代码
@@ -115,8 +120,6 @@ def build_episode_dict(ep_id: str, img_abs: str, wav_abs: str, dur_ms: int) -> d
     }
 
 
-
-
 @pytest.fixture(autouse=True)
 def _isolate_cost_ledger(tmp_path, monkeypatch):
     """把生图台账从 state/ 重定向到临时目录。
@@ -128,10 +131,18 @@ def _isolate_cost_ledger(tmp_path, monkeypatch):
     from app.services import image as _img
     monkeypatch.setattr(_img, "_COST_PATH", tmp_path / "cost_ledger_test.json")
     monkeypatch.setattr(_img, "_PRICES_PATH", tmp_path / "cost_prices_test.json")
+    # Provider slots, relay history and legacy pronunciation logs also belong to
+    # this individual test, never the copied historical or active workspace.
+    from app.managers import relay
+    from app.services import polyphone
+    monkeypatch.setattr(relay, 'STATE_DIR', tmp_path/'state')
+    monkeypatch.setattr(relay, 'HEALTH_PATH', tmp_path/'state/relay_health.json')
+    monkeypatch.setattr(_img, 'STATE_DIR', tmp_path/'state')
+    monkeypatch.setattr(polyphone, 'HITS_LOG', tmp_path/'state/polyphone_hits.log')
 
 
 # ---------------------------------------------------------------------------
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def tmp_episodes(tmp_path, monkeypatch):
     """把整条链的 episodes 根重定向到 tmp_path（P1-6 根因修复）。
 

@@ -22,7 +22,6 @@ from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, r"D:\hv")
 from app.services.script import strip_script_markdown
 from app.services import external_narration as EN
 
@@ -100,33 +99,6 @@ def test_fence_fix_does_not_disturb_the_legacy_format():
 # ---------------------------------------------------------------------------
 # 2. setup tool act-head regex
 # ---------------------------------------------------------------------------
-
-def test_setup_tool_accepts_the_chunked_act_header():
-    """`### 【第一幕 (A段)：标题】` must be recognised as an act head.
-
-    The old regex required 幕 to be followed directly by the colon, so every
-    new-format script aborted with "找不到幕标头".
-    """
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "setup_tool", Path(r"D:\hv/bin/setup_episode_from_writing_dna.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    assert mod.ACT_HEAD.search("### 【第一幕 (A段)：翠微宫遗诏与帝王隐忍】（字数：943 字）")
-    # The old flat format must still match (every delivered episode uses it).
-    assert mod.ACT_HEAD.search("### 【第一幕：古代最狠的公摊面积】")
-    # A 2-act and 4-act label both work; 14 chars of label is the ceiling.
-    assert mod.ACT_HEAD.search("### 【第十幕 (D段)：极长标题】")
-
-
-def test_setup_tool_rejects_a_real_heading_as_act_head():
-    import importlib.util
-    spec = importlib.util.spec_from_file_location(
-        "setup_tool", Path(r"D:\hv/bin/setup_episode_from_writing_dna.py"))
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    assert not mod.ACT_HEAD.search("## 分块渲染脚本（Gemini TTS 直通格式）")
-    assert not mod.ACT_HEAD.search("# 《大唐修罗场·第一集》专属工程文档")
 
 
 # ---------------------------------------------------------------------------

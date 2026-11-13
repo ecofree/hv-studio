@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "name": "历史创作工作台",
+  "original_root": "D:/hv",
+  "active_directory": "workspace",
+  "historical_library": "episodes",
+  "default_provider_budget": 0,
+  "copied_approvals_are_historical": true
+}

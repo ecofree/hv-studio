@@ -7,11 +7,9 @@ via image_assets). And three approved v2 candidates read STALE for months
 because renderer source edits invalidated byte-bound approvals (2026-10-14).
 """
 import json
-import sys
+from pathlib import Path
 
 import pytest
-
-sys.path.insert(0, r"D:\hv")
 
 pytestmark = pytest.mark.production
 
@@ -56,22 +54,14 @@ def test_missing_scene_images_without_a_plan_is_empty(tmp_path, monkeypatch):
     assert missing_scene_images("any") == []
 
 
-def test_split_receipt_drift_separates_content_from_renderer():
+def test_split_receipt_drift_separates_content_from_renderer(tmp_path,monkeypatch):
     from app.services.production_identity import split_receipt_drift
-
-    receipt = {
-        r"D:\hv\app\services\compose.py": "0" * 64,          # renderer, drifted
-        r"D:\hv\app\config\config.yaml": "0" * 64,          # renderer, drifted
-        r"D:\hv\episodes\caomin-02\script.md": "0" * 64,     # content, drifted
-        r"D:\hv\requirements.core.lock.txt": "0" * 64,      # renderer pin
-    }
+    monkeypatch.setattr('app.services.production_identity.ROOT',tmp_path)
+    names=['app/services/compose.py','app/config/config.yaml','episodes/fixture/script.md','requirements.core.lock.txt']
+    receipt={str(tmp_path/name):'0'*64 for name in names}
     content, renderer = split_receipt_drift(receipt)
-    assert content == [r"D:\hv\episodes\caomin-02\script.md"]
-    assert sorted(renderer) == sorted([
-        r"D:\hv\app\services\compose.py",
-        r"D:\hv\app\config\config.yaml",
-        r"D:\hv\requirements.core.lock.txt",
-    ])
+    assert content == [str(tmp_path/names[2])]
+    assert sorted(renderer)==sorted(str(tmp_path/name) for name in (names[0],names[1],names[3]))
 
 
 def test_split_receipt_drift_empty_receipt_is_both_empty():
@@ -117,17 +107,33 @@ def test_apply_scene_freeze_leaves_healthy_status_untouched():
     assert out["status"] == "APPROVED"
     assert out["blockers"] == []
 
-def test_old_receipts_read_as_uniform_encoder():
+def encoder_fixture(tmp_episodes,**fields):
+    from app.models import Episode
+    from app.managers import save
+    from app.orchestrator import _load_script_md
+    from app.services.provenance import atomic_json,file_sha256,fingerprint
+    folder=tmp_episodes/'encoder-fixture';folder.mkdir()
+    source=folder/'script.md';source.write_text('独立状态测试。',encoding='utf-8')
+    ep=Episode(id='encoder-fixture',title='fixture',episode_number=1,script_path=str(source));save(ep)
+    candidate=folder/'candidate.mp4';candidate.write_bytes(b'offline status reader fixture only')
+    receipt=folder/'receipt.json'
+    atomic_json(receipt,dict(inputs={str(source):file_sha256(source)},candidate_path=str(candidate),candidate_sha256=file_sha256(candidate),**fields))
+    atomic_json(folder/'production/v2/run.json',dict(source_sha256=fingerprint(_load_script_md(ep)),receipt_path=str(receipt)))
+    return ep.id
+
+
+def test_old_receipts_read_as_uniform_encoder(tmp_episodes):
     """Receipts predating encoder_mixed must not read as mixed."""
     from app.services.production_status import get_status
 
-    s = get_status("laogongtuan")
+    s = get_status(encoder_fixture(tmp_episodes))
     assert s["dimensions"].get("encoder") == "uniform"
 
 
-def test_mixed_encoders_are_visible_not_blocking():
+def test_mixed_encoders_are_visible_not_blocking(tmp_episodes):
     """A mixed-encoder film decodes fine; status must show it, not hide it."""
     from app.services.production_status import get_status
 
-    s = get_status("xlc-01")
-    assert s["dimensions"].get("encoder") in ("uniform", "mixed")
+    s = get_status(encoder_fixture(tmp_episodes,encoder_mixed=True))
+    assert s["dimensions"].get("encoder") == 'mixed'
+    assert not any('encoder' in b for b in s['blockers'])

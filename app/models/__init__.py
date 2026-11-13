@@ -4,7 +4,7 @@ from .episode import (
 )
 from .relay import (
     ImageEditRequest, ImageGenItem, ImageGenRequest, ImageGenResponse,
-    QuotaSnapshot, predict_actual_dims,
+    QuotaSnapshot,
 )
 from .shot import (
     CharacterRefPack, MotionSpec, RefImage, Shot, ShotType,
@@ -14,5 +14,5 @@ __all__ = [
     "CharacterRefPack", "CharToken", "Episode", "EpisodeStatus", "Frame",
     "ImageEditRequest", "ImageGenItem", "ImageGenRequest", "ImageGenResponse",
     "MotionSpec", "QuotaSnapshot", "RefImage", "Shot", "ShotType",
-    "SubtitleLine", "predict_actual_dims",
+    "SubtitleLine",
 ]

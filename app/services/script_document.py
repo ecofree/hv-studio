@@ -16,7 +16,7 @@ _META_LABEL = re.compile(r"^[^：:]{1,12}\s*[：:]")
 # 与 script.strip_script_markdown 的 MD_FENCE 同口径。xlc-01 靠手工删围栏绕过，
 # xlc-02 实测围栏标记直接进了 unit 文本（ASR 不可能听出反引号）。
 _FENCE = re.compile(r"^\s*(?:```|~~~)")
-_CUE = re.compile(r"【[^】]*】|[\[［](?:停顿|重音|语气|叹息|音效|画面|转场)[^\]］]*[\]］]")
+_CUE = re.compile(r"【[^】]*】|[\[［][^\]］\n]*[\]］]")
 # 括号式表演/音效提示：（微混响）（叹气）（回响）（气音）等。这些不是口播内容——
 # split_script 侧 strip_script_markdown 已把它们排除在字幕之外，若这里仍计入
 # source_text，scene_bindings 的「帧文本 == 旁白源文本」绑定就永远不成立
@@ -27,8 +27,24 @@ _CUE = re.compile(r"【[^】]*】|[\[［](?:停顿|重音|语气|叹息|音效|�
 #  source_text，字幕字面门禁因此永远报「帧文本 != 剧本正文」）。
 from app.services.script import PAREN_CUE_WORDS as _PAREN_WORDS  # noqa: E402
 
-_PAREN_CUE = re.compile(r"[（(][^（()）]{1,12}[)）]")
-_PAUSE = re.compile(r"停顿\s*(\d+(?:\.\d+)?)\s*秒")
+_PAREN_CUE = re.compile(r"[（(][^（()）\n]+[)）]")
+_PAUSE = re.compile(r"(?:停顿\s*(\d+(?:\.\d+)?)\s*秒|pause\s*(?:=|:|\s)\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s))", re.I)
+_DIRECTION_PREFIX = re.compile(r"^(?:语气|重音|叹息|叹气|轻笑|气音|微混响|音效|画面|转场|配乐|导演|停顿|pause\b)", re.I)
+_AMBIGUOUS_PREFIX = re.compile(r"^(?:语音|声音|声线|音量)")
+_EDITORIAL_LINE = re.compile(r"^\s*[-*+]\s+(?:\*\*)?(本幕利害切口|视听构图)(?:\*\*)?\s*[：:]")
+_END_CARD = re.compile(r"^【片尾字幕】\s*[：:]?\s*$")
+
+
+def _cue_spans(source):
+    """Lex over the whole source so a multiline note is never read aloud."""
+    spans = list(_CUE.finditer(source))
+    for match in _PAREN_CUE.finditer(source):
+        inner = match.group()[1:-1].strip()
+        if (_DIRECTION_PREFIX.match(inner) or _AMBIGUOUS_PREFIX.match(inner) or
+                (len(inner) <= 12 and any(w in inner for w in _PAREN_WORDS))):
+            if not any(m.start() <= match.start() < m.end() for m in spans):
+                spans.append(match)
+    return sorted(spans, key=lambda m: m.start())
 # 长段按句拆分的上限。v2 是"一句一镜"：段落即 unit 时，长段落独占几十秒
 # 画面，图再多也换不进去（xlc-03 实测 36 unit 平均 24 秒，最长 86 秒）。
 # 按句拆后 unit 粒度≈口播一句，plate 才能跟着解说走。只影响新 plan，
@@ -41,12 +57,15 @@ _CLAUSE_END = re.compile(r"[；：，]")
 
 
 
-def parse_document(source: str, source_name: str = "script.md") -> dict:
+def parse_document(source: str, source_name: str = "script.md", *, authoring_layout=True) -> dict:
     blocks, units, cues = [], [], []
     offset = 0
     paragraph = []
     occurrences = {}
     narration_column = None
+    cue_spans = _cue_spans(source)
+    registered = set()
+    end_card = False
 
     def _split_ranges(text):
         """Split a long paragraph into ranges [(a, b)].
@@ -128,7 +147,24 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
         block = {"block_id": f"b-{len(blocks):05d}", "start": start, "end": end,
                  "raw_text": line, "kind": "narration", "text": "", "source_map": [], "excluded": []}
         blocks.append(block)
-        if not stripped:
+        # Explicit authoring fields are retained as inspectable blocks. Unknown
+        # list annotations stop handoff instead of becoming accidental narration.
+        if authoring_layout:
+            if stripped.startswith('#'):
+                end_card = False
+            if _END_CARD.fullmatch(stripped):
+                end_card = True
+            editorial = _EDITORIAL_LINE.match(raw)
+            if end_card or editorial or re.match(r'^\s*[-*+]\s+\S', raw):
+                flush()
+                block['kind'] = 'end_card' if end_card else 'editorial_direction'
+                block['label'] = '片尾字幕' if end_card else editorial.group(1) if editorial else 'unknown'
+                if not end_card and not editorial:
+                    block['review_required'] = True
+                block['excluded'].append({'start': start, 'end': end, 'reason': block['kind']})
+                continue
+        spanning_cue = any(m.start() < start and m.end() > start for m in cue_spans)
+        if not stripped and not spanning_cue:
             block["kind"] = "metadata"
             block["excluded"].append({"start":start,"end":end,"reason":"paragraph_separator"})
             flush()
@@ -150,7 +186,9 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
                 block["kind"] = "metadata"
                 block["review_required"] = True
         clean_label = re.sub(r"^[>\s（(]+|[）)]+$", "", stripped.replace("**", "").replace("__", ""))
-        if stripped.startswith("#"):
+        if spanning_cue:
+            pass  # A continuation of a direction is not a heading or metadata.
+        elif stripped.startswith("#"):
             block["kind"] = "heading"
         elif _FENCE.match(stripped):
             block["kind"] = "metadata"
@@ -187,20 +225,32 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
             for i in range(a,b):
                 keep.discard(i)
                 reasons[i]=reason
-        for pattern,is_paren in ((_CUE,False),(_PAREN_CUE,True)):
-            for m in pattern.finditer(raw,local_start,local_end):
-                pause = _PAUSE.search(m.group())
-                if is_paren and not any(w in m.group() for w in _PAREN_WORDS):
-                    continue                      # 普通括号（补语/括注）仍算旁白
-                known = pause is not None or any(w in m.group() for w in ("语气", "重音", "叹息", "画面", "音效", "转场")) or is_paren
+        for m in cue_spans:
+            if m.end() <= start + local_start or m.start() >= start + local_end:
+                continue
+            inner = m.group()[1:-1].strip()
+            pause = _PAUSE.fullmatch(inner)
+            seconds = float(next(g for g in pause.groups() if g is not None)) if pause else None
+            valid_pause = seconds is not None and 0 < seconds <= 30
+            is_paren = m.group()[0] in "（("
+            known = bool(_DIRECTION_PREFIX.match(inner)) or (is_paren and not _AMBIGUOUS_PREFIX.match(inner))
+            if inner.lower().startswith(("停顿", "pause")):
+                known = valid_pause
+            if m.start() not in registered:
+                registered.add(m.start())
+                channel = "pause" if pause else next((value for prefix, value in (
+                    ("画面", "visual"), ("音效", "sfx"), ("配乐", "music"),
+                    ("转场", "transition"), ("导演", "director")) if inner.startswith(prefix)),
+                    "performance" if known else "unknown")
                 cue = {"cue_id":f"cue-{len(cues):05d}", "block_id":block["block_id"],
-                       "raw_text":m.group(),"start":start+m.start(),"end":start+m.end(),
+                       "raw_text":m.group(),"start":m.start(),"end":m.end(),
+                       "channel":channel,
                        "scope":"next_utterance", "intent": "pause" if pause else "direction",
-                       "pause_seconds":float(pause[1]) if pause else None,
-                       "confidence":1.0 if pause else 0.0, "review_required":not bool(pause),
+                       "pause_seconds":seconds,
+                       "confidence":1.0 if valid_pause else 0.0, "review_required":not valid_pause,
                        "recognized":known,"user_override":None}
                 cues.append(cue)
-                exclude(m.start(),m.end(),"delivery_cue")
+            exclude(max(local_start, m.start()-start), min(local_end, m.end()-start), "delivery_cue")
         for m in re.finditer(r"\*\*|__|<br\s*/?>",raw):
             exclude(m.start(),m.end(),"markdown")
         m = re.match(r"\s*>\s?",raw)
@@ -230,6 +280,9 @@ def parse_document(source: str, source_name: str = "script.md") -> dict:
         paragraph.append(block)
         if block["kind"] == "quote" or narration_column is not None: flush()
     flush()
+    # One cue has one target; block overlap must not attach it to every split unit.
+    for unit in units:
+        unit["cue_ids"] = []
     for cue in cues:
         for unit in units:
             positions=[i for i,pos in enumerate(unit["source_map"]) if pos>=cue["end"]]

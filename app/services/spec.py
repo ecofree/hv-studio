@@ -22,7 +22,6 @@ compose 模块级 import 了 managers / motion / upscale / config / numpy / PIL�
 """
 from __future__ import annotations
 
-import math
 
 # ---- 输出规格 ----
 FPS = 25
@@ -54,18 +53,6 @@ MAX_SHOT_MS = MAX_FRAMES * 1000 // FPS     # 8000ms
 # （H 批已删），这里让它变成有依据的常量。
 SPLIT_THRESHOLD_MS = 6000
 
-# ---- subrouter 出图尺寸模型 ----
-# H 批（2026-09-05）：此前 1024*1536 这个数在两处各写一份
-# （app/config/config.py 的 MP_FIXED、app/models/relay.py 的
-# SUBROUTER_PIXEL_CAP），尺寸预测公式也照抄了两遍。改一处忘一处就会出现
-# 「hv config 打印的尺寸」和「relay 实际按这个尺寸算配额」对不上。
-#
-# 实测：无论请求什么 size，中转站返回的图像素总量固定在这个数（≈1.5MP），
-# 只是长宽比按请求来。样本：1024x1024→1254x1254、1024x1536→1024x1536、
-# 1024x1792→948x1659。
-SUBROUTER_PIXEL_CAP = 1024 * 1536
-
-
 def group_of(frame_id: str) -> str:
     """帧 id 所属的「源句子组」。
 
@@ -76,17 +63,3 @@ def group_of(frame_id: str) -> str:
     """
     parts = frame_id.split("-")
     return parts[1] if len(parts) > 1 else frame_id
-
-
-def predict_actual_dims(w: int, h: int) -> tuple[int, int]:
-    """按请求的宽高比，预测中转站实际返回的像素 (w_actual, h_actual)。"""
-    ratio = w / h
-    h_actual = int(math.sqrt(SUBROUTER_PIXEL_CAP / ratio))
-    w_actual = int(ratio * h_actual)
-    return w_actual, h_actual
-
-
-def predict_actual_dims_of(size: str) -> tuple[int, int]:
-    """predict_actual_dims 的 "WxH" 字符串入口（如 "1080x1920"）。"""
-    w, h = size.split("x")
-    return predict_actual_dims(int(w), int(h))

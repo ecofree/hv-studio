@@ -6,14 +6,20 @@ from app.services.narration_pipeline import read, validate_assembly, wave_info
 from app.services.provenance import atomic_json, fingerprint, file_sha256
 
 
+def _instruction_cues(unit, plan):
+    return [c for c in plan.get('delivery_cues', []) if c.get('unit_id') == unit['unit_id']
+            and c['intent'] != 'pause' and c.get('text_offset') == 0
+            and c.get('recognized', True)
+            and c['raw_text'].lstrip('【[［（( ').startswith('语气')
+            and '配乐' not in c['raw_text']]
+
+
 def effective_unit(unit, plan, asset):
     """Consume supported voice instructions without silently truncating them."""
     result = copy.deepcopy(unit)
-    cues = [c for c in plan.get('delivery_cues', []) if c.get('unit_id') == unit['unit_id']
-            and c['intent'] != 'pause' and c.get('text_offset') == 0
-            and '语气' in c['raw_text'] and '配乐' not in c['raw_text']]
+    cues = _instruction_cues(unit, plan)
     if cues and not result.get('delivery', {}).get('instruction') and asset.get('capabilities', {}).get('instruction', {}).get('status') == 'supported':
-        result.setdefault('delivery', {})['instruction'] = '；'.join(c['raw_text'].strip('【】') for c in cues)
+        result.setdefault('delivery', {})['instruction'] = '；'.join(c['raw_text'].strip('【】[]［］（）()') for c in cues)
     return result
 
 
@@ -38,7 +44,11 @@ def dispositions(plan, asset, insertions=None):
         elif cue.get('unit_id'):
             unit = next(u for u in plan['units'] if u['unit_id'] == cue['unit_id'])
             effective = effective_unit(unit, plan, asset)
-            instruction = effective.get('delivery', {}).get('instruction')
+            # A sibling voice instruction does not mean a visual/SFX cue ran.
+            consumed = (cue in _instruction_cues(unit, plan)
+                        and not unit.get('delivery', {}).get('instruction')
+                        and asset.get('capabilities', {}).get('instruction', {}).get('status') == 'supported')
+            instruction = effective.get('delivery', {}).get('instruction') if consumed else None
             row.update(status='request_compiled_audio_review_pending' if instruction else 'unsupported_needs_disposition',
                        action='listening_review_or_explicit_direction_revision', instruction=instruction or None)
         else:

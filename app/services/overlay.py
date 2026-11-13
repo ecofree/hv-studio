@@ -81,27 +81,37 @@ class Spec:
     fade_ms: int = 400
     dim: float = 0.0
     scrim: bool = True
+    # Opt-in: legacy cards retain their symmetric fade and exact payload.
+    fade_in_ms: int | None = None
+    # Per-card vertical anchor override; None keeps the kind default. A plate
+    # with two faces high in the frame must not get the sky-anchored default.
+    anchor_y: float | None = None
 
     @property
     def duration_ms(self) -> int:
         return self.end_ms - self.start_ms
 
     def payload(self) -> dict:
-        return {
+        result = {
             "kind": self.kind, "start_ms": self.start_ms, "end_ms": self.end_ms,
             "title": self.title, "subtitle": self.subtitle, "episode": self.episode,
             "fade_ms": self.fade_ms, "dim": self.dim, "scrim": self.scrim,
         }
+        if self.fade_in_ms is not None:
+            result['fade_in_ms'] = self.fade_in_ms
+        if self.anchor_y is not None:
+            result['anchor_y'] = self.anchor_y
+        return result
 
 
 def _f(spec: Spec, ms: float) -> float:
     """Opacity in [0,1] at time ``ms``: linear fade in and fade out."""
     a = 1.0
-    if spec.fade_ms > 0:
-        if ms < spec.start_ms + spec.fade_ms:
-            a = (ms - spec.start_ms) / spec.fade_ms
-        elif ms > spec.end_ms - spec.fade_ms:
-            a = (spec.end_ms - ms) / spec.fade_ms
+    fade_in = spec.fade_ms if spec.fade_in_ms is None else spec.fade_in_ms
+    if fade_in > 0 and ms < spec.start_ms + fade_in:
+        a = (ms - spec.start_ms) / fade_in
+    if spec.fade_ms > 0 and ms > spec.end_ms - spec.fade_ms:
+        a = min(a, (spec.end_ms - ms) / spec.fade_ms)
     return max(0.0, min(1.0, a))
 
 
@@ -135,7 +145,8 @@ def measure(spec: Spec) -> dict:
         errors.append(f"overlay longer than {MAX_MS}ms")
     if spec.start_ms < 0:
         errors.append("overlay starts before timeline")
-    if spec.fade_ms < 0 or spec.fade_ms * 2 > spec.duration_ms:
+    fade_in = spec.fade_ms if spec.fade_in_ms is None else spec.fade_in_ms
+    if spec.fade_ms < 0 or fade_in < 0 or fade_in + spec.fade_ms > spec.duration_ms:
         errors.append("overlay fade overlaps itself")
     if not (spec.dim == 0.0 or 0.0 <= spec.dim < 1.0):
         errors.append("overlay dim outside [0,1)")
@@ -168,7 +179,10 @@ def measure(spec: Spec) -> dict:
             errors.append(f"overlay text still overflows at minimum size: {text!r}")
     probe.close()
     height = sum(s for _, s in rows) + PAD_Y * (len(rows) + 1)
-    centre = H * ANCHOR_Y.get(spec.kind, 0.5)
+    anchor = ANCHOR_Y.get(spec.kind, 0.5) if spec.anchor_y is None else spec.anchor_y
+    if not 0.0 <= anchor <= 1.0:
+        errors.append("overlay anchor outside [0,1]")
+    centre = H * anchor
     top = int(centre - height / 2)
     if top < 0 or top + height > H:
         errors.append("overlay outside vertical safe area")
@@ -342,6 +356,13 @@ def load(ep_id: str) -> Plan:
     p = path_for(ep_id)
     if not p.is_file():
         return EMPTY
+    return load_path(p)
+
+
+def load_path(p, *, total_ms=None) -> Plan:
+    """Explicit sidecar for an isolated v2 candidate; a missing path is an error."""
+    from pathlib import Path
+    p = Path(p)
     import json
     data = json.loads(p.read_text(encoding="utf-8"))
     if data.get("version") != SCHEMA_VERSION:
@@ -349,7 +370,9 @@ def load(ep_id: str) -> Plan:
     specs = [Spec(kind=o["kind"], start_ms=int(o["start_ms"]), end_ms=int(o["end_ms"]),
                   title=o.get("title", ""), subtitle=o.get("subtitle", ""),
                   episode=o.get("episode", ""), fade_ms=int(o.get("fade_ms", 400)),
-                  dim=float(o.get("dim", 0.0)), scrim=bool(o.get("scrim", True)))
+                  dim=float(o.get("dim", 0.0)), scrim=bool(o.get("scrim", True)),
+                  fade_in_ms=o.get('fade_in_ms'),
+                  anchor_y=(float(o['anchor_y']) if o.get('anchor_y') is not None else None))
              for o in data.get("overlays", [])]
-    validate(specs)
+    validate(specs,total_ms=total_ms)
     return Plan(specs)

@@ -1,0 +1,158 @@
+{
+  "episode_id": "ytrm-01-user-20261022",
+  "source_sha256": "6ef9e6a3ec97a90e7c267549f69ea14320c28d7bb68d61cd2e5d2963e4b7b25a",
+  "files": {
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\production\\v2\\run.json": "dbfc36f970a773b70ad8a012154f71f1b81f10136ccc320a60f7bdf32819ef0a",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\workflow.json": "338f43a0c68ee11493732ee3aa843142803a6039486fb584b3187a29bc68d9aa",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\voice-contract.json": "debc9cf77f1c1462c7a8559b2094efff8debe9ea98fd8d766224a21094b894dc",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\voice-direction-selection.json": "5f486ad21becd2904ccd50dee5a1aa9e84e4248dc626e4124076b07417e12712",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\playback-policy.json": "748e5c63f474058a87e02a0a816a86c480fa4635a3b8d63005812835c87ea8c8",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\review-editorial.json": "e100d58119d2bbdfb7f969ad41e12a60e0a2e057a34a9fe8a7374edb1325ba0e",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\studio\\review-pilot.json": "59ceba547a5f308b527ff9a880e7f5fc1cd88e0c1f59269ee1471de2f249cb22",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\directing.json": "0e406e70ff4356d56d9189551ebb1984fc5a4f9f73678f5c855e170ade578557",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\scene_plan.json": "ca35129d1f421530568e0f7ad4272e7ea749607ba74a2dd16c62102753a02a85",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\image_prompts.json": "b4592711174aec1017852407e71dfc66b00e524a51b5fe0d3f6bd458f6575ea9",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\editorial\\source-binding.json": "ae22c92162d2ddca67efb7d4715da2ed3cc21d4782d3cd219aa7aa188488d1a4",
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\overlays.json": "87cc067459c2c0087f03c4e873401e646861193dca2a31048e89fc1ee2ab2934",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\production\\v2\\plans\\f3aec8898039bb163278321c5c6b5690cfb84eb91c4cff9103d47b919776c4c1\\plan.json": "1c4616a90feda567d0a109247f65ed02d2563f959bc8ce07631b02dcf8f1f816",
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\manifest.json": "fc33d4c57ded79c483bbaf73e1b477ee60b236edd72ed8d61273830a0f9e1bed",
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\timeline.json": "b926945034af7b8bd18955649ae402572e94682398b2b320a5979fef1f10f1b0",
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\alignment.json": "c56187457371cc57d6cecd6599e45492c0a8e6c0a5b6a838f12e8a69538f0023",
+    "D:\\hv-studio\\workspace\\state\\xz-process-repair-20261022\\revision\\candidate.json": "383b808ea90cad7962007c9c8fb0ffc92ba1b83499c8507e6c933f1d1d812118",
+    "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\media\\full-1p2-leveled.wav": "ba89c963ecd73e128dde5c69c969c6608485eb94e5a81db4092b7282b26be27c",
+    "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\design\\direction-assets.json": "4dbdbdb48f510179bb3379d46c5ad1d31c3348ccb3e39fcd0a3559716282652f",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\0907b92b18b554ad12836efd28a8789b523d3c7fd77e62849847f70647b51912\\unit-000.png": "9abb52c65f6fe489e3006255156dcdf6047f745a59ba953f6f4408cf922a2f1d",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\94bf12bf2f7a77b0e37de5d828f5847c29b01be00c4632138788ca5faf74e9bd\\unit-001.png": "526ecde071251637411bbf8222306c0cc705c0d6ab7900e1897d6fb7f328e3ba",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\9f26c67a0aef705ad0fadf33e972b413e1981c4b346474a1034e6bd7f55d2d07\\unit-009.png": "e83503a0c5d2600e425954b08474739e649926edf628bb074f44bd7992888b64",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bbca0c199eb69047db618ca98e1dba994023430fd3a5bccce5ceca302f0f4a93\\unit-017.png": "b8c9f34ee731b7a44834285e63a80a81517c47da199b4ad033f1397255154dab",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\ff3017362d5c0e803196551067b889f63b51bbbeba96729396c6b860b9db53d2\\unit-015.png": "6fa431310c16dade8d3fea36fdf592acbaa9f30339f31ed420dd74ba7365e913",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5712f55d74668ddc48586085842d20c29ded138e5efcf76433e29fc90056cbb4\\unit-016.png": "a4a9c75a65ba23dd6172a8559648582485fbff49fd915827527d4d58bf32fa45",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\554ec7c00a0b85039277616e855203c012b606f885a02c1660a436c4e4513640\\unit-025.png": "e274cb43fc17f663726896612f802a3b845efe9d986c93a2748429417a848da0",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\681fb9c7a357ab559a428b7461c4075a77360b03281bce875dd55ffc3524bca0\\unit-026.png": "2490c2749d6cc61a592dc84e3b626845f8b9c40ef6f2e1ebc6f1995936d07423",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\b05a39e87daf2ad67dfd517dd763683af0048cc9c368bd85f5d0a94dda75af81\\unit-062.png": "af82d28b49af7185d4bd69ff5744b4e712bee1c8209b831d493e2c7e5e2b49c6",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5a0214a9e8ff40907a86aaafa81671462f8cd8a73eba92a12c5a9af758511ff0\\unit-063.png": "d42384aadc8f519f3c520ea6a8cb2365205baf2216b9173e2c3fa94dfaf6c612",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\2f7e13f01fef969ba50e5f25583cd878d3385017b0a8728b433b644bb080332f\\unit-064.png": "dbdf3858de017d9369f5577d80eb6e8d380ed89f6e872bcb127857ba0662c238",
+    "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bf7892707ea67fb05eb04d742f2aa8f90c6cdad8eea936a32d3c3db68de28474\\unit-065.png": "38afcacfaecd364404674075bba6c8d686907059f079b27f85abff62f89ac42a",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\README.md": "2d1a613d5252dc0abdc1e096d9fa311fb937e0dba5d74dfc4e7a1fd84e255888",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\Writing-DNA.md": "c65fd8d7c36cc9283954fa7c0ff683139f73554417274036d2767a145c364296",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\写作视角与认知框架.md": "ef406970a86f23f65db71bdd4a70f49e3ec3cdc857ab2d314a138dd920cb0cf8",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\文章结构模板.md": "04e5d87b934cd4706cda1f974cc1e5f10e8c156fa4d1e18451f890e63f11ba92",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\视觉风格指南.md": "d306de5efacd64eb81cb310d9170bab935ab219bbcd64dd6a3862d40f8adab00",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\语言DNA.md": "3ef127086d03987362d6356efe387702fffc1c2cd72d3d3cac4fc2dba7f58e3c",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\风趣历史风格与内容深度审计及顶流竞品研究报告.md": "9bc48652d2ddea1ae426f945a4fa11ddbdde8c21f8da791b32cb0aba0362ff6e",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_西行五万里：被通缉的硬汉玄奘.md": "a301046ad79f17be20fb8c8c54f6e2352fa232fd8b95263690b9baa74e6e5a74",
+    "D:\\hv-studio\\resource\\风趣历史.writing-DNA\\scripts\\初唐异人传_第一集_Gemini_TTS专版.md": "cfb7c4a446713da773c3ba8b98582fdcb5c7ea86b14b5330a2bad8a4b124947e",
+    "D:\\hv-studio\\workspace\\episodes\\ytrm-01-user-20261022\\editorial\\revisions\\737a718a95f12e84afee\\narration.md": "2b5731a29e5fda6300436a20cda0bff398d621a45f3101e5e4d1974d0b4f1f8c",
+    "D:\\hv-studio\\workspace\\state\\xz-full-episode-20261022-c-approved-v2-repaired\\render\\7cd795a9683404e1dcc531821b133345\\candidate.mp4": "bff2de5f9431b6f39548f8ab75dc004dc8764ac3f60f598b22dadc886db746bb"
+  },
+  "assets": [
+    {
+      "shot": 0,
+      "id": "unit-000",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\0907b92b18b554ad12836efd28a8789b523d3c7fd77e62849847f70647b51912\\unit-000.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-000.png",
+      "start": 0.0,
+      "end": 6.3,
+      "purpose": "演义里的送行器物"
+    },
+    {
+      "shot": 2,
+      "id": "unit-001",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\94bf12bf2f7a77b0e37de5d828f5847c29b01be00c4632138788ca5faf74e9bd\\unit-001.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-001.png",
+      "start": 17.47,
+      "end": 30.63,
+      "purpose": "文书从护身符变成追捕令"
+    },
+    {
+      "shot": 3,
+      "id": "unit-009",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\9f26c67a0aef705ad0fadf33e972b413e1981c4b346474a1034e6bd7f55d2d07\\unit-009.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-009.png",
+      "start": 30.63,
+      "end": 36.92,
+      "purpose": "从缺少通关文书转到追捕公文"
+    },
+    {
+      "shot": 24,
+      "id": "unit-017",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bbca0c199eb69047db618ca98e1dba994023430fd3a5bccce5ceca302f0f4a93\\unit-017.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-017.png",
+      "start": 328.99,
+      "end": 351.25,
+      "purpose": "保持几十步距离的夜间试探"
+    },
+    {
+      "shot": 25,
+      "id": "unit-015",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\ff3017362d5c0e803196551067b889f63b51bbbeba96729396c6b860b9db53d2\\unit-015.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-015.png",
+      "start": 351.25,
+      "end": 357.55,
+      "purpose": "条件式危险，不展示杀人"
+    },
+    {
+      "shot": 26,
+      "id": "unit-016",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5712f55d74668ddc48586085842d20c29ded138e5efcf76433e29fc90056cbb4\\unit-016.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-016.png",
+      "start": 357.55,
+      "end": 374.13,
+      "purpose": "端坐与无声对峙"
+    },
+    {
+      "shot": 36,
+      "id": "unit-025",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\554ec7c00a0b85039277616e855203c012b606f885a02c1660a436c4e4513640\\unit-025.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-025.png",
+      "start": 506.85,
+      "end": 523.21,
+      "purpose": "迷路与水囊掉落"
+    },
+    {
+      "shot": 38,
+      "id": "unit-026",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\681fb9c7a357ab559a428b7461c4075a77360b03281bce875dd55ffc3524bca0\\unit-026.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-026.png",
+      "start": 526.29,
+      "end": 533.28,
+      "purpose": "沙地上只剩水痕"
+    },
+    {
+      "shot": 74,
+      "id": "unit-062",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\b05a39e87daf2ad67dfd517dd763683af0048cc9c368bd85f5d0a94dda75af81\\unit-062.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-062.png",
+      "start": 1007.55,
+      "end": 1025.02,
+      "purpose": "十九年逐字对勘"
+    },
+    {
+      "shot": 75,
+      "id": "unit-063",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\5a0214a9e8ff40907a86aaafa81671462f8cd8a73eba92a12c5a9af758511ff0\\unit-063.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-063.png",
+      "start": 1025.02,
+      "end": 1034.66,
+      "purpose": "部数卷数读清楚"
+    },
+    {
+      "shot": 76,
+      "id": "unit-064",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\2f7e13f01fef969ba50e5f25583cd878d3385017b0a8728b433b644bb080332f\\unit-064.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-064.png",
+      "start": 1034.66,
+      "end": 1060.74,
+      "purpose": "遗命与薄葬"
+    },
+    {
+      "shot": 79,
+      "id": "new-bamboo-mat",
+      "path": "D:\\hv-studio\\episodes\\ytrm-01\\production\\v2\\images\\bf7892707ea67fb05eb04d742f2aa8f90c6cdad8eea936a32d3c3db68de28474\\unit-065.png",
+      "copy": "D:\\hv-studio\\designs\\xz-four-scenes-20261023\\assets\\unit-065.png",
+      "start": 1080.55,
+      "end": 1084.448,
+      "purpose": "末句落在遗物，不再回用旧片尾姿态"
+    }
+  ]
+}

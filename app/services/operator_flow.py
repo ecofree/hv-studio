@@ -11,8 +11,8 @@ from pathlib import Path
 import psutil
 
 STAGE_ORDER = (
-    "script", "images", "tts", "delivery", "quality",
-    "alignment", "timeline", "compose", "verify",
+    "script", "tts", "delivery", "quality", "alignment",
+    "images", "timeline", "compose", "verify",
 )
 
 LABELS = {
@@ -93,6 +93,9 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
 
     def finish(**fields):
         advice.update(fields)
+        if status.get('quality_pending_units') and not status.get('candidate_path'):
+            advice['notes'] = list(advice.get('notes', [])) + [
+                '机器标记的语音疑点保留到完整试听处理；可以继续制作候选，不会因此重新配音或自动确认。']
         changed = status.get("renderer_changed") or []
         if changed and all("渲染器源码" not in (n or "") for n in advice.get("notes", [])):
             advice["notes"] = list(advice.get("notes", [])) + [
@@ -121,7 +124,7 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
             notes=[f"记录在 episodes/{episode_id}/production/v2/published.json。这只是本地指针，不会上传平台。"],
         )
 
-    if status.get("quality_pending_units"):
+    if status.get("quality_pending_units") and status.get('candidate_path'):
         notes = [
             "在控制台里点开每段，听原音后填写审核人和发现。",
             "识别错了选「音频正确，识别有误」；真有口误选「确有口误，需要重做」。",
@@ -138,7 +141,7 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
             notes=notes,
         )
 
-    if status.get("delivery_pending"):
+    if status.get("delivery_pending") and status.get('candidate_path'):
         notes = ["听完对应片段后，接受当前效果，或标明仍要调整。未处置完不能当作已审核。",
                  "命令行：hv narration review-direction <manifest> <cue_id> "
                  "--reviewer <姓名> --findings <结论> --decision accepted_existing|needs_revision"]
@@ -230,7 +233,7 @@ def _blocked(episode_id: str, joined: str) -> dict:
                 "--max-images", "I", "--budget-id", "<新的授权标识>",
             ),
             "notes": ["续跑同一轮授权时沿用原来的 --budget-id。改额度必须换新标识。失败和超时也计入已用额度；"
-                      "要给失败留重试空间时加 --max-image-retries N（不挤占 --max-images 的成功额度）。"],
+                      "图片额度按实际尝试计数；--max-image-retries 只是增加同一个总上限，不是独立重试池。"],
         }
     if any(token in joined for token in ("voice asset", "compiled narration", "run stage tts", "missing v2 narration")):
         return {
@@ -241,6 +244,12 @@ def _blocked(episode_id: str, joined: str) -> dict:
             ),
             "notes": ["没有新的配音授权就不要执行带额度的命令。只想确认缓存时，去掉额度参数再跑 tts 阶段。"],
         }
+    if 'missing visual briefs' in joined:
+        return {
+            'headline': '缺少独立的画面描述，尚未调用图片服务。',
+            'notes': ['在本集 production/v2/source_image_briefs.json 填写所列镜头的主体、行动与环境；'
+                      '生成目录里的 storyboard 是输出，修改它不会成为下一次输入。'],
+        }
     if "image" in joined or "timeline requires images" in joined:
         return {
             "headline": "停在画面，或时间轴还缺底图。",
@@ -248,7 +257,7 @@ def _blocked(episode_id: str, joined: str) -> dict:
                 episode_id, "--stage", "images", "--max-images", "N",
                 "--budget-id", "<本次授权>",
             ),
-            "notes": ["N 是成功落盘数；失败/重试走单独的 --max-image-retries R，不挤占 N。没有图片授权就不要执行。"],
+            "notes": ["N 是图片调用总次数，失败、超时和重试都占用；已取得的响应先恢复，不因尺寸不同重新付费生成。"],
         }
     if any(token in joined for token in ("alignment", "local unavailable", "local-whisper", "ASR")):
         return {

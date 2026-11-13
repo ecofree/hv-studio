@@ -22,8 +22,6 @@ numpy>=1.26
 
 # ---- TTS：DashScope CosyVoice 云端 ----
 dashscope==1.27.3
-# 降级回退：edge-tts（微软在线 TTS）
-edge-tts>=6.1
 
 # ---- 服务层：FastAPI（API）+ uvicorn（运行）+ streamlit（WebUI 骨架） ----
 fastapi>=0.110

@@ -77,10 +77,13 @@ def test_snapshot_does_not_crash_with_quota():
     assert json.dumps(snap, ensure_ascii=False)
 
 
-def test_stale_channels_still_pickable():
+def test_recently_unhealthy_channels_still_pickable(tmp_path, monkeypatch):
     """全不健康时 pick() 必须仍能返回一个渠道（强取最高分），不能抛。"""
     from app.managers.relay import ChannelHealth, RelayManager
     from app.config.config import Channel
+    from app.managers import relay
+    import time
+    monkeypatch.setattr(relay, 'HEALTH_PATH', tmp_path/'health.json')
 
     chs = [Channel(name=f"c{i}", base_url="http://x", api_key="k", model="m") for i in range(3)]
     m = RelayManager(channels=chs)
@@ -88,7 +91,7 @@ def test_stale_channels_still_pickable():
         # 32 次里只成功 5 次 → is_healthy 判 False（门槛 >0.5）
         h.history.clear()
         for i in range(32):
-            h.history.append((i < 5, 1.0, 0.0))
+            h.history.append((i < 5, 1.0, time.time()))
     assert all(not h.is_healthy for h in m._channels.values())
     assert m.pick() is not None
 

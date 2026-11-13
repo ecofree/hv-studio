@@ -1,0 +1,54 @@
+{
+  "_meta": "EN 只写主体：人物、动作、场景、道具、光线。画风一律由 style_suffix + negative_clause 决定，EN 里不得出现 cartoon/anime/ink-wash/水墨/插画/flat/infographic/photorealistic/3d render/chiaroscuro/silk-scroll 等风格词，也不得要求画面渲染文字（negative_clause 含 no text）。",
+  "XL01": {
+    "en": "A young Tang crown prince pushing open a heavy wooden gate into a poor walled courtyard, two thin figures visible beyond, autumn leaves blowing"
+  },
+  "XL02": {
+    "en": "Two emaciated women in coarse hemp skirts pounding grain in a bleak walled courtyard, a young prince standing still at the gate watching them"
+  },
+  "XL03": {
+    "en": "A Tang prince with red eyes handing a memorial scroll to a eunuch outside a palace hall, torchlight, his hands trembling"
+  },
+  "XL04": {
+    "en": "A Tang empress in dark phoenix robes turning sharply in a lamplit corridor, cold furious eyes, memorial scrolls scattered at her feet"
+  },
+  "XL05": {
+    "en": "Tang soldiers fleeing across a bleak windswept highland battlefield, snow and dust blinding, fallen banners half-buried"
+  },
+  "XL06": {
+    "en": "A young crown prince in plain robes reviewing grain registers with grey-bearded officials inside the Eastern Palace, daylight through lattice windows"
+  },
+  "XL07": {
+    "en": "A half-blind middle-aged Tang emperor groping over memorials he cannot read, one hand trailing across the desk, a single candle burning low"
+  },
+  "XL08": {
+    "en": "An old chancellor kneeling to block an edict in a grand audience hall, forehead nearly touching the floor tiles, the emperor seated above, torchlight"
+  },
+  "XL09": {
+    "en": "An imperial procession leaving Chang'an for Luoyang under low leaden rain clouds, carriage curtains closed, wet road glistening"
+  },
+  "XL10": {
+    "en": "A palace bedchamber at night in Luoyang, physicians kneeling around a still bed, candles guttering, rain streaking the windows"
+  },
+  "XL11": {
+    "en": "A celadon bowl of dark medicine steaming on a low palace table, an overturned cup beside it, a single lamp flame leaning"
+  },
+  "XL12": {
+    "en": "Tang officials and armored guards exchanging fearful glances beneath palace eaves in rain, no one speaking"
+  },
+  "XL13": {
+    "en": "A young prince alone in a vast empty palace corridor at night, a towering shadowed wall ahead, one distant lamp"
+  },
+  "XL14": {
+    "en": "An old half-blind emperor weeping over an empty crown prince's robes laid on a bier, white mourning drapes hanging, candles all around"
+  },
+  "XL15": {
+    "en": "A grand imperial tomb mound rising on the plain at dusk, a white-bannered funeral procession winding toward it, low red sun"
+  },
+  "XL16": {
+    "en": "A sharp-eyed young prince in dark ceremonial robes ascending the Eastern Palace steps, cold morning light, officials watching from below"
+  },
+  "XL17": {
+    "en": "A pearl curtain hanging in a dark palace hall, a pair of watching eyes faintly visible behind the beads, a single lamp burning"
+  }
+}

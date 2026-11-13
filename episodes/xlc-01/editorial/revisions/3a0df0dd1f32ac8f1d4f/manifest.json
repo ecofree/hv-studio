@@ -1,0 +1,19 @@
+{
+  "approved": false,
+  "audio_binding": "new_recording_required",
+  "authoritative_source": "source.md",
+  "context": {
+    "episode": "xlc-01"
+  },
+  "files": {
+    "directions.json": "2c1b76683dbb8edffd820dd32a4f1e54904b8fb93f485cf75baee8023825b417",
+    "document.json": "6c7c4ee0fe0439e2efb4ed7ae46ddcbfb769a24e09495ad704be12d1e86c871c",
+    "extraction.json": "a0795a815866f8ba98edefa8f4a1828571a8db35fce90674c3d3d0c648734974",
+    "narration.md": "1bba013976735e14ab8ae754346b8cfc1ede626c8d7c59cb3383e1efc4bbe7d4",
+    "source.md": "4f1520981ce004549737cd5888c75d70046edaf6b987244ffcb16129eb314e1d",
+    "spoken.txt": "a47fc558869bdb9ab04809eb75f02713270159ff49d001846a5a4f4b8291fd17"
+  },
+  "revision_id": "3a0df0dd1f32ac8f1d4f",
+  "schema_version": "writing-handoff-1",
+  "status": "editorial_candidate"
+}
