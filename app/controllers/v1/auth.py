@@ -23,10 +23,10 @@ TTS + 生图双付费、`/init` 会无条件覆盖已有 episode.json —— 三
 from __future__ import annotations
 
 import hmac
-import os
+import ipaddress
 from typing import Optional
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from app.config.config import env_get
 
@@ -47,27 +47,41 @@ def auth_enabled() -> bool:
 
 
 def require_token(
+    request: Request,
     x_hv_token: Optional[str] = Header(default=None, alias=HEADER_NAME),
 ) -> None:
-    """FastAPI 依赖：token 未配置时放行；配置后校验 X-HV-Token。
+    """Protect every write/provider endpoint.
 
-    用 hmac.compare_digest 而非 `==`：后者短路返回会泄露「前几位对了多少」，
-    理论上可被计时攻击逐字符爆破。
+    A configured token is always required, including for loopback callers.
+    Without a token, only a loopback client is allowed. This request-level
+    fallback also protects direct Uvicorn launches that bypass the CLI guard.
     """
     expected = configured_token()
-    if not expected:
+    if expected:
+        if not x_hv_token or not hmac.compare_digest(x_hv_token.strip(), expected):
+            raise HTTPException(
+                status_code=401,
+                detail=f"缺少或无效的 {HEADER_NAME}（服务端已启用 HV_API_TOKEN）",
+            )
         return
-    if not x_hv_token or not hmac.compare_digest(x_hv_token.strip(), expected):
+
+    client_host = request.client.host if request.client else ""
+    if not is_loopback_host(client_host):
         raise HTTPException(
             status_code=401,
-            detail=f"缺少或无效的 {HEADER_NAME}（服务端已启用 HV_API_TOKEN）",
+            detail=f"远程写入请求必须配置 HV_API_TOKEN 并提供 {HEADER_NAME}",
         )
 
 
 def is_loopback_host(host: str) -> bool:
-    """是否只监听本机（含 IPv6 回环与「全零」通配的本地语义）。
-
-    注意 0.0.0.0 / :: **不是**回环——它是「所有网卡」，正是要拦的那种。
-    """
-    h = (host or "").strip().strip("[]").lower()
-    return h in ("127.0.0.1", "localhost", "::1", "")
+    """Recognize IPv4/IPv6 loopback addresses; wildcard binds are never loopback."""
+    value = (host or "").strip().strip("[]").lower()
+    if value in ("localhost", "testclient", ""):
+        return True
+    try:
+        address = ipaddress.ip_address(value.split("%", 1)[0])
+    except ValueError:
+        return False
+    if getattr(address, "ipv4_mapped", None) is not None:
+        address = address.ipv4_mapped
+    return address.is_loopback

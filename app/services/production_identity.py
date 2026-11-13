@@ -86,15 +86,24 @@ def _is_renderer(path: str) -> bool:
         rel = str(Path(path).resolve().relative_to(ROOT)).replace("\\", "/")
     except ValueError:
         return False
-    if rel.startswith("app/") and rel.endswith(".py"):
+    # Only modules whose responsibility is limited to producing media bytes
+    # may be classified as renderer drift. QA, admission, orchestration, provider,
+    # identity and approval code must invalidate/recheck the evidence they govern.
+    renderer_modules = {
+        "app/services/compose.py",
+        "app/services/motion.py",
+        "app/services/upscale.py",
+        "app/services/overlay.py",
+        "app/services/karaoke.py",
+        "app/services/subtitle_layout.py",
+        "app/services/word_timing.py",
+        "app/services/scene_animation.py",
+        "app/services/video_segment_cache.py",
+    }
+    if rel in renderer_modules:
         return True
     name = rel.rsplit("/", 1)[-1]
     if name.startswith("requirements") or name.endswith(".lock.txt"):
-        return True
-    if rel in ("bin/local_asr_worker.py", "bin/local_alignment_worker.py"):
-        return True
-    if rel in ("app/config/config.yaml", "app/config/voices.yaml",
-               "app/config/polyphone.yaml"):
         return True
     return False
 
