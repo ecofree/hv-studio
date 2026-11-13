@@ -8,6 +8,7 @@ providers or claim that synthetic unit-test fixtures are real production runs.
 from __future__ import annotations
 
 import re
+import math
 from pathlib import Path
 
 from app.services.narration_pipeline import read
@@ -60,10 +61,16 @@ def verify_scenario(name, record, source_fingerprint):
                           ("git_revision", record["git_revision"]), ("status", "passed")):
         if manifest.get(key) != expected:
             raise ValueError(f"{name}: run manifest {key} mismatch")
+    started, finished = manifest.get("started_at"), manifest.get("finished_at")
+    if (type(started) not in (int, float) or type(finished) not in (int, float)
+            or not math.isfinite(started) or not math.isfinite(finished) or finished < started):
+        raise ValueError(f"{name}: invalid run timestamps")
     if not isinstance(events, list) or not events:
         raise ValueError(f"{name}: event log is empty or malformed")
     if any(not isinstance(event, dict) or event.get("run_id") != record["run_id"]
-           or not isinstance(event.get("event"), str) for event in events):
+           or not isinstance(event.get("event"), str)
+           or type(event.get("at")) not in (int, float) or not math.isfinite(event["at"])
+           for event in events):
         raise ValueError(f"{name}: event log contains unbound or malformed events")
 
     event_names = {event["event"] for event in events}
@@ -92,7 +99,10 @@ def verify_scenario(name, record, source_fingerprint):
                     and receipt.get("request_id") == event["request_id"]
                     and receipt.get("model") == event["model"]
                     and isinstance(receipt.get("audio_sha256"), str)
-                    and _SHA256.fullmatch(receipt["audio_sha256"])):
+                    and _SHA256.fullmatch(receipt["audio_sha256"])
+                    and isinstance(event.get("audio_path"), str)
+                    and event.get("audio_sha256") == receipt.get("audio_sha256")
+                    and file_sha256(event["audio_path"]) == event["audio_sha256"]):
                 valid.append(event)
         if not valid:
             raise ValueError("real_provider_models: no hash-bound successful non-mock provider receipt")

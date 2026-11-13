@@ -52,10 +52,14 @@ def evidence(tmp_path, monkeypatch):
         run_id = "run-"+name
         if name == "real_provider_models":
             provider_receipt = tmp_path/"provider-receipt.json"
+            provider_audio = tmp_path/"provider-audio.wav"
+            provider_audio.write_bytes(b"actual provider audio fixture")
+            audio_sha = file_sha256(provider_audio)
             atomic_json(provider_receipt, dict(status="succeeded", request_id="provider-task-123",
-                                               model="real-model-id", audio_sha256="b"*64))
+                                               model="real-model-id", audio_sha256=audio_sha))
             rows = [dict(rows[0], receipt_path=str(provider_receipt),
-                         receipt_sha256=file_sha256(provider_receipt))]
+                         receipt_sha256=file_sha256(provider_receipt),
+                         audio_path=str(provider_audio), audio_sha256=audio_sha)]
         events = [dict(row, run_id=run_id, at=time.time()) for row in rows]
         events_path = tmp_path/(name+"-events.json")
         atomic_json(events_path, events)
