@@ -141,3 +141,41 @@ def verify_validation(evidence, source_fingerprint):
     if not isinstance(artifacts, dict) or not artifacts or not artifacts_current(artifacts):
         blockers.append("production validation artifacts are missing or changed")
     return dict(ready=not blockers, blockers=blockers, scenarios=summaries)
+
+
+def collect_validation(source_fingerprint, git_revision, episodes, evidence_root):
+    """Build the canonical attestation from independently written run evidence.
+
+    Expected layout: <root>/<scenario>/{run.json,events.json,artifacts.json}.
+    This collector hashes and verifies those files; it never creates scenario
+    events or marks a scenario passed on behalf of a test/production runner.
+    """
+    root = Path(evidence_root).resolve()
+    scenario_evidence, all_artifacts = {}, {}
+    for name in SCENARIOS:
+        folder = root/name
+        manifest_path, events_path, artifacts_path = (
+            folder/"run.json", folder/"events.json", folder/"artifacts.json")
+        manifest, events, artifacts = read(manifest_path), read(events_path), read(artifacts_path)
+        if not isinstance(artifacts, dict) or not artifacts:
+            raise ValueError(f"{name}: artifacts.json must contain path-to-sha256 entries")
+        record = dict(
+            schema_version=1, scenario=name, run_id=manifest.get("run_id"),
+            source_fingerprint=source_fingerprint, git_revision=git_revision,
+            manifest_path=str(manifest_path), manifest_sha256=file_sha256(manifest_path),
+            events_path=str(events_path), events_sha256=file_sha256(events_path),
+            artifacts=artifacts,
+        )
+        # Validate immediately; never write a green attestation for malformed evidence.
+        verify_scenario(name, record, source_fingerprint)
+        scenario_evidence[name] = record
+        all_artifacts[str(manifest_path)] = file_sha256(manifest_path)
+        all_artifacts[str(events_path)] = file_sha256(events_path)
+        all_artifacts.update(artifacts)
+    result = dict(schema_version=2, source_fingerprint=source_fingerprint,
+                  git_revision=git_revision, episodes=list(episodes),
+                  artifacts=all_artifacts, scenario_evidence=scenario_evidence)
+    verified = verify_validation(result, source_fingerprint)
+    if not verified["ready"]:
+        raise ValueError("; ".join(verified["blockers"]))
+    return result
