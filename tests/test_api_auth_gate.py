@@ -36,7 +36,7 @@ def test_configured_token_is_required_even_on_loopback(monkeypatch):
 @pytest.mark.parametrize("host,expected", [
     ("127.0.0.1", True), ("localhost", True), ("::1", True),
     ("::ffff:127.0.0.1", True), ("0.0.0.0", False),
-    ("::", False), ("192.0.2.1", False), ("example.invalid", False),
+    ("::", False), ("", False), ("192.0.2.1", False), ("example.invalid", False),
 ])
 def test_loopback_host_classification(host, expected):
     assert auth.is_loopback_host(host) is expected

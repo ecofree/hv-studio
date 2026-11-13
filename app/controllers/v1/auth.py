@@ -76,7 +76,7 @@ def require_token(
 def is_loopback_host(host: str) -> bool:
     """Recognize IPv4/IPv6 loopback addresses; wildcard binds are never loopback."""
     value = (host or "").strip().strip("[]").lower()
-    if value in ("localhost", "testclient", ""):
+    if value in ("localhost", "testclient"):
         return True
     try:
         address = ipaddress.ip_address(value.split("%", 1)[0])

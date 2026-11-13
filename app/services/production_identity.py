@@ -102,9 +102,6 @@ def _is_renderer(path: str) -> bool:
     }
     if rel in renderer_modules:
         return True
-    name = rel.rsplit("/", 1)[-1]
-    if name.startswith("requirements") or name.endswith(".lock.txt"):
-        return True
     return False
 
 

@@ -62,8 +62,8 @@ def test_split_receipt_drift_separates_content_from_renderer(tmp_path,monkeypatc
            'app/config/config.yaml','episodes/fixture/script.md','requirements.core.lock.txt']
     receipt={str(tmp_path/name):'0'*64 for name in names}
     content, renderer = split_receipt_drift(receipt)
-    assert sorted(content)==sorted(str(tmp_path/name) for name in names[1:6])
-    assert sorted(renderer)==sorted(str(tmp_path/name) for name in (names[0],names[6]))
+    assert sorted(content)==sorted(str(tmp_path/name) for name in names[1:])
+    assert sorted(renderer)==[str(tmp_path/names[0])]
 
 
 def test_split_receipt_drift_empty_receipt_is_both_empty():
