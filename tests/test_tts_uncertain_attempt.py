@@ -70,3 +70,36 @@ def test_missing_provider_request_identifier_is_explicitly_unavailable():
     assert _provider_reconciliation_details({"status": "failed_or_uncertain"}) == {
         "request_id": None, "request_path": None,
     }
+
+
+def test_provider_adapter_attaches_request_id_from_sanitized_receipt(tmp_path, monkeypatch):
+    import json
+    from app.services import narration_pipeline as pipeline
+
+    receipt = tmp_path / "tts-request.json"
+    receipt.write_text(json.dumps({
+        "status": "failed", "request_id": "provider-task-456",
+        "text": "private narration", "api_key": "never-copy-this",
+    }), encoding="utf-8")
+
+    class FakeSynth:
+        last_request_path = receipt
+        voice_asset_version = None
+
+        def __init__(self, **kwargs):
+            pass
+
+        def synthesize(self, text, raw):
+            raise TimeoutError("simulated offline timeout")
+
+    monkeypatch.setattr("app.services.cosyvoice.DashScopeCosyVoiceSynthesizer", FakeSynth)
+    request = {
+        "model": "offline-model", "voice_id": "fixture", "sample_rate": 24000,
+        "pitch_rate": 1.0, "speech_rate": 1.0, "volume": 50,
+        "instruction": "", "pronunciation": "", "seed": 1,
+        "voice_asset_version": "fixture-v1", "text": "private narration",
+    }
+    with pytest.raises(TimeoutError) as exc:
+        pipeline._provider(request, tmp_path / "raw.wav")
+    assert exc.value.hv_provider_request_id == "provider-task-456"
+    assert exc.value.hv_provider_request_path == str(receipt.resolve())
