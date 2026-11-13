@@ -21,8 +21,8 @@ async def lifespan(app: FastAPI):
     try:
         from app.controllers.v1.auth import auth_enabled
         if not auth_enabled():
-            print("[api] 提示：未设 HV_API_TOKEN，写/付费端点（/v1/image/test、"
-                  "/produce?stage=assets）不校验；监听非回环地址前请先配置。")
+            print("[api] 提示：未设 HV_API_TOKEN；写/付费端点仅接受回环客户端，"
+                  "远程写入请求会被拒绝。需要远程管理时请先配置 token。")
     except Exception:
         pass
     yield
