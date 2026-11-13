@@ -50,6 +50,12 @@ def evidence(tmp_path, monkeypatch):
     scenario_evidence = {}
     for name, rows in SCENARIOS.items():
         run_id = "run-"+name
+        if name == "real_provider_models":
+            provider_receipt = tmp_path/"provider-receipt.json"
+            atomic_json(provider_receipt, dict(status="succeeded", request_id="provider-task-123",
+                                               model="real-model-id", audio_sha256="b"*64))
+            rows = [dict(rows[0], receipt_path=str(provider_receipt),
+                         receipt_sha256=file_sha256(provider_receipt))]
         events = [dict(row, run_id=run_id, at=time.time()) for row in rows]
         events_path = tmp_path/(name+"-events.json")
         atomic_json(events_path, events)
@@ -65,7 +71,7 @@ def evidence(tmp_path, monkeypatch):
             events_path=str(events_path), events_sha256=file_sha256(events_path),
             artifacts={str(artifact):file_sha256(artifact)},
         )
-    record = dict(schema_version=2, source_fingerprint="current",
+    record = dict(schema_version=2, source_fingerprint="current", git_revision=REVISION,
                   artifacts={str(artifact):file_sha256(artifact)},
                   episodes=["one","two"], scenario_evidence=scenario_evidence)
     path = tmp_path/'acceptance/production-validation.json'

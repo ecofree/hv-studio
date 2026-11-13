@@ -78,12 +78,24 @@ def verify_scenario(name, record, source_fingerprint):
         if len(episode_ids) < min_episodes:
             raise ValueError(f"{name}: fewer than {min_episodes} distinct completed episodes")
     if name == "real_provider_models":
-        valid = [event for event in events if event["event"] == "provider_request_succeeded"
-                 and all(isinstance(event.get(k), str) and event[k].strip()
-                         for k in ("provider", "model", "request_id"))
-                 and event.get("is_mock") is False]
+        valid = []
+        for event in events:
+            if (event["event"] != "provider_request_succeeded"
+                    or event.get("is_mock") is not False
+                    or not all(isinstance(event.get(k), str) and event[k].strip()
+                               for k in ("provider", "model", "request_id"))):
+                continue
+            receipt_path = _file(event.get("receipt_path"), event.get("receipt_sha256"),
+                                 "real provider receipt")
+            receipt = read(receipt_path)
+            if (isinstance(receipt, dict) and receipt.get("status") == "succeeded"
+                    and receipt.get("request_id") == event["request_id"]
+                    and receipt.get("model") == event["model"]
+                    and isinstance(receipt.get("audio_sha256"), str)
+                    and _SHA256.fullmatch(receipt["audio_sha256"])):
+                valid.append(event)
         if not valid:
-            raise ValueError("real_provider_models: no successful non-mock provider receipt")
+            raise ValueError("real_provider_models: no hash-bound successful non-mock provider receipt")
 
     artifacts = record.get("artifacts")
     if not isinstance(artifacts, dict) or not artifacts or not artifacts_current(artifacts):
@@ -101,6 +113,9 @@ def verify_validation(evidence, source_fingerprint):
         raise ValueError("production validation must use structured schema_version=2 evidence")
     if evidence.get("source_fingerprint") != source_fingerprint:
         raise ValueError("production validation is for another source revision")
+    git_revision = evidence.get("git_revision")
+    if not isinstance(git_revision, str) or not _GIT_SHA.fullmatch(git_revision):
+        raise ValueError("production validation exact git revision is missing")
     scenarios = evidence.get("scenario_evidence")
     if not isinstance(scenarios, dict):
         raise ValueError("scenario_evidence is missing")
@@ -108,7 +123,10 @@ def verify_validation(evidence, source_fingerprint):
     blockers = []
     for name in SCENARIOS:
         try:
-            summaries[name] = verify_scenario(name, scenarios.get(name), source_fingerprint)
+            record = scenarios.get(name)
+            if not isinstance(record, dict) or record.get("git_revision") != git_revision:
+                raise ValueError(f"{name}: scenario revision differs from validation revision")
+            summaries[name] = verify_scenario(name, record, source_fingerprint)
         except (OSError, ValueError, KeyError, TypeError) as exc:
             blockers.append(str(exc))
     episodes = evidence.get("episodes")
