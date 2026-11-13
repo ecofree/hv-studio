@@ -137,8 +137,14 @@ def import_authoring(ep_id, title, source_file, *, tts_file=None, rule_files=(),
     for role, filename in supplied:
         p = library_path(filename)
         data = p.read_bytes()
-        original = None if adopt_existing else (Path(cfg['original_root']) / p.relative_to(paths.ROOT) if cfg else None)
-        if original is not None and (not original.is_file() or original.read_bytes() != data):
+        # A fresh standalone checkout has no original project. Compare against
+        # it only when that checkout actually exists; the local input is still
+        # snapshotted and hash-bound below.
+        original_root = Path(cfg['original_root']) if cfg else None
+        original = None if adopt_existing or not original_root or not original_root.is_dir() else original_root / p.relative_to(paths.ROOT)
+        if original is not None and not original.is_file():
+            original = None  # An independently authored file need not exist in the old project.
+        if original is not None and original.read_bytes() != data:
             raise ValueError('副本文案或规则与原项目不一致，请先逐字同步：' + str(p))
         contents[str(p)] = data
         inputs.append(dict(role=role, path=str(p), sha256=file_sha256(p),

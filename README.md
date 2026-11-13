@@ -2,6 +2,16 @@
 
 本项目是独立的视频工作台。启动 `studio.bat`；活动作品和状态位于 `workspace/episodes`、`workspace/state`。原项目 `D:/hv` 不改动，根目录 `episodes/` 是历史素材库。
 
+## 在新 Windows 电脑安装
+
+1. 克隆本仓库，安装 Windows 版 Python 3.13 和 FFmpeg（`ffmpeg`、`ffprobe` 均需在 PATH；也可自行放在 `tools/ffmpeg/bin`）。
+2. 在项目目录运行 `powershell -File scripts/bootstrap-core.ps1 -Python py`。如果 `py` 默认不是 Python 3.13，改为该版本的 `python.exe` 完整路径。安装完成后运行 `studio.bat`。
+3. 需要对现有旁白生成字幕时，另外运行 `powershell -File bin/setup_local_asr.ps1 -Python py`，安装独立 ASR 环境并下载本地识别模型；该步骤不配音、不渲染，但需要网络和磁盘空间。需要图片或新配音时，再自行配置对应服务与明确预算，默认预算为零。
+
+Git 仓库提供代码、规则和已跟踪的创作源文件；`workspace/`、音频、图片、视频、模型及 FFmpeg 不在仓库中。全新克隆可新建作品并使用仓库内源稿，但不会自动带回本机的剧集、母带、素材、预算台账或审核记录。如需恢复旧作品，须从可信备份单独迁移并核对路径和素材，不要把旧审核当作新版本批准。原项目存在对应文件时仍核对同步来源；没有对应文件时可直接导入本项目的原稿。
+
+环境检查（不配音、不渲染）：`powershell -File scripts/ai-project-check.ps1 -ProjectRoot (Get-Location).Path -Quick`。检查包括 FFmpeg 与字体；通过仅表示本机核心环境可用。
+
 现行流程：正文与关键事件确认 → 复用或制作旁白 → 配图与字幕 → 完整听看 → 确认本地成片。样片可选。具体口径见 [工作台规范](docs/studio-workflow-policy.md)。
 
 ## 当前入口

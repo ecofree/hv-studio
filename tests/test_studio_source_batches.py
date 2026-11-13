@@ -14,6 +14,37 @@ AUTHOR='# 写前备注\r\n|史源|短摘|\r\n|一|二|\r\n\r\n### 【第一幕�
 TTS='### 【第一幕：出发】\n```text\n他出了门。\n```\n### 【第二幕：归来】\n```text\n他回来了。\n```\n'
 
 
+@pytest.mark.parametrize('original_exists', [False, True])
+def test_standalone_import_without_original_checkout(tmp_path, monkeypatch, original_exists):
+    from app.services import studio_workspace as workspace
+    monkeypatch.setattr(paths, 'ROOT', tmp_path)
+    monkeypatch.setattr(paths, 'episodes_dir', lambda: tmp_path/'workspace/episodes')
+    monkeypatch.setattr(paths, 'state_dir', lambda: tmp_path/'workspace/state')
+    monkeypatch.setattr(workspace, 'config', lambda root=None: {'original_root': str(tmp_path/'missing-original')})
+    if original_exists:
+        (tmp_path/'missing-original').mkdir()
+    source=tmp_path/'author.md'; source.write_text(AUTHOR, encoding='utf-8', newline='')
+    revision=S.import_authoring('standalone','独立项目',source)
+    binding=S.contract('standalone')
+    assert revision.is_dir() and not S.issues('standalone')
+    assert binding['inputs'][0]['original_path'] is None
+    source.write_text('外部更改',encoding='utf-8')
+    assert not S.issues('standalone') and S.external_updates('standalone')
+
+
+def test_existing_original_still_rejects_mismatch(tmp_path, monkeypatch):
+    from app.services import studio_workspace as workspace
+    root=tmp_path/'studio';root.mkdir();original=tmp_path/'original';original.mkdir()
+    monkeypatch.setattr(paths, 'ROOT', root)
+    monkeypatch.setattr(paths, 'episodes_dir', lambda: root/'workspace/episodes')
+    monkeypatch.setattr(paths, 'state_dir', lambda: root/'workspace/state')
+    monkeypatch.setattr(workspace, 'config', lambda root=None: {'original_root': str(original)})
+    source=root/'author.md';source.write_text(AUTHOR,encoding='utf-8')
+    (original/'author.md').write_text('不同原文',encoding='utf-8')
+    with pytest.raises(ValueError,match='不一致'):
+        S.import_authoring('mismatch','校验',source)
+
+
 def test_authoring_channels_are_lossless_and_never_read_as_narration(tmp_path):
     data=derive('\ufeff'+AUTHOR)
     assert data['source.md']==('\ufeff'+AUTHOR).encode('utf-8')
