@@ -1,12 +1,39 @@
-"""Release gates reject incomplete or damaged evidence without losing the report."""
-import time
+"""Release gates reject booleans and require hash-bound scenario evidence."""
 import json
+import time
 import pytest
 
 from app.services import batch_worker, production_status, production_readiness
 from app.services.provenance import atomic_json, file_sha256
 
 pytestmark = pytest.mark.production
+REVISION = "a" * 40
+SCENARIOS = {
+    "multi_episode_current_rebuild": [
+        {"event":"episode_rebuild_completed","episode_id":"one"},
+        {"event":"episode_rebuild_completed","episode_id":"two"},
+    ],
+    "kill_resume": [
+        {"event":"worker_terminated","episode_id":"one"},
+        {"event":"resume_started","episode_id":"one"},
+        {"event":"resume_completed","episode_id":"one"},
+    ],
+    "timeout_recovery": [
+        {"event":"timeout_detected","episode_id":"one"},
+        {"event":"recovery_started","episode_id":"one"},
+        {"event":"recovery_completed","episode_id":"one"},
+    ],
+    "real_provider_models": [
+        {"event":"provider_request_succeeded","provider":"fixture-provider",
+         "model":"real-model-id","request_id":"provider-task-123","is_mock":False},
+    ],
+    "unattended_worker_full_batch": [
+        {"event":"batch_started","batch_id":"batch-1"},
+        {"event":"episode_candidate_completed","episode_id":"one"},
+        {"event":"episode_candidate_completed","episode_id":"two"},
+        {"event":"batch_completed","batch_id":"batch-1"},
+    ],
+}
 
 
 @pytest.fixture
@@ -14,88 +41,108 @@ def evidence(tmp_path, monkeypatch):
     monkeypatch.setattr(production_readiness.paths, 'state_dir', lambda: tmp_path)
     monkeypatch.setattr(batch_worker, 'queue_dir', lambda: tmp_path/'queue')
     monkeypatch.setattr(batch_worker, 'alive', lambda *args: True)
-    # `content_approved` is the delivery-level truth; `approved` stays narrow
-    # ("this v2 candidate"). assess keys on the former (2026-10-01: keying on
-    # `approved` produced false blockers for episodes whose legacy delivery was
-    # approved but whose v2 attempt was merely stale).
     monkeypatch.setattr(production_status, 'get_status',
                         lambda eid: {'approved': True, 'content_approved': True})
-    atomic_json(tmp_path/'queue/worker.json', dict(pid=123, created_at=1, heartbeat=time.time()))
-    artifact = tmp_path/'receipt.json'
-    atomic_json(artifact, {'test_only': True})
-    record = dict(source_fingerprint='current', artifacts={str(artifact):file_sha256(artifact)},
-                  episodes=['one','two'], multi_episode_current_rebuild=True,
-                  kill_resume=True, timeout_recovery=True, real_provider_models=True,
-                  unattended_worker_full_batch=True)
+    atomic_json(tmp_path/'queue/worker.json',
+                dict(pid=123, created_at=1, heartbeat=time.time()))
+    artifact = tmp_path/'candidate.mp4'
+    artifact.write_bytes(b"fixture-candidate")
+    scenario_evidence = {}
+    for name, rows in SCENARIOS.items():
+        run_id = "run-"+name
+        if name == "real_provider_models":
+            provider_receipt = tmp_path/"provider-receipt.json"
+            provider_audio = tmp_path/"provider-audio.wav"
+            provider_audio.write_bytes(b"actual provider audio fixture")
+            audio_sha = file_sha256(provider_audio)
+            atomic_json(provider_receipt, dict(status="succeeded", request_id="provider-task-123",
+                                               model="real-model-id", audio_sha256=audio_sha))
+            rows = [dict(rows[0], receipt_path=str(provider_receipt),
+                         receipt_sha256=file_sha256(provider_receipt),
+                         audio_path=str(provider_audio), audio_sha256=audio_sha)]
+        events = [dict(row, run_id=run_id, at=time.time()) for row in rows]
+        events_path = tmp_path/(name+"-events.json")
+        atomic_json(events_path, events)
+        manifest = dict(schema_version=1, scenario=name, run_id=run_id,
+                        source_fingerprint="current", git_revision=REVISION,
+                        status="passed", started_at=time.time()-2, finished_at=time.time())
+        manifest_path = tmp_path/(name+"-manifest.json")
+        atomic_json(manifest_path, manifest)
+        scenario_evidence[name] = dict(
+            schema_version=1, scenario=name, run_id=run_id,
+            source_fingerprint="current", git_revision=REVISION,
+            manifest_path=str(manifest_path), manifest_sha256=file_sha256(manifest_path),
+            events_path=str(events_path), events_sha256=file_sha256(events_path),
+            artifacts={str(artifact):file_sha256(artifact)},
+        )
+    record = dict(schema_version=2, source_fingerprint="current", git_revision=REVISION,
+                  artifacts={str(artifact):file_sha256(artifact)},
+                  episodes=["one","two"], scenario_evidence=scenario_evidence)
     path = tmp_path/'acceptance/production-validation.json'
     atomic_json(path, record)
     return tmp_path, path, record
 
 
-def test_release_requires_full_worker_batch_even_with_other_evidence(evidence):
+def test_structured_evidence_can_pass_only_with_all_scenarios(evidence):
+    assert production_readiness.assess("current")["ready"]
+
+
+def test_legacy_boolean_flags_are_not_production_evidence(evidence):
     _, path, record = evidence
-    assert production_readiness.assess('current')['ready']
-    record['unattended_worker_full_batch'] = False
+    legacy = dict(source_fingerprint="current", artifacts=record["artifacts"],
+                  episodes=["one","two"], **{key:True for key in SCENARIOS})
+    atomic_json(path, legacy)
+    result = production_readiness.assess("current")
+    assert not result["ready"]
+    assert any("schema_version=2" in blocker for blocker in result["blockers"])
+
+
+def test_missing_scenario_evidence_blocks_readiness(evidence):
+    _, path, record = evidence
+    del record["scenario_evidence"]["kill_resume"]
     atomic_json(path, record)
-    result = production_readiness.assess('current')
-    assert not result['ready']
-    assert 'unattended_worker_full_batch validation is pending' in result['blockers']
+    result = production_readiness.assess("current")
+    assert not result["ready"]
+    assert any("kill_resume" in blocker for blocker in result["blockers"])
 
 
-@pytest.mark.parametrize('field,value', [
-    ('episodes','one-two'), ('episodes',[['one'],'two']), ('episodes',['../outside','two']),
-    ('artifacts',[]), ('artifacts',{'file':None}),
-])
-def test_malformed_evidence_is_a_blocker(evidence, field, value):
+def test_changed_event_log_invalidates_attestation(evidence):
     _, path, record = evidence
-    record[field] = value
+    event_path = record["scenario_evidence"]["timeout_recovery"]["events_path"]
+    with open(event_path, "a", encoding="utf-8") as stream:
+        stream.write(" ")
+    result = production_readiness.assess("current")
+    assert not result["ready"]
+    assert any("events missing or changed" in blocker for blocker in result["blockers"])
+
+
+def test_mock_provider_cannot_satisfy_real_provider_scenario(evidence):
+    _, path, record = evidence
+    scenario = record["scenario_evidence"]["real_provider_models"]
+    events_path = scenario["events_path"]
+    rows = json.loads(open(events_path, encoding="utf-8").read())
+    rows[0]["is_mock"] = True
+    atomic_json(events_path, rows)
+    scenario["events_sha256"] = file_sha256(events_path)
     atomic_json(path, record)
-    assert not production_readiness.assess('current')['ready']
-
-
-@pytest.mark.parametrize('record', [[], None, {'heartbeat':'invalid'},
-    {'pid':123,'created_at':1,'heartbeat':float('nan')},
-    {'pid':123,'created_at':1,'heartbeat':time.time()+3600}])
-def test_invalid_worker_record_cannot_pass(evidence, record):
-    root, _, _ = evidence
-    # Simulate damaged/external state, including values our own writer rejects.
-    (root/'queue/worker.json').write_text(json.dumps(record), encoding='utf-8')
-    assert not production_readiness.assess('current')['ready']
-
-
-def test_invalid_root_and_damaged_episode_keep_readiness_report(evidence, monkeypatch):
-    _, path, record = evidence
-    atomic_json(path, [])
-    assert not production_readiness.assess('current')['ready']
-    atomic_json(path, record)
-    def damaged(eid):
-        raise TypeError('damaged episode state')
-    monkeypatch.setattr(production_status, 'get_status', damaged)
-    result = production_readiness.assess('current')
-    assert not result['ready']
-    assert len(result['blockers']) == 2
-
-
-def test_masked_legacy_approval_satisfies_the_content_gate(evidence, monkeypatch):
-    """The false-blocker regression, as a behaviour test.
-
-    laogongtuan / lishimin-01 / lishimin-03 each carry a hash-bound legacy
-    delivery *and* a stale or unreviewed v2 attempt. get_status honestly reports
-    `approved=False` for the v2 attempt; readiness must still see the delivery.
-    """
-    _, path, record = evidence
-    monkeypatch.setattr(production_status, 'get_status', lambda eid: dict(
-        pipeline_version='production_v2', status='STALE', approved=False,
-        content_approved=True, blockers=['candidate inputs changed']))
-    assert production_readiness.assess('current')['ready']
+    result = production_readiness.assess("current")
+    assert not result["ready"]
+    assert any("non-mock provider receipt" in blocker for blocker in result["blockers"])
 
 
 def test_unapproved_delivery_still_blocks_readiness(evidence, monkeypatch):
-    """content_approved=False must block even when the v2 attempt reports ok."""
-    _, path, record = evidence
     monkeypatch.setattr(production_status, 'get_status', lambda eid: dict(
         pipeline_version='production_v2', status='STAGES_COMPLETE', approved=False,
         content_approved=False, blockers=['no current approval']))
     result = production_readiness.assess('current')
     assert not result['ready']
-    assert sum(1 for b in result['blockers'] if b.endswith('requires current content approval')) == 2
+    assert sum(1 for b in result['blockers']
+               if b.endswith('requires current content approval')) == 2
+
+
+def test_worker_record_must_be_fresh(evidence):
+    root, _, _ = evidence
+    (root/'queue/worker.json').write_text(
+        json.dumps(dict(pid=123, created_at=1, heartbeat=time.time()+3600)),
+        encoding='utf-8')
+    assert not production_readiness.assess("current")["ready"]

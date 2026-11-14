@@ -25,6 +25,19 @@ def approved_image_requests(ep_id):
     return original['image_requests'] if fingerprint(original) == review.get('input_fingerprint') else {}
 
 
+def _voice_asset_version_for_inputs(folder):
+    """External-recording admissions must not depend on an unrelated TTS voice.
+
+    The caller has already verified external-audio-binding.json. None is an
+    explicit external-recording provenance value, not a missing TTS setting.
+    """
+    if (Path(folder)/'production/external-audio-binding.json').is_file():
+        return None
+    from app.services.voice_assets import resolve_voice_asset
+    _, asset = resolve_voice_asset()
+    return asset['version']
+
+
 def inputs(ep_id, *, _legacy=False):
     from app.managers import load
     from app.orchestrator import _load_script_md, build_image_jobs
@@ -82,11 +95,10 @@ def inputs(ep_id, *, _legacy=False):
                           directing=directions,
                           approved=approved_image_requests(ep_id), persist=False)
         requests = {j.id: j.request_fingerprint() for j in jobs}
-    from app.services.voice_assets import resolve_voice_asset
-    _, asset = resolve_voice_asset()
+    voice_asset_version = _voice_asset_version_for_inputs(folder)
     return dict(source_sha256=fingerprint(text), files={str(p): file_sha256(p) for p in files},
                 image_requests=requests,
-                voice_asset_version=asset['version'],
+                voice_asset_version=voice_asset_version,
                 direction_cues=[dict(cue_id=c['cue_id'],text=c['raw_text']) for c in unsupported],
                 unsupported_cues=[c['cue_id'] for c in unsupported])
 

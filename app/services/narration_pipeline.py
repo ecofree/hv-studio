@@ -162,7 +162,22 @@ def _provider(request, raw):
         volume=request["volume"],instruction=request["instruction"],
         hot_fix=request["pronunciation"] or None,seed=request["seed"])
     svc.voice_asset_version=request["voice_asset_version"]
-    svc.synthesize(request["text"],raw)
+    try:
+        svc.synthesize(request["text"],raw)
+    except Exception as exc:
+        # Preserve the provider task identifier for human reconciliation when
+        # the WebSocket call fails after dispatch. Never copy credentials or
+        # request text into the attempt summary.
+        try:
+            request_path = getattr(svc, "last_request_path", None)
+            receipt = read(request_path) if request_path else {}
+            if not isinstance(receipt, dict): receipt = {}
+        except (OSError, ValueError, TypeError):
+            receipt = {}
+        setattr(exc, "hv_provider_request_id", receipt.get("request_id"))
+        setattr(exc, "hv_provider_request_path",
+                str(Path(request_path).resolve()) if request_path else None)
+        raise
     return read(svc.last_request_path)
 
 
@@ -196,6 +211,52 @@ def generation_quote(plan_path, asset_path):
     return dict(requests=len(pending), characters=sum(len(r['text']) for r in pending))
 
 
+def _provider_reconciliation_details(attempt):
+    """Return only safe identifiers for operator-side provider reconciliation."""
+    if not isinstance(attempt, dict):
+        return {"request_id": None, "request_path": None}
+    request_id = attempt.get("provider_request_id")
+    request_path = attempt.get("provider_request_path")
+    return {
+        "request_id": request_id.strip() if isinstance(request_id, str) and request_id.strip() else None,
+        "request_path": request_path if isinstance(request_path, str) and request_path.strip() else None,
+    }
+
+
+def _assert_no_uncertain_attempt(base, unit_id, request_fp):
+    """Fail closed when a matching provider call may have been dispatched."""
+    for previous in sorted((Path(base)/"takes").glob(unit_id+"-*")):
+        compiled = previous/"compiled_request.json"
+        if not compiled.is_file() or fingerprint(read(compiled)) != request_fp:
+            continue
+        effective_path, raw = previous/"effective_request.json", previous/"raw.wav"
+        if effective_path.is_file():
+            try:
+                effective = read(effective_path)
+            except (OSError, ValueError, TypeError):
+                effective = {}
+            if (effective.get("status") == "succeeded" and raw.is_file()
+                    and file_sha256(raw) == effective.get("audio_sha256")):
+                continue
+        attempt_path = previous/"attempt.json"
+        if not attempt_path.is_file():
+            continue
+        try:
+            attempt = read(attempt_path)
+        except (OSError, ValueError, TypeError):
+            raise ValueError(
+                f"TTS attempt receipt is unreadable for {unit_id}; "
+                "manual reconciliation is required before another paid request"
+            )
+        if attempt.get("request_fp") == request_fp and attempt.get("status") in (
+                "started", "dispatching", "failed", "failed_or_uncertain",
+                "provider_succeeded", "postprocess_failed"):
+            raise ValueError(
+                f"TTS request outcome is uncertain for {unit_id}; "
+                "reconcile the existing provider request before another paid synthesis"
+            )
+
+
 def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=False,
                provider=None, checker=None, budget=None):
     from app.services.asr_check import check
@@ -226,6 +287,9 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                 if not rejection(effective.get('audio_sha256')) and fingerprint(read(previous/"compiled_request.json"))==key and effective.get("status")=="succeeded" and file_sha256(previous/"raw.wav")==effective.get("audio_sha256"):
                     return False
         return True
+    # Reconcile all prior matching attempts before the first paid dispatch.
+    for unit, request in zip(plan["units"], requests):
+        _assert_no_uncertain_attempt(base, unit["unit_id"], fingerprint(request))
     pending=[r for u,r in zip(plan["units"],requests) if needs_provider(u,r)]
     if len(pending)>max_requests or sum(len(r["text"]) for r in pending)>max_characters:
         raise ValueError("requested sample exceeds explicit request/character budget")
@@ -256,23 +320,35 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                 take_dir.mkdir(parents=True)
             raw=take_dir/"raw.wav"
             atomic_json(take_dir/"compiled_request.json",request)
-            atomic_json(take_dir/"attempt.json",{"status":"started","characters":len(request["text"]),"request_fp":key})
+            atomic_json(take_dir/"attempt.json",{"status":"prepared","characters":len(request["text"]),"request_fp":key})
             try:
                 if reused_provider:
                     effective=read(take_dir/"effective_request.json")
                 else:
-                    # Real SDK attempts charge at the transport boundary. Injected
-                    # offline adapters retain the same ledger contract for tests.
-                    reservation = budget.reserve('tts', key, len(request['text'])) if budget and provider else None
+                    # Budget refusal is known to precede dispatch. Once this
+                    # durable marker is written, a crash is treated as ambiguous.
+                    try:
+                        reservation = budget.reserve('tts', key, len(request['text'])) if budget and provider else None
+                    except BaseException:
+                        atomic_json(take_dir/"attempt.json",{"status":"not_dispatched",
+                                    "characters":len(request["text"]),"request_fp":key})
+                        raise
+                    atomic_json(take_dir/"attempt.json",{"status":"dispatching",
+                                "characters":len(request["text"]),"request_fp":key})
                     try:
                         from app.services.provider_budget import tts_budget_scope
                         with tts_budget_scope(budget):
                             effective=(provider or _provider)(request,raw)
                     except BaseException:
                         if reservation: budget.finish(reservation, False)
+                        atomic_json(take_dir/"attempt.json",{"status":"failed_or_uncertain",
+                                    "characters":len(request["text"]),"request_fp":key})
                         raise
                     if reservation: budget.finish(reservation, True)
                 atomic_json(take_dir/"effective_request.json",effective or {})
+                if not reused_provider:
+                    atomic_json(take_dir/"attempt.json",{"status":"provider_succeeded",
+                                "characters":len(request["text"]),"request_fp":key})
                 audio=canonicalize_provider_wav(raw,effective or {})
                 if rejection(file_sha256(audio)) or rejection(file_sha256(raw)):
                     raise ValueError('provider returned previously rejected audio')
@@ -292,8 +368,31 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                 atomic_json(cache,take)
                 atomic_json(take_dir/"attempt.json",{"status":"succeeded","characters":len(request["text"]),"request_fp":key})
             except Exception as exc:
-                atomic_json(take_dir/"attempt.json",{"status":"failed","error_type":type(exc).__name__,
-                            "characters":len(request["text"]),"request_fp":key})
+                # Keep the durable provider response reusable if QA or later
+                # postprocessing failed after successful synthesis.
+                reusable_response = False
+                effective_path = take_dir/"effective_request.json"
+                if effective_path.is_file() and raw.is_file():
+                    try:
+                        saved = read(effective_path)
+                        reusable_response = (saved.get("status") == "succeeded"
+                            and file_sha256(raw) == saved.get("audio_sha256"))
+                    except (OSError, ValueError, TypeError):
+                        reusable_response = False
+                prior = read(take_dir/"attempt.json")
+                not_dispatched = (prior.get("status") in ("prepared", "not_dispatched")
+                                  or getattr(exc, "hv_not_dispatched", False) is True)
+                status = ("postprocess_failed" if reusable_response else
+                          "not_dispatched" if not_dispatched else "failed_or_uncertain")
+                attempt_record = {"status":status,"error_type":type(exc).__name__,
+                                  "characters":len(request["text"]),"request_fp":key}
+                request_id = getattr(exc, "hv_provider_request_id", None)
+                request_path = getattr(exc, "hv_provider_request_path", None)
+                if isinstance(request_id, str) and request_id.strip():
+                    attempt_record["provider_request_id"] = request_id.strip()
+                if isinstance(request_path, str) and request_path.strip():
+                    attempt_record["provider_request_path"] = request_path
+                atomic_json(take_dir/"attempt.json", attempt_record)
                 raise
         if cached_take and checker is None:
             from app.config.config import get_settings

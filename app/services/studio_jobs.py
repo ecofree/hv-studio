@@ -42,7 +42,8 @@ def launch(ep_id,*,max_requests=0,max_characters=0,max_images=0,external_master=
            max_image_retries=0,provider_attempts_per_image=None, audio_mode="auto"):
     from app.services.process_lock import file_lock
     paths.validate_episode_id(ep_id)
-    with file_lock(paths.state_dir()/'studio-jobs'/('episode-'+ep_id+'.lock')):
+    from app.services.production_storage import episode_execution
+    with episode_execution(ep_id), file_lock(paths.state_dir()/'studio-jobs'/('episode-'+ep_id+'.lock')):
         require_no_active(ep_id)
         return _submit(ep_id,max_requests,max_characters,max_images,external_master,mode,
                        max_image_retries,provider_attempts_per_image,audio_mode)
@@ -160,7 +161,8 @@ def resume(root):
         if (root/'process.json').exists():
             process_record=json.loads((root/'process.json').read_text('utf-8'))
             atomic_json(root/'history'/(fingerprint(process_record)+'.json'),process_record)
-        with file_lock(paths.state_dir()/'studio-jobs'/('episode-'+request['ep_id']+'.lock')):
+        from app.services.production_storage import episode_execution
+        with episode_execution(request['ep_id']), file_lock(paths.state_dir()/'studio-jobs'/('episode-'+request['ep_id']+'.lock')):
             require_no_active(request['ep_id'],exclude=root)
             # The previous terminal result is archived. Until completion only the checkpoint is live.
             result.unlink(missing_ok=True)
@@ -199,6 +201,9 @@ def validate_request(request):
 
 
 def require_no_active(ep_id,*,exclude=None):
+    from app.services.production_storage import episode_available, ProductionBusy
+    if not episode_available(ep_id):
+        raise ProductionBusy(f'episode {ep_id} already running in another entry point')
     for p in (paths.state_dir()/'studio-jobs').glob('*/request.json'):
         if exclude and p.parent.resolve()==Path(exclude).resolve():continue
         if json.loads(p.read_text('utf-8')).get('ep_id')==ep_id and alive(p.parent):

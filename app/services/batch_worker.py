@@ -103,19 +103,21 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
     from app.services.production_identity import artifact_receipt, input_identity
     result_path = spec_path.parent/'results'/(token+'.json')
     try:
-        admission = check(eid)
-        if not admission['eligible']: raise ValueError('review required: '+'; '.join(admission['blockers']))
-        options = job['spec']['options']
-        ledger = read(job['budget_path'])
-        budget = ProviderBudget(job['budget_path'], **ledger['limits'])
-        result = produce(eid, budget=budget, **options)
-        if not result.get('run_ok') or not result.get('final_mp4'):
-            raise RuntimeError(result.get('error') or 'full production has no candidate')
-        from app.services.production_status import get_status
-        status = get_status(eid)
-        record = dict(status='APPROVED' if status['approved'] else 'NEEDS_REVIEW',
-                      candidate_path=result['final_mp4'], artifacts=artifact_receipt(result),
-                      identity=input_identity(eid, None, options), blockers=status['blockers'])
+        from app.services.production_storage import episode_execution
+        with episode_execution(eid):
+            admission = check(eid)
+            if not admission['eligible']: raise ValueError('review required: '+'; '.join(admission['blockers']))
+            options = job['spec']['options']
+            ledger = read(job['budget_path'])
+            budget = ProviderBudget(job['budget_path'], **ledger['limits'])
+            result = produce(eid, budget=budget, **options)
+            if not result.get('run_ok') or not result.get('final_mp4'):
+                raise RuntimeError(result.get('error') or 'full production has no candidate')
+            from app.services.production_status import get_status
+            status = get_status(eid)
+            record = dict(status='APPROVED' if status['approved'] else 'NEEDS_REVIEW',
+                          candidate_path=result['final_mp4'], artifacts=artifact_receipt(result),
+                          identity=input_identity(eid, None, options), blockers=status['blockers'])
     except Exception as exc:
         error = f'{type(exc).__name__}: {str(exc)[:1000]}'
         record = dict(status=classify(error), error=error)
@@ -246,6 +248,9 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
         else: return
     if row['status'] in ('BUDGET_EXHAUSTED','FAILED'): return
     if row.get('retry_at', 0)>time.time(): return
+    from app.services.production_storage import episode_available
+    if not episode_available(eid):
+        return  # Resource contention is not a production attempt or paid retry.
     from app.services.production_admission import check
     admission = check(eid)
     if row['status']=='BLOCKED_INPUT' and row.get('admission_fingerprint')==admission.get('input_fingerprint'):
