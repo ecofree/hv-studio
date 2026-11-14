@@ -51,6 +51,10 @@ jobs:
           updater.write_bytes(data)
           (evidence / 'applied-updater.py').write_bytes(data)
           subprocess.run([sys.executable, str(updater)], check=True)
+          fix = pathlib.Path('.ci/execution-safety/fix1.py')
+          if hashlib.sha256(fix.read_bytes()).hexdigest() != '0c7a40b24c3b9b3560ded88d09a4aee5f5fe7c8c420c40384624bbee2730744d':
+              raise SystemExit('Test harness correction digest mismatch')
+          subprocess.run([sys.executable, str(fix)], check=True)
           allowed = {'app/controllers/v1/auth.py','app/orchestrator.py','app/services/batch_worker.py','app/services/cosyvoice.py','app/services/narration_pipeline.py','app/services/production_readiness.py','app/services/production_storage.py','app/services/studio_jobs.py','bin/studio_job.py','bin/studio_narrate.py','docs/execution-guard-handoff.md','tests/test_api_auth_gate.py','tests/test_episode_execution.py','tests/test_production_admission_audio_mode.py','tests/test_tts_uncertain_attempt.py'}
           subprocess.run(['git', '-c', 'core.autocrlf=false', 'add', '--', *sorted(allowed)], check=True)
           changed = set(subprocess.check_output(['git', 'diff', '--cached', '--name-only'], text=True).splitlines())
