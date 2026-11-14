@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """An ambiguous TTS dispatch must never be silently retried."""
+from pathlib import Path
 import pytest
+
+pytestmark = pytest.mark.production
 
 from app.services.narration_pipeline import _assert_no_uncertain_attempt
 from app.services.provenance import atomic_json, file_sha256, fingerprint
@@ -103,3 +106,36 @@ def test_provider_adapter_attaches_request_id_from_sanitized_receipt(tmp_path, m
         pipeline._provider(request, tmp_path / "raw.wav")
     assert exc.value.hv_provider_request_id == "provider-task-456"
     assert exc.value.hv_provider_request_path == str(receipt.resolve())
+
+
+def test_budget_refusal_remains_not_dispatched_through_real_pipeline(tmp_path):
+    from app.services import narration_pipeline as N
+    from app.services.provider_budget import ProviderBudget, BudgetExceeded
+    from test_production_v2 import assembly
+    _,plan,asset,calls,provider,checker=assembly(tmp_path)
+    count=len(calls)
+    denied=ProviderBudget(tmp_path/'denied.json',tts_requests=0,characters=0)
+    with pytest.raises(BudgetExceeded):
+        N.synthesize(plan,asset,max_requests=100,max_characters=100000,
+                     force=True,provider=provider,checker=checker,budget=denied)
+    attempts=[N.read(p) for p in (Path(plan).parent/'takes').glob('*/attempt.json')]
+    assert any(r['status']=='not_dispatched' for r in attempts)
+    assert not any(r['status']=='failed_or_uncertain' for r in attempts)
+    assert len(calls)==count and denied.snapshot()['used']['tts_requests']==0
+    allowed=ProviderBudget(tmp_path/'allowed.json',tts_requests=100,characters=100000)
+    N.synthesize(plan,asset,max_requests=100,max_characters=100000,
+                 force=True,provider=provider,checker=checker,budget=allowed)
+    assert len(calls)>count
+
+
+def test_provider_failure_before_receipt_preserves_original_error(tmp_path, monkeypatch):
+    from app.services import narration_pipeline as N
+    class FakeSynth:
+        def __init__(self,**kwargs):pass
+        def synthesize(self,*args):raise ValueError('configuration before dispatch')
+    monkeypatch.setattr('app.services.cosyvoice.DashScopeCosyVoiceSynthesizer',FakeSynth)
+    request=dict(model='offline',voice_id='fixture',sample_rate=24000,pitch_rate=1.,
+                 speech_rate=1.,volume=50,instruction='',pronunciation='',seed=1,
+                 voice_asset_version='fixture',text='test')
+    with pytest.raises(ValueError,match='configuration before dispatch'):
+        N._provider(request,tmp_path/'raw.wav')

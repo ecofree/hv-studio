@@ -24,7 +24,7 @@ from __future__ import annotations
 
 import hmac
 import ipaddress
-from typing import Optional
+from typing import Annotated
 
 from fastapi import Header, HTTPException, Request
 
@@ -48,7 +48,7 @@ def auth_enabled() -> bool:
 
 def require_token(
     request: Request,
-    x_hv_token: Optional[str] = Header(default=None, alias=HEADER_NAME),
+    x_hv_token: Annotated[str | None, Header(alias=HEADER_NAME)] = None,
 ) -> None:
     """Protect every write/provider endpoint.
 
@@ -58,13 +58,18 @@ def require_token(
     """
     expected = configured_token()
     if expected:
-        if not x_hv_token or not hmac.compare_digest(x_hv_token.strip(), expected):
+        if not x_hv_token or not hmac.compare_digest(x_hv_token.strip().encode("utf-8"), expected.encode("utf-8")):
             raise HTTPException(
                 status_code=401,
                 detail=f"缺少或无效的 {HEADER_NAME}（服务端已启用 HV_API_TOKEN）",
             )
         return
 
+    # No-token mode is direct local access only. A reverse proxy must configure
+    # a token; forwarded loopback headers must not impersonate a local caller.
+    if any(k.lower() == "forwarded" or k.lower().startswith("x-forwarded-")
+           for k in request.headers):
+        raise HTTPException(status_code=401, detail="Proxied writes require HV_API_TOKEN")
     client_host = request.client.host if request.client else ""
     if not is_loopback_host(client_host):
         raise HTTPException(

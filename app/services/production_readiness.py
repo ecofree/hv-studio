@@ -35,6 +35,6 @@ def assess(source_fingerprint):
                     blockers.append(eid+' requires current content approval')
             except (OSError,ValueError,KeyError,TypeError,AttributeError):
                 blockers.append(str(eid)+' content approval cannot be verified')
-    except (OSError,ValueError,KeyError,TypeError):
-        blockers.append('current production validation evidence is missing or malformed')
+    except (OSError,ValueError,KeyError,TypeError) as exc:
+        blockers.append('current production validation evidence is missing or malformed: '+str(exc))
     return dict(ready=not blockers, blockers=list(dict.fromkeys(blockers)))

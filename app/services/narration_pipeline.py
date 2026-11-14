@@ -169,12 +169,14 @@ def _provider(request, raw):
         # the WebSocket call fails after dispatch. Never copy credentials or
         # request text into the attempt summary.
         try:
-            receipt = read(svc.last_request_path) if svc.last_request_path else {}
+            request_path = getattr(svc, "last_request_path", None)
+            receipt = read(request_path) if request_path else {}
+            if not isinstance(receipt, dict): receipt = {}
         except (OSError, ValueError, TypeError):
             receipt = {}
         setattr(exc, "hv_provider_request_id", receipt.get("request_id"))
         setattr(exc, "hv_provider_request_path",
-                str(Path(svc.last_request_path).resolve()) if svc.last_request_path else None)
+                str(Path(request_path).resolve()) if request_path else None)
         raise
     return read(svc.last_request_path)
 
@@ -377,7 +379,11 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
                             and file_sha256(raw) == saved.get("audio_sha256"))
                     except (OSError, ValueError, TypeError):
                         reusable_response = False
-                status = "postprocess_failed" if reusable_response else "failed_or_uncertain"
+                prior = read(take_dir/"attempt.json")
+                not_dispatched = (prior.get("status") in ("prepared", "not_dispatched")
+                                  or getattr(exc, "hv_not_dispatched", False) is True)
+                status = ("postprocess_failed" if reusable_response else
+                          "not_dispatched" if not_dispatched else "failed_or_uncertain")
                 attempt_record = {"status":status,"error_type":type(exc).__name__,
                                   "characters":len(request["text"]),"request_fp":key}
                 request_id = getattr(exc, "hv_provider_request_id", None)

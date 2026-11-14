@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """External recordings are not coupled to a TTS VoiceAsset."""
 from pathlib import Path
+import pytest
+
+pytestmark = pytest.mark.production
 
 from app.services import production_admission as admission
 
