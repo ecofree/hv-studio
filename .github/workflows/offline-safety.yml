@@ -47,6 +47,8 @@ jobs:
           cache-dependency-path: requirements.core.lock.txt
       - name: Install the declared core environment
         run: python -m pip install -r requirements.core.lock.txt
+      - name: Provision pinned FFmpeg and the configured Chinese font
+        run: python .ci/setup-media.py
       - name: Check dependency consistency and syntax
         shell: pwsh
         run: |
@@ -69,6 +71,8 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: safety-results-${{ github.event.pull_request.head.sha || github.sha }}
-          path: ci-evidence/*.xml
+          path: |
+            ci-evidence/*.xml
+            ci-evidence/media-environment.json
           if-no-files-found: warn
           retention-days: 14

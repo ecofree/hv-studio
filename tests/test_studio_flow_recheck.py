@@ -59,11 +59,15 @@ def test_old_full_scope_review_is_not_automatically_promoted(tmp_episodes):
     assert not W.review_valid(eid,'editorial')
 
 
-@pytest.mark.parametrize('changed',['renderer','content'])
+@pytest.mark.parametrize('changed',['renderer','content','mixed_renderer','unknown_code'])
 def test_publish_uses_same_drift_policy_as_candidate_status(tmp_path,monkeypatch,changed):
     from app.services import production_v2 as V,production_identity as I,media_integrity as M,audio_disposition as A
     monkeypatch.setattr(I,'ROOT',tmp_path)
-    code=tmp_path/'app/render.py';code.parent.mkdir();code.write_text('before')
+    # Only explicit pure-renderer entries may retain an existing approval.
+    relative = ('app/render.py' if changed=='unknown_code' else
+                'app/services/production_v2.py' if changed=='mixed_renderer' else
+                'app/services/motion.py')
+    code=tmp_path/relative;code.parent.mkdir(parents=True);code.write_text('before')
     content=tmp_path/'narration.txt';content.write_text('source')
     media=tmp_path/'film.mp4';media.write_bytes(b'not a real film: isolated validation stub')
     manifest=tmp_path/'manifest.json';atomic_json(manifest,{'fixture':True})
@@ -73,9 +77,9 @@ def test_publish_uses_same_drift_policy_as_candidate_status(tmp_path,monkeypatch
     monkeypatch.setattr(V,'validate_assembly',lambda _:dict(master_sha256='fixture'))
     monkeypatch.setattr(A,'require_usable',lambda _:None)
     monkeypatch.setattr(M,'verify_media',lambda *a,**k:dict(sha256=file_sha256(media)))
-    (code if changed=='renderer' else content).write_text('after')
+    (content if changed=='content' else code).write_text('after')
     target=tmp_path/'published.json'
-    if changed=='content':
+    if changed!='renderer':
         with pytest.raises(ValueError,match='input changed'):V.publish(receipt,visual,audio,target)
         assert not target.exists()
     else:
