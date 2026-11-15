@@ -60,6 +60,11 @@ def validate_job(job, path):
 def validate_row(row):
     if not isinstance(row,dict) or row.get('status') not in STATUSES: raise ValueError('invalid episode status')
     integer(row.get('attempts'))
+    if 'task' in row:
+        from app.services.production_identity import validate_task, execution_ref, require_execution
+        validate_task(row['task'])
+        if row.get('token'):
+            require_execution(row.get('execution'), execution_ref(row['task'], row['token']))
     if 'authorized_attempt_limit' in row: integer(row['authorized_attempt_limit'],1)
     if 'retry_at' in row: timestamp(row['retry_at'])
     if row['status']=='RUNNING':
@@ -74,13 +79,22 @@ def validate_row(row):
         raise ValueError('invalid blockers')
 
 
-def load_result(path):
+def load_result(path, *, expected_execution=None):
     value=read(path)
     if not isinstance(value,dict) or value.get('status') not in STATUSES-{'QUEUED','RUNNING'}:
         raise ValueError('invalid child result')
     validate_row(dict(value,attempts=0))
+    if expected_execution is not None:
+        from app.services.production_identity import require_execution
+        require_execution(value.get('execution'), expected_execution)
+    if 'lease_acquired' in value and type(value['lease_acquired']) is not bool:
+        raise ValueError('invalid lease ownership in child result')
+    if 'error_type' in value and not isinstance(value['error_type'],str):
+        raise ValueError('invalid error type in child result')
+    if value.get('error_type') == 'ProductionBusy' and value.get('lease_acquired') is False:
+        if value['status'] != 'RETRY_WAIT': raise ValueError('invalid pre-execution contention result')
     # Child results cannot replace process ownership or the durable attempt count.
     return {k:v for k,v in value.items() if k in {
         'status','candidate_path','artifacts','identity','blockers','error',
-        'error_type','lease_acquired'
+        'error_type','lease_acquired','execution'
     }}

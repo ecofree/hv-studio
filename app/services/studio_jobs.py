@@ -92,7 +92,7 @@ def _submit(ep_id,max_requests,max_characters,max_images,external_master,mode,ma
     root=paths.state_dir()/'studio-jobs'/uuid.uuid4().hex
     request=dict(ep_id=ep_id,max_requests=max_requests,max_characters=max_characters,max_images=max_images,
                  max_image_retries=max_image_retries,
-                 budget_id='studio-'+root.name,expected_identity=W.identity(ep_id),job_mode=mode)
+                 budget_id='studio-'+root.name,expected_identity=W.identity(ep_id),job_mode=mode,task_schema=1)
     if provider_attempts_per_image is not None:
         request['provider_attempts_per_image']=provider_attempts_per_image
     if mode=='video':
@@ -109,6 +109,7 @@ def _submit(ep_id,max_requests,max_characters,max_images,external_master,mode,ma
     if voice_contract.exists():request['voice_contract_sha256']=file_sha256(voice_contract)
     if narration:request['narration_selection_sha256']=narration['selection_sha256']
     root.mkdir(parents=True)
+    task_for_request(root, request, create=True)
     atomic_json(root/'request.json',request)
     atomic_json(root/'submission.json',dict(request=request,request_sha256=file_sha256(root/'request.json')))
     _spawn(root,request)
@@ -119,6 +120,12 @@ def _spawn(root,request):
     import psutil
     import time
     queued = dict(status='QUEUED', updated_at=time.time(), approved=False, production_ready=False)
+    task = task_for_request(root, request)
+    if task:
+        from app.services.production_identity import execution_ref
+        execution = execution_ref(task, uuid.uuid4().hex)
+        atomic_json(root/'execution.json', execution)
+        queued['execution'] = execution
     atomic_json(root/'checkpoint.json', queued)
     with (root/'job.log').open('ab') as log:
         flags=subprocess.CREATE_NO_WINDOW|subprocess.DETACHED_PROCESS if os.name=='nt' else 0
@@ -129,7 +136,8 @@ def _spawn(root,request):
     try:created=psutil.Process(process.pid).create_time()
     except psutil.NoSuchProcess:created=None
     atomic_json(root/'process.json',dict(pid=process.pid,created_at=created,request=request,
-                                       request_sha256=file_sha256(root/'request.json')))
+                                       request_sha256=file_sha256(root/'request.json'),
+                                       execution=queued.get('execution')))
 
 
 def alive(root):
@@ -153,6 +161,10 @@ def resume(root):
             previous=json.loads(result.read_text('utf-8'))
             if previous.get('status') not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING'):raise ValueError('completed job does not need resume')
             atomic_json(root/'history'/(fingerprint(previous)+'.json'),previous)
+        execution_path=root/'execution.json'
+        if execution_path.exists():
+            previous_execution=W.read(execution_path)
+            atomic_json(root/'history'/('execution-'+fingerprint(previous_execution)+'.json'),previous_execution)
         checkpoint=root/'checkpoint.json'
         if checkpoint.exists():
             previous_checkpoint=json.loads(checkpoint.read_text('utf-8'))
@@ -221,6 +233,10 @@ def check_resume(root):
     if old.get('request')!=request or old.get('request_sha256')!=file_sha256(root/'request.json'):
         raise ValueError('original job request changed; cannot resume')
     validate_request(request)
+    task, execution = execution_for_request(root, request)
+    if task and (root/'result.json').exists():
+        from app.services.production_identity import require_execution
+        require_execution(W.read(root/'result.json').get('execution'), execution)
     require_no_active(request['ep_id'],exclude=root)
     if (root/'result.json').exists():
         status=json.loads((root/'result.json').read_text('utf-8')).get('status')
@@ -243,6 +259,7 @@ def jobs(ep_id):
         status=phase.get('status','QUEUED' if live else 'INTERRUPTED')
         if not live and status in ('QUEUED','RUNNING'):status='INTERRUPTED'
         row=dict(path=str(p.parent),result=current,running=live,status=status,external_master=bool(request.get('external_master')),
+                 execution=phase.get('execution'),
                  stage=phase.get('stage'),progress=phase.get('progress'),stage_timings=phase.get('stage_timings',[]),
                  heartbeat_at=phase.get('heartbeat_at'),updated_at=phase.get('updated_at'),
                  error=phase.get('error'),error_phase=phase.get('error_phase'),
@@ -269,3 +286,53 @@ def jobs(ep_id):
         rows.append(row)
         if len(rows)==5:break
     return rows
+
+
+def task_for_request(root, request, *, create=False):
+    """Versioned submissions bind the existing request and its actual ledger.
+
+    Older requests retain their previous validation path. They are not silently
+    presented as having an implementation/identity contract at submission time.
+    """
+    from app.services.production_identity import make_task, require_same_task, V2_STAGES, TaskMismatch
+    from app.services.provider_budget import budget_path_for, budget_limits
+    root = Path(root).resolve()
+    if 'task_schema' not in request:
+        if (root/'task.json').exists(): raise TaskMismatch('task schema removed from request')
+        return None
+    if type(request['task_schema']) is not int or request['task_schema'] != 1:
+        raise TaskMismatch('unsupported Studio task schema')
+    mode = request.get('job_mode', 'video')
+    stages = {'video': list(V2_STAGES), 'alignment': ['alignment'],
+              'voice': ['tts','quality','alignment'] if request.get('external_master') else ['tts']}[mode]
+    local_voice = mode == 'voice' and not request.get('external_master')
+    location = root/'budget.json' if local_voice else budget_path_for(
+        paths.episode_dir(request['ep_id'])/'production/v2', request['budget_id'])
+    limits = budget_limits({k: request.get(k, 0) for k in ('max_requests','max_characters')}
+                           if local_voice else request)
+    inputs = {k: v for k, v in request.items() if k.startswith('expected_') or k in (
+        'voice_contract_sha256','external_master_sha256','narration_selection_sha256','external_input')}
+    expected = make_task(request['ep_id'], origin='studio', owner=str(root),
+                         request=request, inputs=inputs, budget_path=location, limits=limits, stages=stages)
+    target = root/'task.json'
+    if create:
+        if target.exists(): raise TaskMismatch('refuse to overwrite a submitted task identity')
+        atomic_json(target, expected)
+    else:
+        require_same_task(W.read(target), expected)
+    return expected
+
+
+def execution_for_request(root, request):
+    """Check the original submission again in the child, before any work."""
+    from app.services.production_identity import require_execution, execution_ref, TaskMismatch
+    root = Path(root)
+    task = task_for_request(root, request)
+    if task is None: return None, None
+    saved = W.read(root/'submission.json')
+    if (not isinstance(saved, dict) or saved.get('request') != request or W.read(root/'request.json') != request
+            or saved.get('request_sha256') != file_sha256(root/'request.json')):
+        raise TaskMismatch('original job request changed; cannot execute')
+    execution = W.read(root/'execution.json')
+    require_execution(execution, execution_ref(task, execution.get('attempt_id') if isinstance(execution,dict) else None))
+    return task, execution

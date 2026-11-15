@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
+from _queue_fixture import result_command
 from app import paths
 from app.services import production_storage as S
 from app.services.process_lock import file_lock
@@ -134,11 +135,9 @@ def test_lost_episode_lease_race_does_not_consume_queue_attempt(tmp_path, monkey
     monkeypatch.setattr(A, 'check', lambda eid: dict(
         eligible=True, blockers=[], input_fingerprint='stable-input'))
     def command(spec_path, eid, token):
-        target = folder/'results'/(token+'.json')
         payload = dict(status='RETRY_WAIT', error='ProductionBusy: episode already running',
                        error_type='ProductionBusy', lease_acquired=False)
-        code = 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); p.parent.mkdir(exist_ok=True); p.write_text(json.dumps(json.loads(sys.argv[2])))'
-        return [sys.executable, '-c', code, str(target), json.dumps(payload)]
+        return result_command(spec_path,eid,token,payload)
     B.run_once(folder, command_factory=command)
     state = read(path)
     row = state['episodes']['race-episode']

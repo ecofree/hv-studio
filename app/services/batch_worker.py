@@ -4,6 +4,7 @@ No automatic budget increases or content approvals. STOP pauses at any point;
 restarting uses the same immutable job specification and ledger.
 """
 import json
+from contextlib import ExitStack
 import os
 from pathlib import Path
 import subprocess
@@ -90,6 +91,16 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
         if time.monotonic()>deadline or not alive(owner_pid, owner_created): return 1
         time.sleep(.1)
 
+    from app.services.queue_records import validate_job, validate_row
+    from app.services.production_identity import execution_ref, require_execution
+    validate_job(job, spec_path); validate_row(row)
+    this = psutil.Process()
+    if (row.get('child_pid') != this.pid or row.get('child_created') != this.create_time()
+            or row.get('owner_pid') != owner_pid or row.get('owner_created') != owner_created):
+        return 1  # A stale/replayed command cannot impersonate the current child.
+    execution = execution_ref(row['task'], token) if row.get('task') else None
+    if execution: require_execution(row.get('execution'), execution)
+
     def watch_owner():
         while alive(owner_pid, owner_created): time.sleep(.5)
         for child in psutil.Process().children(recursive=True):
@@ -105,10 +116,14 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
     lease_acquired = False
     try:
         from app.services.production_storage import episode_execution
-        with episode_execution(eid):
+        with episode_execution(eid), ExitStack() as scopes:
             lease_acquired = True
             admission = check(eid)
             if not admission['eligible']: raise ValueError('review required: '+'; '.join(admission['blockers']))
+            if row.get('task'):
+                from app.services.production_identity import require_same_task, task_scope
+                require_same_task(row['task'], task_for_episode(spec_path, job, eid, admission))
+                scopes.enter_context(task_scope(row['task'], token))
             options = job['spec']['options']
             ledger = read(job['budget_path'])
             budget = ProviderBudget(job['budget_path'], **ledger['limits'])
@@ -122,8 +137,10 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
                           identity=input_identity(eid, None, options), blockers=status['blockers'])
     except Exception as exc:
         error = f'{type(exc).__name__}: {str(exc)[:1000]}'
-        record = dict(status=classify(error), error=error,
+        from app.services.production_identity import TaskMismatch
+        record = dict(status='BLOCKED_INPUT' if isinstance(exc, TaskMismatch) else classify(error), error=error,
                       error_type=type(exc).__name__, lease_acquired=lease_acquired)
+    if execution is not None: record['execution'] = execution
     atomic_json(result_path, record)
     return 0
 
@@ -230,18 +247,23 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
     if row['status'] == 'RUNNING':
         stop_tree(row.get('child_pid'), row.get('child_created'))
         result_path = folder/'results'/(row['token']+'.json')
-        if result_path.exists(): row.update(load_result(result_path))
+        if result_path.exists(): accept_child_result(row, result_path)
         else: row.update(status='RETRY_WAIT', error='interrupted worker', retry_at=time.time())
         event(job, eid, row['status'], 'recovered previous owner')
         atomic_json(path, job)
     if row['status'] == 'APPROVED':
         from app.services.production_status import get_status
-        if get_status(eid).get('approved'): return
+        status = get_status(eid)
+        if status.get('approved') and candidate_matches_task(row, status): return
         row['status'] = 'NEEDS_REVIEW'
     if row['status'] == 'NEEDS_REVIEW' and row.get('candidate_path'):
         from app.services.production_status import get_status
         status = get_status(eid)
         if status['approved']:
+            if not candidate_matches_task(row, status):
+                row.update(status='BLOCKED_INPUT', error='approved candidate belongs to a different task or artifact')
+                event(job,eid,'BLOCKED_INPUT',row['error']); atomic_json(path,job)
+                return
             for key in ('blockers', 'error', 'retry_at'):
                 row.pop(key, None)
             row['status']='APPROVED'; event(job,eid,'APPROVED'); atomic_json(path,job)
@@ -256,7 +278,8 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
         return  # Resource contention is not a production attempt or paid retry.
     from app.services.production_admission import check
     admission = check(eid)
-    if row['status']=='BLOCKED_INPUT' and row.get('admission_fingerprint')==admission.get('input_fingerprint'):
+    if (row['status']=='BLOCKED_INPUT' and row.get('error_type') != 'TaskMismatch'
+            and row.get('admission_fingerprint')==admission.get('input_fingerprint')):
         return
     if not admission['eligible']:
         if row['status'] != 'NEEDS_REVIEW' or row.get('blockers') != admission['blockers']:
@@ -265,9 +288,20 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
         return
     if row['attempts'] >= row.get('authorized_attempt_limit',1+job['spec']['retries']):
         row['status']='FAILED'; event(job,eid,'FAILED','retry limit'); atomic_json(path,job); return
+    from app.services.production_identity import require_same_task, TaskMismatch, execution_ref
+    expected_task = task_for_episode(path, job, eid, admission)
+    if row.get('task'):
+        try: require_same_task(row['task'], expected_task)
+        except TaskMismatch as exc:
+            row.update(status='BLOCKED_INPUT', error=str(exc), error_type='TaskMismatch')
+            event(job,eid,'BLOCKED_INPUT',str(exc)); atomic_json(path,job)
+            return  # Never silently rebind an existing authorization to new inputs/code.
+    else:
+        row['task'] = expected_task  # First versioned dispatch, not a claim about past attempts.
     token = uuid.uuid4().hex
+    row['execution'] = execution_ref(row['task'], token)
     # Previous failure details remain in events; they are not current blockers.
-    for key in ('blockers', 'error', 'retry_at'):
+    for key in ('blockers', 'error', 'retry_at', 'error_type', 'lease_acquired', 'last_contention'):
         row.pop(key, None)
     row.update(status='RUNNING', attempts=row['attempts']+1, token=token,
                admission_fingerprint=admission.get('input_fingerprint'),
@@ -296,17 +330,46 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
             child.wait(timeout=10)
     result_path = folder/'results'/(token+'.json')
     if result_path.exists():
-        result = load_result(result_path)
-        row.update(result)
-        if result.get('error_type') == 'ProductionBusy' and result.get('lease_acquired') is False:
-            # The preflight probe lost a race to another entry point. The child
-            # never owned the episode lease, so no production attempt occurred.
-            row.update(status='QUEUED',
-                       attempts=max(0, row['attempts']-1),
-                       last_contention=result.get('error', 'episode lease was acquired elsewhere'))
-            row.pop('error', None)
-            row.pop('retry_at', None)
+        accept_child_result(row, result_path)
     else:
         row.update(status='RETRY_WAIT', error='interrupted or timed out child')
     if row['status']=='RETRY_WAIT': row['retry_at']=time.time()+min(2**row['attempts'],60)
     event(job,eid,row['status'],row.get('error') or row.get('last_contention')); atomic_json(path,job)
+
+
+def task_for_episode(path, job, eid, admission):
+    from app.services.production_identity import make_task, V2_STAGES
+    from app.services.provider_budget import budget_limits
+    if not isinstance(admission.get('input_fingerprint'), str) or not admission['input_fingerprint']:
+        raise ValueError('admission has no input identity')
+    return make_task(eid, origin='batch', owner=str(Path(path).resolve()),
+                     request={'spec':job['spec'], 'episode_id':eid},
+                     inputs={'admission':admission['input_fingerprint']},
+                     budget_path=job['budget_path'], limits=budget_limits(job['spec']['options']),
+                     stages=V2_STAGES)
+
+
+def accept_child_result(row, path):
+    """One reconciliation rule for live completion and supervisor recovery."""
+    from app.services.production_identity import execution_ref
+    expected = execution_ref(row['task'], row['token']) if row.get('task') else None
+    result = load_result(path, expected_execution=expected)
+    row.update(result)
+    if result.get('error_type') == 'ProductionBusy' and result.get('lease_acquired') is False:
+        row.update(status='QUEUED', attempts=max(0, row['attempts']-1),
+                   last_contention=result.get('error', 'episode lease was acquired elsewhere'))
+        row.pop('error', None); row.pop('retry_at', None)
+
+
+def candidate_matches_task(row, status):
+    """An approval for another run cannot finish this versioned queue task."""
+    if not row.get('task'): return True  # Historical row; no fictional task provenance.
+    from app.services.provenance import file_sha256
+    try:
+        if row.get('execution') != status.get('execution'): return False
+        candidate = Path(row['candidate_path']).resolve()
+        if candidate != Path(status['candidate_path']).resolve(): return False
+        expected = row.get('artifacts', {}).get(str(candidate))
+        return bool(expected) and file_sha256(candidate) == expected
+    except (OSError, ValueError, KeyError, TypeError):
+        return False

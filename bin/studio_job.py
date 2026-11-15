@@ -1,5 +1,6 @@
 """Worker for one user-submitted production request."""
 import json,os,sys
+from contextlib import ExitStack
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -16,6 +17,7 @@ def main():
 def execute(path,request):
     import copy,threading,time,traceback
     checkpoint = dict(status='RUNNING', stage='admission', approved=False, production_ready=False)
+    execution = None
     guard = threading.Lock()
     stop = threading.Event()
 
@@ -38,12 +40,17 @@ def execute(path,request):
     monitor=threading.Thread(target=heartbeat,daemon=True);monitor.start()
     try:
         from app.services.production_storage import episode_execution
-        with episode_execution(request['ep_id'], timeout=5):
-            from app.services.studio_jobs import validate_request
+        with episode_execution(request['ep_id'], timeout=5), ExitStack() as scopes:
+            from app.services.studio_jobs import validate_request, execution_for_request
             validate_request(request)
+            task, execution = execution_for_request(path.parent, request)
+            if task:
+                from app.services.production_identity import task_scope
+                scopes.enter_context(task_scope(task, execution['attempt_id']))
+                update(dict(execution=execution))
             request=dict(request)
             for key in ('expected_image_inputs','voice_contract_sha256','narration_selection_sha256',
-                        'expected_identity','expected_narration_identity','external_master_sha256','external_input'):
+                        'expected_identity','expected_narration_identity','external_master_sha256','external_input','task_schema'):
                 request.pop(key,None)
             mode=request.pop('job_mode','video')
             if mode=='voice' and not request.get('external_master'):
@@ -68,6 +75,7 @@ def execute(path,request):
                     approved=False,production_ready=False)
     finally:
         stop.set();monitor.join(timeout=6)
+    if execution is not None: result['execution'] = execution
     result['completed_at']=time.time()
     result['queue_seconds']=round(queue_seconds,3)
     atomic_json(path.parent/'result.json',result)

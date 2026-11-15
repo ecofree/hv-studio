@@ -74,6 +74,8 @@ class ProviderBudget:
         if image_retries:
             self.limits['image_retries'] = image_retries
         if any(type(v) is not int or v < 0 for v in self.limits.values()): raise ValueError('invalid budget limits')
+        from app.services.production_identity import require_task_budget
+        require_task_budget(self.path, self.limits)
         with ledger_lock(self.path):
             if self.path.exists():
                 if read(self.path)['limits'] != self.limits: raise ValueError('budget limits changed; use a new explicit budget ID')
@@ -82,6 +84,8 @@ class ProviderBudget:
     def reserve(self, kind, request_fingerprint, characters=0, *, supplier=None, queue_seconds=None):
         if kind not in ('tts', 'image') or type(characters) is not int or characters < 0:
             raise ValueError('invalid provider reservation')
+        from app.services.production_identity import require_task_budget
+        require_task_budget(self.path, self.limits)
         charge = {kind+'_requests': 1}
         if kind == 'tts': charge['characters'] = characters
         with ledger_lock(self.path):
@@ -125,8 +129,23 @@ class ProviderBudget:
                        if key == 'image_requests' and self.limits.get('image_retries', 0) else ''))
 
 
+def budget_path_for(root, identifier):
+    """Pure address calculation; never creates or refills a ledger."""
+    return Path(root)/'budgets'/(fingerprint(identifier)+'.json')
+
+
+def budget_limits(options):
+    limits = dict(tts_requests=options.get('max_requests', 0),
+                  characters=options.get('max_characters', 0),
+                  image_requests=options.get('max_images', 0))
+    retries = options.get('max_image_retries', 0)
+    if type(retries) is not int or retries < 0:
+        raise ValueError('invalid budget limits')
+    if retries: limits['image_retries'] = retries
+    if any(type(v) is not int or v < 0 for v in limits.values()):
+        raise ValueError('invalid budget limits')
+    return limits
+
+
 def for_run(root, identifier, options):
-    return ProviderBudget(Path(root)/'budgets'/(fingerprint(identifier)+'.json'),
-                          tts_requests=options.get('max_requests', 0), characters=options.get('max_characters', 0),
-                          image_requests=options.get('max_images', 0),
-                          image_retries=options.get('max_image_retries', 0))
+    return ProviderBudget(budget_path_for(root, identifier), **budget_limits(options))

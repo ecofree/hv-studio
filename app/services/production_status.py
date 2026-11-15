@@ -31,6 +31,7 @@ def get_status(ep_id):
     result = dict(pipeline_version='production_v2', status=last.get('status','PREPARED'), approved=False, production_ready=False,
                   stages_done=last.get('stages_done', []), active_stage=state.get('active_stage'),
                   candidate_path=None, blockers=[], delivery_pending=[], quality_pending_units=[])
+    result.update(execution=state.get('execution'), task=state.get('task'))
     result.update(delivery_ready=False, dimensions={}, source_current=False,
                   content_approved=False, delivered_approval=dict(
                       approved=False, pipeline=None, output_sha256=None, approval_path=None))
