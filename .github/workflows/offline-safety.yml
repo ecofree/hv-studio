@@ -59,12 +59,17 @@ jobs:
       - name: Run execution and safety regressions
         shell: pwsh
         run: |
-          python -m pytest -q tests/test_episode_execution.py tests/test_api_auth_gate.py tests/test_tts_uncertain_attempt.py tests/test_production_admission_audio_mode.py tests/test_production_readiness.py tests/test_rebuild_freeze_and_drift_split.py tests/test_unattended_operations.py tests/test_studio_process_repair.py tests/test_narration_closeout.py --junitxml=ci-evidence/safety.xml
+          python -m pytest -q tests/test_task_identity.py tests/test_task_identity_contention.py tests/test_episode_execution.py tests/test_api_auth_gate.py tests/test_tts_uncertain_attempt.py tests/test_production_admission_audio_mode.py tests/test_production_readiness.py tests/test_rebuild_freeze_and_drift_split.py tests/test_unattended_operations.py tests/test_studio_process_repair.py tests/test_narration_closeout.py --junitxml=ci-evidence/safety.xml
           exit $LASTEXITCODE
       - name: Run the complete offline production suite
         shell: pwsh
         run: |
           python -m pytest -q -m production --junitxml=ci-evidence/production.xml
+          exit $LASTEXITCODE
+      - name: Run affected shared and legacy compatibility tests
+        shell: pwsh
+        run: |
+          python -m pytest -q -m "shared or legacy" tests/test_hv_ops.py tests/test_production_hardening.py tests/test_production_regressions.py tests/test_output_binding_and_legacy_status.py tests/test_checkpoint_rotation.py --junitxml=ci-evidence/compatibility.xml
           exit $LASTEXITCODE
       - name: Preserve test results
         if: always()

@@ -25,7 +25,9 @@ force and are not replaced by a matching task ID.
 - **New Studio submissions:** `request.json` declares `task_schema=1`;
   `task.json` is created once. `_spawn` writes a new `execution.json` and stamps
   the checkpoint/process record. The child validates the original submission,
-  current inputs, implementation and budget before starting work. Resume keeps
+  current inputs, implementation and budget before starting work. The immutable
+  job binding is checked before lease acquisition so contention results still
+  identify their attempt; source validation stays inside the lease. Resume keeps
   the same request, task and ledger, archives the previous execution, and uses
   a new attempt. A voice-only task keeps its narration-specific input identity;
   editing ordinary visual planning does not substitute the full video identity.

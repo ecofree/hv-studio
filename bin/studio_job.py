@@ -39,9 +39,14 @@ def execute(path,request):
     update(dict(started_at=started,queue_seconds=round(queue_seconds,3)))
     monitor=threading.Thread(target=heartbeat,daemon=True);monitor.start()
     try:
+        from app.services.studio_jobs import validate_request, execution_for_request
+        # Verify only the immutable job binding before acquiring the lease so
+        # contention errors still identify the attempt and remain resumable.
+        # Source/recording validation and all work stay inside the episode lock.
+        task, execution = execution_for_request(path.parent, request)
+        if execution: update(dict(execution=execution))
         from app.services.production_storage import episode_execution
         with episode_execution(request['ep_id'], timeout=5), ExitStack() as scopes:
-            from app.services.studio_jobs import validate_request, execution_for_request
             validate_request(request)
             task, execution = execution_for_request(path.parent, request)
             if task:
