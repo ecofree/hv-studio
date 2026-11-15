@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -22,11 +24,21 @@ FONT_BLOB = '914d51db3ef9841a98ccb8f48db9e8bddb0b0d72'
 
 
 def download(url, limit):
-    with urllib.request.urlopen(url, timeout=180) as response:
-        content = response.read(limit + 1)
-    if len(content) > limit:
-        raise ValueError('Dependency exceeds its bounded download size')
-    return content
+    for attempt in range(3):
+        try:
+            request = urllib.request.Request(url, headers={'User-Agent': 'HV-Studio-CI/1.0'})
+            with urllib.request.urlopen(request, timeout=180) as response:
+                content = response.read(limit + 1)
+            if len(content) > limit:
+                raise ValueError('Dependency exceeds its bounded download size')
+            return content
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if isinstance(exc, urllib.error.HTTPError) and exc.code not in (429,500,502,503,504):
+                raise
+            if attempt == 2:
+                raise
+            print('Transient media dependency download error; bounded retry', attempt + 1, flush=True)
+            time.sleep(3 * (attempt + 1))
 
 
 archive = download(FFMPEG_URL, 200 * 1024 * 1024)
