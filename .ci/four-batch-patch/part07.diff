@@ -1,0 +1,48 @@
+diff --git a/tests/test_production_entrypoint.py b/tests/test_production_entrypoint.py
+index 5c4d320..694afea 100644
+--- a/tests/test_production_entrypoint.py
++++ b/tests/test_production_entrypoint.py
+@@ -135,14 +135,29 @@ def test_changed_external_master_cannot_reuse_old_manifest(production_episode,mo
+ @pytest.mark.NEEDS_FFMPEG
+ def test_public_entry_renders_and_verifies_without_touching_legacy(production_episode,monkeypatch):
+     from app.orchestrator import produce
+-    from app.services import asr_check
++    from app.services import asr_check, local_asr
+     ep,directory,_=production_episode
+     monkeypatch.setattr(N,'_provider',offline_provider)
+-    monkeypatch.setattr(asr_check,'check',lambda audio,text:{'status':'passed',
+-        'audio_sha256':file_sha256(audio),'expected_sha256':fingerprint(text)})
++    monkeypatch.setattr(asr_check,'check',lambda audio,text,**kwargs:{'status':'passed',
++        'audio_sha256':file_sha256(audio),'expected_sha256':fingerprint(text),
++        'transcript':text})
+     assert produce(ep.id,stages=['tts'],max_requests=3,max_characters=100)['run_ok']
+     state_path=directory/'production/v2/run.json'
+     m=N.read(N.read(state_path)['manifest_path'])
++    # QA now validates the independently cached transcript before deciding
++    # whether an old passed take can be reused. Keep this media-entry test
++    # offline with audio-bound transcript fixtures, not a fake model context.
++    recognized=[]
++    texts={str(Path(t['audio_path']).resolve()):u['text']
++           for u,t in zip(m['alignment'],m['takes'])}
++    def cached_recognition(audio, **kwargs):
++        key=str(Path(audio).resolve());recognized.append(key)
++        result=dict(text=texts[key],audio_sha256=file_sha256(audio),
++                    request_id='offline-render-test',checker_version='offline-fixture-v1')
++        receipt=directory/'offline-transcripts'/(fingerprint(key)+'.json')
++        atomic_json(receipt,result)
++        return result,receipt
++    monkeypatch.setattr(local_asr,'recognize',cached_recognition)
+     image=directory/'image.png';image.write_bytes(png())
+     timeline=directory/'timeline.json'
+     atomic_json(timeline,{'shots':[{'id':'s1','sample_start':0,'sample_end':m['samples'],'image_path':str(image)}],
+@@ -151,6 +166,10 @@ def test_public_entry_renders_and_verifies_without_touching_legacy(production_ep
+     # Title-card authoring now requires the real quality timing report.
+     r=produce(ep.id,stages=['quality','compose','verify'],timeline=str(timeline))
+     assert r['run_ok'] and r['status']=='CANDIDATE' and not r['approved'], r
++    assert recognized==[str(Path(t['audio_path']).resolve()) for t in m['takes']]
++    from app.services.production_quality import decision_identity
++    report=N.read(N.read(state_path)['quality_path'])
++    assert report['decision_sha256']==decision_identity()
+     before=state_path.read_bytes()
+     assert produce(ep.id,stages=['verify'])['run_ok']
+     assert state_path.read_bytes()==before
