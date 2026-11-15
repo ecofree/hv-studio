@@ -15,6 +15,10 @@ class StageTimings:
         self.finish()
         self.started = time.monotonic()
         self.rows.append(dict(stage=name, started_at=time.time(), counters={}))
+        from app.services.production_identity import current_execution
+        execution = current_execution()
+        if execution is not None:
+            self.rows[-1]['execution'] = execution
 
     def finish(self):
         if self.started is not None:

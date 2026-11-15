@@ -1,5 +1,6 @@
 """Worker for one user-submitted production request."""
 import json,os,sys
+from contextlib import ExitStack
 from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1]
 sys.path.insert(0,str(ROOT))
@@ -16,6 +17,7 @@ def main():
 def execute(path,request):
     import copy,threading,time,traceback
     checkpoint = dict(status='RUNNING', stage='admission', approved=False, production_ready=False)
+    execution = None
     guard = threading.Lock()
     stop = threading.Event()
 
@@ -37,35 +39,48 @@ def execute(path,request):
     update(dict(started_at=started,queue_seconds=round(queue_seconds,3)))
     monitor=threading.Thread(target=heartbeat,daemon=True);monitor.start()
     try:
-        from app.services.studio_jobs import validate_request
-        validate_request(request)
-        request=dict(request)
-        for key in ('expected_image_inputs','voice_contract_sha256','narration_selection_sha256',
-                    'expected_identity','expected_narration_identity','external_master_sha256','external_input'):
-            request.pop(key,None)
-        mode=request.pop('job_mode','video')
-        if mode=='voice' and not request.get('external_master'):
-            update(dict(stage='tts',progress=dict(message='制作旁白候选')))
-            from studio_narrate import render
-            audio=render(request['ep_id'],str(path.parent/'budget.json'),request['max_requests'],request['max_characters'])
-            result=dict(status='VOICE_CANDIDATE',audio_path=str(audio),source_map_path=str(audio.parent/'source-map.json'),approved=False,production_ready=False)
-        else:
-            from app.services.episode_production import run
-            stages=['alignment'] if mode=='alignment' else ['tts','quality','alignment'] if mode=='voice' else None
-            result=run(**request,stages=stages,progress=update)
-            if mode=='voice' and result.get('run_ok'):
-                from app.services.narration_pipeline import read
-                from app import paths
-                state=read(paths.episode_dir(request['ep_id'])/'production/v2/run.json')
-                manifest=read(state['manifest_path'])
-                result.update(status='VOICE_CANDIDATE',audio_path=manifest['master_path'],
-                              voice_reused_without_generation=True)
+        from app.services.studio_jobs import validate_request, execution_for_request
+        # Verify only the immutable job binding before acquiring the lease so
+        # contention errors still identify the attempt and remain resumable.
+        # Source/recording validation and all work stay inside the episode lock.
+        task, execution = execution_for_request(path.parent, request)
+        if execution: update(dict(execution=execution))
+        from app.services.production_storage import episode_execution
+        with episode_execution(request['ep_id'], timeout=5), ExitStack() as scopes:
+            validate_request(request)
+            task, execution = execution_for_request(path.parent, request)
+            if task:
+                from app.services.production_identity import task_scope
+                scopes.enter_context(task_scope(task, execution['attempt_id']))
+                update(dict(execution=execution))
+            request=dict(request)
+            for key in ('expected_image_inputs','voice_contract_sha256','narration_selection_sha256',
+                        'expected_identity','expected_narration_identity','external_master_sha256','external_input','task_schema'):
+                request.pop(key,None)
+            mode=request.pop('job_mode','video')
+            if mode=='voice' and not request.get('external_master'):
+                update(dict(stage='tts',progress=dict(message='制作旁白候选')))
+                from studio_narrate import render
+                audio=render(request['ep_id'],str(path.parent/'budget.json'),request['max_requests'],request['max_characters'])
+                result=dict(status='VOICE_CANDIDATE',audio_path=str(audio),source_map_path=str(audio.parent/'source-map.json'),approved=False,production_ready=False)
+            else:
+                from app.services.episode_production import run
+                stages=['alignment'] if mode=='alignment' else ['tts','quality','alignment'] if mode=='voice' else None
+                result=run(**request,stages=stages,progress=update)
+                if mode=='voice' and result.get('run_ok'):
+                    from app.services.narration_pipeline import read
+                    from app import paths
+                    state=read(paths.episode_dir(request['ep_id'])/'production/v2/run.json')
+                    manifest=read(state['manifest_path'])
+                    result.update(status='VOICE_CANDIDATE',audio_path=manifest['master_path'],
+                                  voice_reused_without_generation=True)
     except (Exception, KeyboardInterrupt) as exc:
         result=dict(status='INTERRUPTED' if isinstance(exc,KeyboardInterrupt) else 'BLOCKED',error=str(exc),error_type=type(exc).__name__,
                     error_phase=checkpoint.get('stage'),error_stack=traceback.format_tb(exc.__traceback__),
                     approved=False,production_ready=False)
     finally:
         stop.set();monitor.join(timeout=6)
+    if execution is not None: result['execution'] = execution
     result['completed_at']=time.time()
     result['queue_seconds']=round(queue_seconds,3)
     atomic_json(path.parent/'result.json',result)

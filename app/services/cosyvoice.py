@@ -179,7 +179,12 @@ class DashScopeCosyVoiceSynthesizer:
         atomic_json(log,record)
         self.last_request_path = log
         started = time.monotonic()
-        reservation = budget.reserve('tts', fingerprint(record), len(text))
+        try:
+            reservation = budget.reserve('tts', fingerprint(record), len(text))
+        except Exception as exc:
+            # This adapter has not called the SDK yet. Preserve that distinction.
+            exc.hv_not_dispatched = True
+            raise
         try:
             audio = synth.call(text, timeout_millis=int(self.timeout_s*1000))
             if hasattr(audio,"read"): audio=audio.read()

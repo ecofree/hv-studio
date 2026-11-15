@@ -1,7 +1,9 @@
 """Video 路由（当前仅暴露 relay 状态；M1 接入 I2V 任务查询）。"""
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.controllers.v1.auth import require_token
 
 from app.managers import get_relay
 
@@ -17,6 +19,6 @@ def relay_status():
 
 
 @router.post("/relay/sync")
-def relay_sync():
+def relay_sync(_tok=Depends(require_token)):
     get_relay().sync_quota(force=True)
     return {"synced": True, "channels": get_relay().snapshot()}

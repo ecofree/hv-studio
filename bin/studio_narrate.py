@@ -45,6 +45,10 @@ def requests(ep_id):
             parts.append(dict(text=text,instruction=instruction,unit_id=u['unit_id'],text_start=start,text_end=end))
     return v,parts
 
+from app.services.production_storage import episode_task
+
+
+@episode_task
 def render(ep_id,budget_path,max_requests=0,max_characters=0):
     W.require_production(ep_id,['tts'])
     v,parts=requests(ep_id)

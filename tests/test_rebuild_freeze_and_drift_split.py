@@ -57,11 +57,13 @@ def test_missing_scene_images_without_a_plan_is_empty(tmp_path, monkeypatch):
 def test_split_receipt_drift_separates_content_from_renderer(tmp_path,monkeypatch):
     from app.services.production_identity import split_receipt_drift
     monkeypatch.setattr('app.services.production_identity.ROOT',tmp_path)
-    names=['app/services/compose.py','app/config/config.yaml','episodes/fixture/script.md','requirements.core.lock.txt']
+    names=['app/services/compose.py','app/services/production_quality.py',
+           'app/services/asr_check.py','app/services/production_admission.py',
+           'app/config/config.yaml','episodes/fixture/script.md','requirements.core.lock.txt']
     receipt={str(tmp_path/name):'0'*64 for name in names}
     content, renderer = split_receipt_drift(receipt)
-    assert content == [str(tmp_path/names[2])]
-    assert sorted(renderer)==sorted(str(tmp_path/name) for name in (names[0],names[1],names[3]))
+    assert sorted(content)==sorted(str(tmp_path/name) for name in names[1:])
+    assert sorted(renderer)==[str(tmp_path/names[0])]
 
 
 def test_split_receipt_drift_empty_receipt_is_both_empty():

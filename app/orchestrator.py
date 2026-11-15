@@ -575,8 +575,8 @@ def _check_toolchain(*, need_font: bool = False):
 
 
 def _episode_lock(ep_id: str):
-    from app.services.process_lock import file_lock
-    return file_lock(_episode_dir(ep_id)/".produce.lock")
+    from app.services.production_storage import episode_execution
+    return episode_execution(ep_id)
 
 
 def _with_episode_lock(fn):

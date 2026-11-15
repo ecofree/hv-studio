@@ -1,5 +1,6 @@
 """Regress real queue isolation and fresh-input admission failure modes."""
 import sys
+from _queue_fixture import result_command
 import pytest
 from app.services import batch_worker as worker, production_admission as admission
 from app.services.narration_pipeline import read
@@ -46,8 +47,7 @@ def test_new_attempt_does_not_keep_resolved_input_blockers(tmp_path,tmp_episodes
     def command(spec,eid,token):
         running=read(spec)['episodes'][eid]
         assert 'blockers' not in running and 'error' not in running
-        result=folder/'results'/(token+'.json')
-        return [sys.executable,'-c','import pathlib,sys;p=pathlib.Path(sys.argv[1]);p.parent.mkdir(exist_ok=True);p.write_text(\'{"status":"BLOCKED_INPUT","error":"new local failure"}\')',str(result)]
+        return result_command(spec,eid,token,dict(status='BLOCKED_INPUT',error='new local failure'))
     worker.run_once(folder,command_factory=command)
     row=read(path)['episodes']['one']
     assert row['error']=='new local failure' and 'blockers' not in row
@@ -77,9 +77,8 @@ def test_damaged_result_and_batch_spec_are_isolated(tmp_path,tmp_episodes,monkey
     path=worker.enqueue('01-valid',['bad-result','good'],{},folder=folder)
     monkeypatch.setattr(admission,'check',lambda _:dict(eligible=True,blockers=[],input_fingerprint='x'))
     def command(spec,eid,token):
-        result=folder/'results'/(token+'.json')
-        text='[]' if eid=='bad-result' else '{"status":"NEEDS_REVIEW","candidate_path":"offline"}'
-        return [sys.executable,'-c','import pathlib,sys;p=pathlib.Path(sys.argv[1]);p.parent.mkdir(exist_ok=True);p.write_text(sys.argv[2])',str(result),text]
+        value=[] if eid=='bad-result' else dict(status='NEEDS_REVIEW',candidate_path='offline')
+        return result_command(spec,eid,token,value)
     worker.run_once(folder,command_factory=command)
     assert read(path)['episodes']['good']['status']=='NEEDS_REVIEW'
     assert len(list((folder/'errors').glob('*.json')))==2
@@ -136,11 +135,7 @@ def test_pause_finishes_active_child_and_resume_keeps_budget(tmp_path,tmp_episod
     budget_before=read(read(path)['budget_path'])
     monkeypatch.setattr(admission,'check',lambda _:dict(eligible=True,blockers=[],input_fingerprint='x'))
     def command(spec,eid,token):
-        result=folder/'results'/(token+'.json')
-        script=('import pathlib,sys,time; p=pathlib.Path(sys.argv[1]); p.parent.mkdir(exist_ok=True); '
-                'pathlib.Path(sys.argv[2]).write_text("pause requested while running"); '
-                'time.sleep(0.1); p.write_text(\'{"status":"NEEDS_REVIEW"}\')')
-        return [sys.executable,'-c',script,str(result),str(folder/'PAUSE')]
+        return result_command(spec,eid,token,dict(status='NEEDS_REVIEW'),pause=folder/'PAUSE')
     worker.run_once(folder,command_factory=command)
     job=read(path)
     assert job['episodes']['first']['status']=='NEEDS_REVIEW'

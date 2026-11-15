@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 import pytest
+from _queue_fixture import result_command
 
 from app.services.provenance import atomic_json
 from app.services.narration_pipeline import read
@@ -119,9 +120,7 @@ def test_queue_is_durable_isolates_timeout_and_reuses_budget(tmp_path,monkeypatc
     budget.reserve('image','already-consumed')
     def command(path,eid,token):
         if eid=='slow': return [sys.executable,'-c','import time;time.sleep(20)']
-        target=folder/'results'/(token+'.json')
-        return [sys.executable,'-c',
-                'import sys,json,pathlib; p=pathlib.Path(sys.argv[1]);p.parent.mkdir(exist_ok=True);p.write_text(json.dumps({"status":"NEEDS_REVIEW","candidate_path":"offline-candidate"}))',str(target)]
+        return result_command(path,eid,token,dict(status='NEEDS_REVIEW',candidate_path='offline-candidate'))
     worker.run_once(folder,command_factory=command)
     state=read(path)
     assert state['episodes']['slow']['status']=='RETRY_WAIT'
@@ -183,6 +182,9 @@ from app.services.provider_budget import ProviderBudget
 from app.services.narration_pipeline import read
 production_admission.check=lambda _:dict(eligible=True,blockers=[],input_fingerprint='stable')
 folder=Path(sys.argv[2]);job=read(folder/'recover.json')
+from app import paths
+paths.episodes_dir=lambda:folder/'episodes'
+paths.state_dir=lambda:folder/'state'
 ProviderBudget(job['budget_path'],image_requests=1).reserve('image','response-already-consumed')
 worker.run_once(folder,command_factory=lambda *a:[sys.executable,'-c','import time;time.sleep(25)'])
 ''',encoding='utf-8')
@@ -203,9 +205,7 @@ worker.run_once(folder,command_factory=lambda *a:[sys.executable,'-c','import ti
         psutil.Process(row['owner_pid']).kill()
         parent.communicate(timeout=10)
         def complete(spec,eid,token):
-            target=folder/'results'/(token+'.json')
-            return [sys.executable,'-c',
-                    'import sys,json,pathlib;p=pathlib.Path(sys.argv[1]);p.parent.mkdir(exist_ok=True);p.write_text(json.dumps({"status":"NEEDS_REVIEW","candidate_path":"offline"}))',str(target)]
+            return result_command(spec,eid,token,dict(status='NEEDS_REVIEW',candidate_path='offline'))
         worker.run_once(folder,command_factory=complete)
         result=read(path)
         assert all(r['status']=='NEEDS_REVIEW' for r in result['episodes'].values())

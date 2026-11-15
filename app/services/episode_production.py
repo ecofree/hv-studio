@@ -4,6 +4,7 @@ from app.services import narration_pipeline as N, production_v2 as P
 from app.services.provenance import atomic_json, fingerprint, file_sha256
 from app.services.voice_assets import resolve_voice_asset
 from app.services.production_storage import production_storage
+from app.services.production_identity import task_bound_run, current_execution, current_task, V2_STAGES
 
 
 def check_narration_binding(manifest, plan, *, voice_asset=None):
@@ -53,6 +54,7 @@ def check_narration_binding(manifest, plan, *, voice_asset=None):
 
 
 @production_storage
+@task_bound_run
 def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         max_images=0, timeline=None, voice_asset=None, timeout=300, budget=None, budget_id=None,
         image_keys=None, external_master=None, max_image_retries=0,
@@ -62,7 +64,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
     from app.orchestrator import _episode_dir, _load_script_md, _episode_lock, _check_disk_space
     from app.config.config import get_settings
     from app.services.production_identity import artifacts_current
-    order = ['script', 'tts', 'delivery', 'quality', 'alignment', 'images', 'timeline', 'compose', 'verify']
+    order = list(V2_STAGES)
     requested = list(stages) if stages is not None else order.copy()
     allowed = set(order)
     if not requested or any(s not in allowed for s in requested) or len(set(requested)) != len(requested):
@@ -135,13 +137,15 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         result = {"ep_id": ep_id, "pipeline_version": "production_v2", "requested_stages": requested,
                   "production_ready": False, "approved": False, "stages_done": completed,
                   "artifacts": artifacts, "final_mp4": None, "plan_path": str(plan_path.resolve()),
-                  "stage_timings": metrics.rows}
+                  "stage_timings": metrics.rows, "task": current_task(), "execution": current_execution()}
+        if not verify_only:
+            state.update(task=current_task(), execution=current_execution())
 
         def save():
             state['updated_at'] = time.time()
             if not verify_only: atomic_json(state_path, state)
             if progress:
-                progress(dict(stage=state.get('active_stage'), stages_done=list(completed),
+                progress(dict(execution=current_execution(), stage=state.get('active_stage'), stages_done=list(completed),
                               stage_started_at=state.get('stage_started_at'),
                               progress=state.get('progress'), stage_timings=metrics.rows, budget_path=state.get('budget_path')))
 

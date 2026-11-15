@@ -9,24 +9,24 @@ TTS + 生图双付费、`/init` 会无条件覆盖已有 episode.json —— 三
 
 设计：opt-in，不给自己找麻烦
 ----------------------------
-- **未配置 `HV_API_TOKEN` → 完全不校验**，本地 127.0.0.1 开发零负担、零破坏。
-- 配了才启用；此时所有写/付费端点必须带 `X-HV-Token` 头。
+- **未配置 `HV_API_TOKEN` → 仅允许回环客户端**，远程写入请求一律拒绝。
+- 配置后，所有写/付费端点（包括本机请求）都必须带 `X-HV-Token` 头。
 - 另在 CLI 启动侧加硬闸：`--host` 非回环且未配 token 时**拒绝启动**
   （见 app/cli.py cmd_api）——堵住「绑了 0.0.0.0 却忘了配 token」这条最可能的路。
 
 为什么不用 OAuth / API-Key 中间件全家桶
 --------------------------------------
 这是本地单人流水线，威胁模型只有一条：服务被绑到非回环地址后被人扫到。
-一个共享静态 token + 常量时间比较就够，引入依赖反而增加维护面。
+一个共享静态 token + 常量时间比较，再加未配置时的回环客户端限制，就能覆盖本地单用户威胁模型。
 真要放到公网应当走反向代理（nginx/caddy）做鉴权与 TLS，本闸只是最后一道兜底。
 """
 from __future__ import annotations
 
 import hmac
-import os
-from typing import Optional
+import ipaddress
+from typing import Annotated
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from app.config.config import env_get
 
@@ -47,27 +47,46 @@ def auth_enabled() -> bool:
 
 
 def require_token(
-    x_hv_token: Optional[str] = Header(default=None, alias=HEADER_NAME),
+    request: Request,
+    x_hv_token: Annotated[str | None, Header(alias=HEADER_NAME)] = None,
 ) -> None:
-    """FastAPI 依赖：token 未配置时放行；配置后校验 X-HV-Token。
+    """Protect every write/provider endpoint.
 
-    用 hmac.compare_digest 而非 `==`：后者短路返回会泄露「前几位对了多少」，
-    理论上可被计时攻击逐字符爆破。
+    A configured token is always required, including for loopback callers.
+    Without a token, only a loopback client is allowed. This request-level
+    fallback also protects direct Uvicorn launches that bypass the CLI guard.
     """
     expected = configured_token()
-    if not expected:
+    if expected:
+        if not x_hv_token or not hmac.compare_digest(x_hv_token.strip().encode("utf-8"), expected.encode("utf-8")):
+            raise HTTPException(
+                status_code=401,
+                detail=f"缺少或无效的 {HEADER_NAME}（服务端已启用 HV_API_TOKEN）",
+            )
         return
-    if not x_hv_token or not hmac.compare_digest(x_hv_token.strip(), expected):
+
+    # No-token mode is direct local access only. A reverse proxy must configure
+    # a token; forwarded loopback headers must not impersonate a local caller.
+    if any(k.lower() == "forwarded" or k.lower().startswith("x-forwarded-")
+           for k in request.headers):
+        raise HTTPException(status_code=401, detail="Proxied writes require HV_API_TOKEN")
+    client_host = request.client.host if request.client else ""
+    if not is_loopback_host(client_host):
         raise HTTPException(
             status_code=401,
-            detail=f"缺少或无效的 {HEADER_NAME}（服务端已启用 HV_API_TOKEN）",
+            detail=f"远程写入请求必须配置 HV_API_TOKEN 并提供 {HEADER_NAME}",
         )
 
 
 def is_loopback_host(host: str) -> bool:
-    """是否只监听本机（含 IPv6 回环与「全零」通配的本地语义）。
-
-    注意 0.0.0.0 / :: **不是**回环——它是「所有网卡」，正是要拦的那种。
-    """
-    h = (host or "").strip().strip("[]").lower()
-    return h in ("127.0.0.1", "localhost", "::1", "")
+    """Recognize IPv4/IPv6 loopback addresses; wildcard binds are never loopback."""
+    value = (host or "").strip().strip("[]").lower()
+    if value in ("localhost", "testclient"):
+        return True
+    try:
+        address = ipaddress.ip_address(value.split("%", 1)[0])
+    except ValueError:
+        return False
+    if getattr(address, "ipv4_mapped", None) is not None:
+        address = address.ipv4_mapped
+    return address.is_loopback
