@@ -124,3 +124,93 @@ def materialize(selection, destination):
             replace_file(tmp,target)
             atomic_json(folder/'parts.json',rec)
         return target
+
+
+class StaleRecordingSource(ValueError):
+    """A previously selected recording belongs to a different source text."""
+
+
+def episode_source(ep_id, *, explicit=None, mode='auto', source_text=None):
+    """Read-only audio authority shared by admission, Studio and V2.
+
+    Resolve recordings without synthesizing, assembling numbered parts, changing
+    approvals or treating an existing file alone as a valid V2 binding.
+    """
+    from app import paths
+    from app.managers import load
+    from app.orchestrator import _load_script_md
+    from app.services import studio_narration_handoff as H
+    folder = paths.episode_dir(ep_id); root = folder/'production/v2'
+    selected = H.selected(ep_id) if H.selection_path(ep_id).is_file() else None
+    def recording(value, origin, evidence=None):
+        parts = parts_receipt(value) if Path(value).is_file() else None
+        selection = parts['selection'] if parts else bind(value, mode if explicit is not None else 'auto')
+        validate(selection)
+        return dict(kind='external_recording', origin=origin, requires_tts=False,
+                    selection=selection, evidence=evidence or {},
+                    source_sha256=fingerprint(source_text if source_text is not None
+                                              else _load_script_md(load(ep_id))))
+    if explicit is not None:
+        value = recording(explicit, 'explicit')
+        if selected and (value['selection']['kind'] != 'master'
+                        or value['selection']['files'][0]['sha256'] != selected['master_sha256']):
+            raise ValueError('explicit recording differs from selected narration')
+        return value
+    if selected:
+        return recording(selected['master'], 'studio_selection',
+                         {str(H.selection_path(ep_id)):file_sha256(H.selection_path(ep_id))})
+    state_path = root/'run.json'
+    state = read(state_path) if state_path.is_file() else {}
+    text = source_text if source_text is not None else _load_script_md(load(ep_id))
+    plan_path = root/'external-master.json'
+    if plan_path.is_file():
+        from app.services.narration_master import resolve
+        plan = Path(state['plan_path'])
+        if read(plan)['source_sha256'] != fingerprint(text):
+            raise ValueError('selected recording belongs to another source')
+        return recording(resolve(root, plan), 'repaired_master', {str(plan_path):file_sha256(plan_path)})
+    if state.get('manifest_path'):
+        path = Path(state['manifest_path'])
+        manifest = read(path)
+        from app.services.external_narration import PROVENANCE
+        if manifest.get('provenance') == PROVENANCE:
+            # Resolve the original delivery, not the generated assembly. A
+            # damaged/missing intermediate take may be safely rebuilt locally;
+            # downstream assembly/QA still validates every produced sample.
+            plan = read(manifest['plan_path'])
+            if state.get('source_sha256') != fingerprint(text) or plan['source_sha256'] != fingerprint(text):
+                raise StaleRecordingSource('external narration belongs to another source; explicitly select the new recording')
+            if file_sha256(manifest['plan_path']) != manifest['plan_sha256']:
+                raise ValueError('external narration plan changed')
+            src = manifest['source_recording']
+            if file_sha256(src['delivered_path']) != src['delivered_sha256']:
+                raise ValueError('delivered recording changed：已导入的原始母带已改变，请明确选择录音')
+            return recording(src['delivered_path'], 'v2_manifest', {str(path):file_sha256(path)})
+    legacy = folder/'production/external-audio-binding.json'
+    if legacy.is_file():
+        from app.services.external_audio import verify_binding
+        episode = load(ep_id)
+        check = verify_binding(episode)
+        if not check['ok']: raise ValueError('external audio binding invalid: '+'; '.join(check['fails']))
+        registered=read(paths.episode_json(ep_id)).get('audio_path')
+        if registered:
+            value=recording(registered,'legacy_binding',{str(legacy):file_sha256(legacy)})
+            if value['selection']['kind']!='master' or value['selection']['files'][0]['sha256']!=read(legacy)['source_sha256']:
+                raise ValueError('legacy original recording differs from verified binding')
+            return value
+        return dict(kind='legacy_cut_audio',origin='legacy_binding',requires_tts=False,
+                    selection=None,source_sha256=fingerprint(text),evidence={str(legacy):file_sha256(legacy)})
+    from app.services import studio_workflow as W
+    workflow = W.folder(ep_id)/'workflow.json'
+    if workflow.is_file() and W.load(ep_id)['voice'].get('master'):
+        return recording(W.load(ep_id)['voice']['master'], 'workflow_master')
+    # Imported raw recordings are registered by source import, not arbitrary
+    # media found in a directory. Their explicit source binding is checked.
+    from app.services.studio_sources import contract, require_usable
+    registered = read(paths.episode_json(ep_id)).get('audio_path')
+    if contract(ep_id) and registered:
+        require_usable(ep_id)
+        from app.services.studio_workspace import library_path
+        return recording(library_path(registered), 'imported_source')
+    return dict(kind='tts', origin='voice_asset', requires_tts=True,
+                source_sha256=fingerprint(text), selection=None, evidence={})

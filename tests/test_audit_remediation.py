@@ -39,7 +39,7 @@ def test_direct_render_lock_covers_parallel_entrypoints(tmp_path, monkeypatch):
         first = pool.submit(P.render, tmp_path/'m', tmp_path/'t', tmp_path/'out')
         assert active.wait(5)
         try:
-            with pytest.raises(RuntimeError, match='running'):
+            with pytest.raises(RuntimeError, match='waiting for resource'):
                 P.render(tmp_path/'m', tmp_path/'t', tmp_path/'out')
         finally: release.set()
         assert first.result() == 'finished'

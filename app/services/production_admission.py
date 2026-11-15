@@ -95,8 +95,10 @@ def inputs(ep_id, *, _legacy=False):
                           directing=directions,
                           approved=approved_image_requests(ep_id), persist=False)
         requests = {j.id: j.request_fingerprint() for j in jobs}
-    voice_asset_version = _voice_asset_version_for_inputs(folder)
-    return dict(source_sha256=fingerprint(text), files={str(p): file_sha256(p) for p in files},
+    from app.services.recording_input import episode_source
+    audio = episode_source(ep_id, source_text=text)
+    voice_asset_version = _voice_asset_version_for_inputs(folder) if audio['requires_tts'] else None
+    return dict(source_sha256=fingerprint(text), audio_source={k:audio[k] for k in ('kind','requires_tts','selection','source_sha256')}, files={str(p): file_sha256(p) for p in files},
                 image_requests=requests,
                 voice_asset_version=voice_asset_version,
                 direction_cues=[dict(cue_id=c['cue_id'],text=c['raw_text']) for c in unsupported],

@@ -11,31 +11,11 @@ from app.services import studio_workflow as W
 
 
 def imported_master(ep_id):
-    """Offer only the original delivery already bound to this script and plan."""
-    from app.services.external_narration import PROVENANCE
-    state_path=paths.episode_dir(ep_id)/'production/v2/run.json'
-    if not state_path.is_file():
-        from app.services.studio_sources import contract,require_usable
-        if not contract(ep_id): return None
-        require_usable(ep_id)
-        episode=json.loads(paths.episode_json(ep_id).read_text('utf-8'))
-        if not episode.get('audio_path'): return None
-        from app.services.studio_workspace import library_path
-        path=library_path(episode['audio_path'])
-        if not path.exists():raise ValueError('剧集登记中的原始旁白输入不存在')
-        return str(path.resolve())
-    state=W.read(state_path)
-    if not state.get('manifest_path') or state.get('source_sha256')!=W.document(ep_id)['source_sha256']: return None
-    manifest=W.read(state['manifest_path'])
-    if manifest.get('provenance')!=PROVENANCE: return None
-    plan=Path(manifest['plan_path'])
-    if (manifest['plan_sha256']!=file_sha256(plan)
-            or W.read(plan)['source_sha256']!=state['source_sha256']):
-        raise ValueError('已导入的母带与当前正文计划不一致，请重新选择录音')
-    original=manifest['source_recording']; path=Path(original['delivered_path'])
-    if not path.is_file() or file_sha256(path)!=original['delivered_sha256']:
-        raise ValueError('已导入的原始母带缺失或已改变，请明确选择录音')
-    return str(path.resolve())
+    """Offer the same verified recording source used by V2 and batch admission."""
+    from app.services.recording_input import episode_source, StaleRecordingSource
+    try: audio = episode_source(ep_id)
+    except StaleRecordingSource: return None  # offer only the current source, never retag it
+    return audio['selection']['source'] if audio.get('selection') else None
 
 
 def launch(ep_id,*,max_requests=0,max_characters=0,max_images=0,external_master=None,mode='video',
@@ -159,7 +139,7 @@ def resume(root):
         result=root/'result.json'
         if result.exists():
             previous=json.loads(result.read_text('utf-8'))
-            if previous.get('status') not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING'):raise ValueError('completed job does not need resume')
+            if previous.get('status') not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING','WAITING_RESOURCE'):raise ValueError('completed job does not need resume')
             atomic_json(root/'history'/(fingerprint(previous)+'.json'),previous)
         execution_path=root/'execution.json'
         if execution_path.exists():
@@ -240,7 +220,7 @@ def check_resume(root):
     require_no_active(request['ep_id'],exclude=root)
     if (root/'result.json').exists():
         status=json.loads((root/'result.json').read_text('utf-8')).get('status')
-        if status not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING'):raise ValueError('completed job does not need resume')
+        if status not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING','WAITING_RESOURCE'):raise ValueError('completed job does not need resume')
     return request,old
 
 
@@ -263,7 +243,7 @@ def jobs(ep_id):
                  stage=phase.get('stage'),progress=phase.get('progress'),stage_timings=phase.get('stage_timings',[]),
                  heartbeat_at=phase.get('heartbeat_at'),updated_at=phase.get('updated_at'),
                  error=phase.get('error'),error_phase=phase.get('error_phase'),
-                 recoverable=not live and (current is None or current.get('status') in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING')))
+                 recoverable=not live and (current is None or current.get('status') in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING','WAITING_RESOURCE')))
         if status=='INTERRUPTED':row['exit_reason']='进程已退出，未留下完成记录；具体退出原因未记录'
         if phase.get('budget_path') and Path(phase['budget_path']).is_file():
             b=json.loads(Path(phase['budget_path']).read_text('utf-8'))

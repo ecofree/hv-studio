@@ -68,6 +68,7 @@ def stop_tree(pid, created):
 
 def classify(error):
     low = error.lower()
+    if 'resourcebusy' in low or 'waiting for resource:' in low: return 'WAITING_RESOURCE'
     if 'budget' in low: return 'BUDGET_EXHAUSTED'
     if any(s in low for s in ('review', 'disposition', 'unsupported artistic')): return 'NEEDS_REVIEW'
     if any(s in low for s in ('timeout', 'timed out', 'transientimageerror', 'interrupted', 'window-close event', 'already running', '429', '503', '502', 'connection')):
@@ -129,6 +130,9 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
             budget = ProviderBudget(job['budget_path'], **ledger['limits'])
             result = produce(eid, budget=budget, **options)
             if not result.get('run_ok') or not result.get('final_mp4'):
+                if result.get('error_type') == 'ResourceBusy':
+                    from app.services.production_storage import ResourceBusy
+                    raise ResourceBusy(result.get('resource', 'local-stage'))
                 raise RuntimeError(result.get('error') or 'full production has no candidate')
             from app.services.production_status import get_status
             status = get_status(eid)
@@ -355,6 +359,9 @@ def accept_child_result(row, path):
     expected = execution_ref(row['task'], row['token']) if row.get('task') else None
     result = load_result(path, expected_execution=expected)
     row.update(result)
+    if result.get('error_type') == 'ResourceBusy' and result['status'] == 'WAITING_RESOURCE':
+        row.update(status='WAITING_RESOURCE', attempts=max(0, row['attempts']-1),
+                   resource_waits=row.get('resource_waits', 0)+1, retry_at=time.time()+5)
     if result.get('error_type') == 'ProductionBusy' and result.get('lease_acquired') is False:
         row.update(status='QUEUED', attempts=max(0, row['attempts']-1),
                    last_contention=result.get('error', 'episode lease was acquired elsewhere'))

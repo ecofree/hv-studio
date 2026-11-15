@@ -331,7 +331,9 @@ class ImageGenerator:
                     guard.unlink(missing_ok=True)
                 raise
             try:
+                from app.services.production_identity import current_execution
                 atomic_json(target, dict(request_fingerprint=request_fp, channel=ch.name,
+                                         model=body.get('model'), execution=current_execution(),
                                          attempt_id=token, budget_path=str(budget.path.resolve()),
                                          response=response.model_dump(mode='json')))
             except Exception as exc:

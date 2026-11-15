@@ -207,3 +207,15 @@ for job in J.jobs(eid):
     with st.expander('运行记录'):st.text(job.get('log','尚无日志'))
 from app.webui.studio_finish import render_finish
 render_finish(eid,full_candidate)
+
+with st.expander('只读诊断：任务、听看疑点与效率'):
+    st.caption('不会生成图片、配音、修改素材或自动审批。数据来自当前任务及媒体证据。')
+    if st.button('读取当前诊断',key='diagnostics-'+eid):
+        from app.services.production_diagnostics import report
+        try:
+            diagnostic=report(eid)
+            st.json(diagnostic)
+            import json
+            st.download_button('保存诊断 JSON',json.dumps(diagnostic,ensure_ascii=False,indent=2),
+                               file_name=eid+'-diagnostics.json',mime='application/json')
+        except (ValueError,OSError,KeyError,TypeError,RuntimeError) as exc:st.error(str(exc))

@@ -185,6 +185,10 @@ class DashScopeCosyVoiceSynthesizer:
             # This adapter has not called the SDK yet. Preserve that distinction.
             exc.hv_not_dispatched = True
             raise
+        from app.services.production_identity import current_execution
+        record.update(budget_path=str(budget.path.resolve()), budget_attempt_id=reservation,
+                      execution=current_execution())
+        atomic_json(log, record)
         try:
             audio = synth.call(text, timeout_millis=int(self.timeout_s*1000))
             if hasattr(audio,"read"): audio=audio.read()

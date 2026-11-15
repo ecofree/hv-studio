@@ -105,6 +105,10 @@ def advise(episode_id: str, status: dict | None, *, script_exists: bool = True) 
             ]
         return advice
 
+    if code == "WAITING_RESOURCE":
+        return finish(headline="等待本机资源，不是供应商生成失败。",
+                      notes=["沿用原任务与原预算；不要为等待资源增加付费额度。"])
+
     if code == "RUNNING":
         stage = status.get("active_stage") or "未知阶段"
         return finish(

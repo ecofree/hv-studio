@@ -20,7 +20,7 @@ def main():
     parser.add_argument("--git-revision", required=True)
     parser.add_argument("--episodes", nargs="+", required=True)
     parser.add_argument("--evidence-root", required=True)
-    parser.add_argument("--output", default="state/acceptance/production-validation.json")
+    parser.add_argument("--output", help="default: current active workspace acceptance path")
     args = parser.parse_args()
     if not re.fullmatch(r"[0-9a-f]{40}", args.git_revision):
         raise SystemExit("git revision must be a full 40-character SHA")
@@ -31,7 +31,8 @@ def main():
     from app.services.provenance import atomic_json
     record = collect_validation(args.source_fingerprint, args.git_revision,
                                 args.episodes, args.evidence_root)
-    destination = Path(args.output)
+    from app.paths import state_dir
+    destination = Path(args.output) if args.output else state_dir()/"acceptance/production-validation.json"
     if not destination.is_absolute():
         destination = ROOT/destination
     atomic_json(destination, record)

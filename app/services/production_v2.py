@@ -544,6 +544,10 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
         raise
 
 
+from app.services.production_storage import render_resource
+
+
+@render_resource
 def render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=None, on_verified=None):
     """All callers, including direct narration CLI, share the render-output lock."""
     from app.services.process_lock import file_lock

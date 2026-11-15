@@ -147,13 +147,23 @@ class TaskMismatch(ValueError):
     """A saved execution no longer belongs to the authorized task."""
 
 
+def settings_identity():
+    """Only documented non-media settings can change during an existing task.
+
+    Unknown settings and all provider/model/QA settings remain fail-closed.
+    This deliberately does not migrate tasks across source-code revisions.
+    """
+    env = {k:v for k,v in load_env().items() if k not in {'HV_API_TOKEN','HV_LOG_LEVEL'}}
+    return fingerprint([get_settings().model_dump(mode='json'), env])
+
+
 def make_task(ep_id, *, origin, owner, request, inputs, budget_path, limits, stages):
     """Freeze submission identity without hashing outputs or mutable spending."""
     value = dict(schema_version=1, episode_id=ep_id, origin=origin, owner=owner,
                  task_id=fingerprint(['production-task-v1', origin, owner, ep_id]),
                  request_sha256=fingerprint(request), inputs_sha256=fingerprint(inputs),
                  implementation_sha256=implementation_identity(),
-                 settings_sha256=fingerprint([get_settings().model_dump(mode='json'), load_env()]),
+                 settings_sha256=settings_identity(),
                  stages=list(stages),
                  budget=dict(path=str(Path(budget_path).resolve()) if budget_path else None,
                              limits=copy.deepcopy(limits)))
@@ -228,7 +238,7 @@ def task_scope(task, attempt_id):
     reference = execution_ref(task, attempt_id)
     if task['implementation_sha256'] != implementation_identity():
         raise TaskMismatch('task implementation changed; submit a new task')
-    if task['settings_sha256'] != fingerprint([get_settings().model_dump(mode='json'), load_env()]):
+    if task['settings_sha256'] != settings_identity():
         raise TaskMismatch('task settings changed; submit a new task')
     existing = _task_execution.get()
     if existing is not None and existing[1] != reference:

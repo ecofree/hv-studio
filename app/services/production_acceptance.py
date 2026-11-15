@@ -17,8 +17,8 @@ from app.services.production_identity import artifacts_current
 
 SCENARIOS = {
     "multi_episode_current_rebuild": {"required": ("episode_rebuild_completed",), "min_episodes": 2},
-    "kill_resume": {"required": ("worker_terminated", "resume_started", "resume_completed")},
-    "timeout_recovery": {"required": ("timeout_detected", "recovery_started", "recovery_completed")},
+    "kill_resume": {"required": ("worker_started", "worker_terminated", "resume_started", "resume_completed")},
+    "timeout_recovery": {"required": ("worker_started", "timeout_detected", "worker_terminated", "recovery_started", "recovery_completed")},
     "real_provider_models": {"required": ("provider_request_succeeded",)},
     "unattended_worker_full_batch": {
         "required": ("batch_started", "episode_candidate_completed", "batch_completed"),
@@ -37,11 +37,11 @@ def _file(path, digest, label):
     return Path(path).resolve()
 
 
-def verify_scenario(name, record, source_fingerprint):
+def verify_scenario(name, record, source_fingerprint, *, require_real=True):
     """Verify one scenario against its run manifest, events and artifact hashes."""
     if name not in SCENARIOS or not isinstance(record, dict):
         raise ValueError("unknown or malformed production acceptance scenario")
-    if record.get("schema_version") != 1 or record.get("scenario") != name:
+    if record.get("schema_version") != 2 or record.get("scenario") != name:
         raise ValueError(f"{name}: unsupported evidence schema or scenario mismatch")
     if record.get("source_fingerprint") != source_fingerprint:
         raise ValueError(f"{name}: evidence belongs to another source revision")
@@ -54,7 +54,7 @@ def verify_scenario(name, record, source_fingerprint):
     events_path = _file(record.get("events_path"), record.get("events_sha256"), name+" events")
     manifest = read(manifest_path)
     events = read(events_path)
-    if not isinstance(manifest, dict) or manifest.get("schema_version") != 1:
+    if not isinstance(manifest, dict) or manifest.get("schema_version") != 2:
         raise ValueError(f"{name}: invalid run manifest")
     for key, expected in (("scenario", name), ("run_id", record["run_id"]),
                           ("source_fingerprint", source_fingerprint),
@@ -85,32 +85,19 @@ def verify_scenario(name, record, source_fingerprint):
         if len(episode_ids) < min_episodes:
             raise ValueError(f"{name}: fewer than {min_episodes} distinct completed episodes")
     if name == "real_provider_models":
-        valid = []
-        for event in events:
-            if (event["event"] != "provider_request_succeeded"
-                    or event.get("is_mock") is not False
-                    or not all(isinstance(event.get(k), str) and event[k].strip()
-                               for k in ("provider", "model", "request_id"))):
-                continue
-            receipt_path = _file(event.get("receipt_path"), event.get("receipt_sha256"),
-                                 "real provider receipt")
-            receipt = read(receipt_path)
-            if (isinstance(receipt, dict) and receipt.get("status") == "succeeded"
-                    and receipt.get("request_id") == event["request_id"]
-                    and receipt.get("model") == event["model"]
-                    and isinstance(receipt.get("audio_sha256"), str)
-                    and _SHA256.fullmatch(receipt["audio_sha256"])
-                    and isinstance(event.get("audio_path"), str)
-                    and event.get("audio_sha256") == receipt.get("audio_sha256")
-                    and file_sha256(event["audio_path"]) == event["audio_sha256"]):
-                valid.append(event)
-        if not valid:
-            raise ValueError("real_provider_models: no hash-bound successful non-mock provider receipt")
+        from app.services.acceptance_providers import verify as verify_provider
+        kinds = {verify_provider(event, _file) for event in events
+                 if event['event']=='provider_request_succeeded'}
+        if kinds != {'tts','image'}:
+            raise ValueError('real providers require both TTS and image execution evidence')
 
     artifacts = record.get("artifacts")
     if not isinstance(artifacts, dict) or not artifacts or not artifacts_current(artifacts):
         raise ValueError(f"{name}: scenario artifacts missing or changed")
+    from app.services.acceptance_events import validate_chain
+    episodes = validate_chain(name, manifest, events, artifacts, require_real=require_real)
     return {
+        "episode_ids": episodes,
         "scenario": name, "run_id": record["run_id"], "git_revision": record["git_revision"],
         "manifest_path": str(manifest_path), "events_path": str(events_path),
         "artifact_count": len(artifacts),
@@ -119,8 +106,8 @@ def verify_scenario(name, record, source_fingerprint):
 
 def verify_validation(evidence, source_fingerprint):
     """Return verified scenario summaries; never accept legacy boolean flags."""
-    if not isinstance(evidence, dict) or evidence.get("schema_version") != 2:
-        raise ValueError("production validation must use structured schema_version=2 evidence")
+    if not isinstance(evidence, dict) or evidence.get("schema_version") != 3:
+        raise ValueError("production validation must use structured schema_version=3 evidence")
     if evidence.get("source_fingerprint") != source_fingerprint:
         raise ValueError("production validation is for another source revision")
     git_revision = evidence.get("git_revision")
@@ -140,13 +127,18 @@ def verify_validation(evidence, source_fingerprint):
         except (OSError, ValueError, KeyError, TypeError) as exc:
             blockers.append(str(exc))
     episodes = evidence.get("episodes")
-    if not isinstance(episodes, list) or len(set(episodes)) < 2:
+    if (not isinstance(episodes, list) or any(not isinstance(e, str) or not e for e in episodes)
+            or len(set(episodes)) < 2 or len(episodes) != len(set(episodes))):
         blockers.append("two current episode validations are required")
     else:
         for eid in episodes:
             if not isinstance(eid, str) or not eid:
                 blockers.append("invalid episode ID in production validation")
                 break
+    if isinstance(episodes, list) and all(isinstance(e, str) for e in episodes):
+        for name in ('multi_episode_current_rebuild', 'unattended_worker_full_batch'):
+            if name in summaries and set(summaries[name]['episode_ids']) != set(episodes):
+                blockers.append(name+': completed episodes differ from acceptance scope')
     artifacts = evidence.get("artifacts")
     if not isinstance(artifacts, dict) or not artifacts or not artifacts_current(artifacts):
         blockers.append("production validation artifacts are missing or changed")
@@ -164,13 +156,20 @@ def collect_validation(source_fingerprint, git_revision, episodes, evidence_root
     scenario_evidence, all_artifacts = {}, {}
     for name in SCENARIOS:
         folder = root/name
+        pointer = folder/'current.json'
+        if pointer.is_file():
+            ref = read(pointer)
+            selected = Path(ref['run_directory']).resolve()
+            if not selected.is_relative_to(folder.resolve()) or file_sha256(selected/'run.json') != ref['run_sha256']:
+                raise ValueError('scenario current pointer changed or escaped')
+            folder = selected
         manifest_path, events_path, artifacts_path = (
             folder/"run.json", folder/"events.json", folder/"artifacts.json")
         manifest, events, artifacts = read(manifest_path), read(events_path), read(artifacts_path)
         if not isinstance(artifacts, dict) or not artifacts:
             raise ValueError(f"{name}: artifacts.json must contain path-to-sha256 entries")
         record = dict(
-            schema_version=1, scenario=name, run_id=manifest.get("run_id"),
+            schema_version=2, scenario=name, run_id=manifest.get("run_id"),
             source_fingerprint=source_fingerprint, git_revision=git_revision,
             manifest_path=str(manifest_path), manifest_sha256=file_sha256(manifest_path),
             events_path=str(events_path), events_sha256=file_sha256(events_path),
@@ -182,10 +181,24 @@ def collect_validation(source_fingerprint, git_revision, episodes, evidence_root
         all_artifacts[str(manifest_path)] = file_sha256(manifest_path)
         all_artifacts[str(events_path)] = file_sha256(events_path)
         all_artifacts.update(artifacts)
-    result = dict(schema_version=2, source_fingerprint=source_fingerprint,
+    result = dict(schema_version=3, source_fingerprint=source_fingerprint,
                   git_revision=git_revision, episodes=list(episodes),
                   artifacts=all_artifacts, scenario_evidence=scenario_evidence)
     verified = verify_validation(result, source_fingerprint)
     if not verified["ready"]:
         raise ValueError("; ".join(verified["blockers"]))
     return result
+
+
+def source_fingerprint():
+    """Same code evidence identity used by check_project and the real runner."""
+    from app.paths import ROOT
+    from app.services.provenance import fingerprint
+    sources = {str(p.relative_to(ROOT)): file_sha256(p) for folder in ('app','bin','tests','scripts')
+               for p in (ROOT/folder).rglob('*') if p.is_file() and p.suffix in ('.py','.yaml','.ps1') and '__pycache__' not in str(p)}
+    for relative in ('pyproject.toml', '.ai-project/contract.yaml', '.studio-project.json', '.streamlit/config.toml',
+                     'resource/风趣历史.writing-DNA/scripts/generate_chutang_v2.py',
+                     'resource/风趣历史.writing-DNA/scripts/generate_chutang_emotional.py',
+                     'resource/风趣历史.writing-DNA/scripts/generate_qwen3_local_audio.py'):
+        sources[relative] = file_sha256(ROOT/relative)
+    return fingerprint(sources)
