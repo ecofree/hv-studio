@@ -14,12 +14,15 @@ SCENARIOS = {
         {"event":"episode_rebuild_completed","episode_id":"two"},
     ],
     "kill_resume": [
+        {"event":"worker_started","episode_id":"one"},
         {"event":"worker_terminated","episode_id":"one"},
         {"event":"resume_started","episode_id":"one"},
         {"event":"resume_completed","episode_id":"one"},
     ],
     "timeout_recovery": [
+        {"event":"worker_started","episode_id":"one"},
         {"event":"timeout_detected","episode_id":"one"},
+        {"event":"worker_terminated","episode_id":"one"},
         {"event":"recovery_started","episode_id":"one"},
         {"event":"recovery_completed","episode_id":"one"},
     ],
@@ -51,31 +54,61 @@ def evidence(tmp_path, monkeypatch):
     for name, rows in SCENARIOS.items():
         run_id = "run-"+name
         if name == "real_provider_models":
-            provider_receipt = tmp_path/"provider-receipt.json"
-            provider_audio = tmp_path/"provider-audio.wav"
-            provider_audio.write_bytes(b"actual provider audio fixture")
-            audio_sha = file_sha256(provider_audio)
-            atomic_json(provider_receipt, dict(status="succeeded", request_id="provider-task-123",
-                                               model="real-model-id", audio_sha256=audio_sha))
-            rows = [dict(rows[0], receipt_path=str(provider_receipt),
-                         receipt_sha256=file_sha256(provider_receipt),
-                         audio_path=str(provider_audio), audio_sha256=audio_sha)]
-        events = [dict(row, run_id=run_id, at=time.time()) for row in rows]
+            rows=[]
+            for kind in ('tts','image'):
+                output=tmp_path/(kind+'-provider-output.bin');output.write_bytes(kind.encode())
+                output_sha=file_sha256(output);dispatch='dispatch-'+kind
+                execution=dict(task_id='a'*64,attempt_id='b'*32,task_sha256='d'*64)
+                receipt=dict(model='real-model-id',execution=execution,budget_attempt_id=dispatch,budget_path='original-provider-ledger',
+                    status='succeeded',request_id='provider-task-123',audio_sha256=output_sha)
+                row=dict(event='provider_request_succeeded',provider='fixture-provider',
+                    model='real-model-id',request_id='provider-task-123',is_mock=False,
+                    provider_kind=kind,provider_attempt_id=dispatch,task_sha256='d'*64,
+                    output_path=str(output),output_sha256=output_sha)
+                if kind=='image':
+                    receipt.update(attempt_id=dispatch,response={'fixture':True},channel='fixture-provider',request_fingerprint='e'*64)
+                    install=tmp_path/'image-install.json'
+                    atomic_json(install,dict(request_fingerprint='e'*64,output_sha256=output_sha))
+                    row.update(install_path=str(install),install_sha256=file_sha256(install))
+                provider_receipt=tmp_path/(kind+'-receipt.json');atomic_json(provider_receipt,receipt)
+                ledger=tmp_path/(kind+'-budget.json')
+                atomic_json(ledger,dict(limits={kind+'_requests':1},used={kind+'_requests':1},
+                    attempts=[dict(id=dispatch,status='succeeded',kind=kind,execution=execution)]))
+                row.update(receipt_path=str(provider_receipt),receipt_sha256=file_sha256(provider_receipt),
+                    budget_path='original-provider-ledger',budget_receipt_path=str(ledger),budget_receipt_sha256=file_sha256(ledger))
+                rows.append(row)
+        stamp = time.time()
+        events = [dict(row, run_id=run_id, at=stamp, sequence=i+1,
+                       task_id='a'*64, attempt_id='b'*32) for i,row in enumerate(rows)]
+        for e in events:
+            if e['event']=='provider_request_succeeded': e['episode_id']='one'
+            if e['event'] in ('resume_started','resume_completed','recovery_started','recovery_completed'):
+                e.update(attempt_id='c'*32, previous_attempt_id='b'*32)
+            if e['event'] in ('worker_started', 'worker_terminated'):
+                e.update(pid=123, process_created_at=stamp-1, exit_code=-9)
+            if name == 'unattended_worker_full_batch': e['batch_id']='batch-1'
+            if e['event'] in ('episode_rebuild_completed','episode_candidate_completed','resume_completed','recovery_completed'):
+                e.update(artifact_path=str(artifact), artifact_sha256=file_sha256(artifact))
+            if e['event'] in ('worker_started','resume_completed','recovery_completed'):
+                budget_file=tmp_path/(name+e['event']+'-budget.json')
+                atomic_json(budget_file, dict(limits=dict(image_requests=1), used=dict(image_requests=1), attempts=[]))
+                e.update(budget_path=str(tmp_path/'original-ledger.json'),
+                         budget_receipt_path=str(budget_file), budget_receipt_sha256=file_sha256(budget_file))
         events_path = tmp_path/(name+"-events.json")
         atomic_json(events_path, events)
-        manifest = dict(schema_version=1, scenario=name, run_id=run_id,
+        manifest = dict(schema_version=2, evidence_mode="real", scenario=name, run_id=run_id,
                         source_fingerprint="current", git_revision=REVISION,
                         status="passed", started_at=time.time()-2, finished_at=time.time())
         manifest_path = tmp_path/(name+"-manifest.json")
         atomic_json(manifest_path, manifest)
         scenario_evidence[name] = dict(
-            schema_version=1, scenario=name, run_id=run_id,
+            schema_version=2, scenario=name, run_id=run_id,
             source_fingerprint="current", git_revision=REVISION,
             manifest_path=str(manifest_path), manifest_sha256=file_sha256(manifest_path),
             events_path=str(events_path), events_sha256=file_sha256(events_path),
             artifacts={str(artifact):file_sha256(artifact)},
         )
-    record = dict(schema_version=2, source_fingerprint="current", git_revision=REVISION,
+    record = dict(schema_version=3, source_fingerprint="current", git_revision=REVISION,
                   artifacts={str(artifact):file_sha256(artifact)},
                   episodes=["one","two"], scenario_evidence=scenario_evidence)
     path = tmp_path/'acceptance/production-validation.json'
@@ -94,7 +127,7 @@ def test_legacy_boolean_flags_are_not_production_evidence(evidence):
     atomic_json(path, legacy)
     result = production_readiness.assess("current")
     assert not result["ready"]
-    assert any("schema_version=2" in blocker for blocker in result["blockers"])
+    assert any("schema_version=3" in blocker for blocker in result["blockers"])
 
 
 def test_missing_scenario_evidence_blocks_readiness(evidence):

@@ -7,7 +7,7 @@ from app.services.narration_pipeline import read
 from app.services.provenance import fingerprint
 
 STATUSES = {'QUEUED','RUNNING','RETRY_WAIT','NEEDS_REVIEW','BLOCKED_INPUT',
-            'BUDGET_EXHAUSTED','FAILED','APPROVED'}
+            'BUDGET_EXHAUSTED','FAILED','APPROVED','WAITING_RESOURCE'}
 
 
 def integer(value, minimum=0):
@@ -52,9 +52,8 @@ def validate_job(job, path):
     used=ledger.get('used')
     if not isinstance(used,dict) or set(used)!=set(limits) or not isinstance(ledger.get('attempts'),list):
         raise ValueError('invalid budget ledger')
-    for key,value in used.items():
-        integer(value)
-        if value>limits[key]: raise ValueError('budget usage exceeds limit')
+    from app.services.provider_budget import validate_usage
+    validate_usage(limits, used)
 
 
 def validate_row(row):

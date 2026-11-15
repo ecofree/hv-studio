@@ -1146,6 +1146,10 @@ def build_timeline(shots, frames, disk_ms=None, head_of=None, tail_of=None):
     return timeline, t
 
 
+from app.services.production_storage import render_resource
+
+
+@render_resource
 def compose_episode(ep_id: str, plan_frames=None, render=None,
                     run_timing_gate: bool = True) -> Path:
     """

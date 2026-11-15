@@ -2,7 +2,7 @@ name: Offline production safety
 
 on:
   push:
-    branches: [main, codex/p0-security-identity-hardening]
+    branches: [main, codex/p0-security-identity-hardening, codex/four-batch-production-hardening]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -55,6 +55,11 @@ jobs:
           python -m pip check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q app bin tests
+          exit $LASTEXITCODE
+      - name: Run four-batch regressions
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_four_batch_correctness.py tests/test_four_batch_recovery.py tests/test_acceptance_runner.py tests/test_resource_diagnostics.py --junitxml=ci-evidence/four-batches.xml
           exit $LASTEXITCODE
       - name: Run execution and safety regressions
         shell: pwsh

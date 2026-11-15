@@ -27,11 +27,14 @@ def lease(kind,*,wait_seconds=120,min_available_mb=2048):
         lock=file_lock(paths.state_dir()/'model-resources/heavy-model.lock')
         try:lock.__enter__();break
         except RuntimeError:
-            if time.monotonic()>=deadline:raise RuntimeError('local model busy; resume later without new generation')
+            if time.monotonic()>=deadline:
+                from app.services.production_storage import ResourceBusy
+                raise ResourceBusy('local-acoustic-model')
             time.sleep(.1)
     try:
         if psutil.virtual_memory().available<min_available_mb*1024**2:
-            raise RuntimeError('insufficient available RAM for '+kind+'; no worker started')
+            from app.services.production_storage import ResourceBusy
+            raise ResourceBusy('available-RAM-for-'+kind)
         yield
     finally:lock.__exit__(None,None,None)
 

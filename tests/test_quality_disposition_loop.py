@@ -27,6 +27,7 @@ def _report(tmp_path):
     rp.write_text(json.dumps({
         "manifest_path": str(tmp_path / "manifest.json"),
         "manifest_sha256": file_sha256(tmp_path / "manifest.json"),
+        "decision_sha256": __import__("app.services.production_quality", fromlist=["decision_identity"]).decision_identity(),
         "checker_sha256": file_sha256(
             Path(__file__).resolve().parents[1]/"app/services/asr_check.py"),
         "takes": [

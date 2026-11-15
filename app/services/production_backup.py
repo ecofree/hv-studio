@@ -38,10 +38,19 @@ def selected_files(episodes):
             if 'renders' in p.relative_to(directory).parts and p.resolve() not in {r.resolve() for r in required}: continue
             files.add(p)
         files.update(required)
-    for relative in ('state/production-queue','state/voice_assets','state/audio_rejections','state/acceptance'):
-        folder=root/relative
-        files.update(p for p in folder.rglob('*') if p.is_file() and p.suffix=='.json' and p.name!='worker.json')
-    files.update(p for name in ('PAUSE','STOP') if (p := root/'state/production-queue'/name).is_file())
+    active_state = paths.state_dir().resolve()
+    if not active_state.is_relative_to(root):
+        raise ValueError('active state escapes project')
+    for relative in ('production-queue', 'voice_assets', 'audio_rejections', 'acceptance',
+                     'studio-jobs', 'tts_requests', 'local_asr'):
+        folder = active_state/relative
+        files.update(p for p in folder.rglob('*.json') if p.is_file()
+                     and p.name not in ('worker.json', 'process.json'))
+    files.update(p for name in ('PAUSE', 'STOP')
+                 if (p := active_state/'production-queue'/name).is_file())
+    files.update(p for p in active_state.glob('*.json') if p.is_file())
+    marker = root/'.studio-project.json'
+    if marker.is_file(): files.add(marker)
     for relative in ('app','bin','scripts','.ai-project'):
         files.update(p for p in (root/relative).rglob('*') if p.is_file() and p.suffix in ('.py','.yaml','.yml','.ps1','.json','.toml','.md') and '__pycache__' not in p.parts)
     files.update(p for p in root.glob('requirements*.txt') if p.is_file())
@@ -79,8 +88,13 @@ def create_snapshot(episodes, destination, *, dry_run=False):
     root=paths.ROOT.resolve();destination=Path(destination).resolve()
     if destination.is_relative_to(root): raise ValueError('backup destination must be outside source project')
     with ExitStack() as stack:
-        stack.enter_context(file_lock(paths.state_dir()/'production-storage.lock'))
         stack.enter_context(file_lock(paths.state_dir()/'production-queue/worker.lock'))
+        stack.enter_context(file_lock(paths.state_dir()/'production-storage.lock'))
+        from app.services.production_storage import episode_execution
+        for eid in sorted(episodes):
+            stack.enter_context(episode_execution(eid))
+        from app.services.production_storage import require_idle_resources
+        require_idle_resources()
         files,external=selected_files(episodes)
         total=sum(p.stat().st_size for p in files)
         if dry_run: return dict(files=len(files),bytes=total,episodes=episodes,external_dependencies=external)
@@ -98,7 +112,9 @@ def create_snapshot(episodes, destination, *, dry_run=False):
         current,_=selected_files(episodes)
         if set(current)!=set(files) or any(file_sha256(root/r)!=v['sha256'] for r,v in records.items()):
             raise ValueError('source changed during snapshot; incomplete copy is not a backup')
-        atomic_json(target/'manifest.json',dict(schema_version=1,source_root=str(root),episodes=episodes,files=records,
+        atomic_json(target/'manifest.json',dict(schema_version=2,source_root=str(root),episodes=episodes,files=records,
+            state_relative=paths.state_dir().resolve().relative_to(root).as_posix(),
+            episodes_relative=paths.episodes_dir().resolve().relative_to(root).as_posix(),
             external_dependencies=external,credentials_included=False,automatic_resume=False,created_at=time.time()))
         (target/'incomplete.json').unlink()
         return dict(snapshot=str(target),files=len(records),bytes=total)
@@ -108,7 +124,7 @@ def verify_snapshot(snapshot):
     snapshot=Path(snapshot).resolve()
     if (snapshot/'incomplete.json').exists(): raise ValueError('snapshot is incomplete')
     manifest=read(snapshot/'manifest.json')
-    if manifest.get('schema_version')!=1 or not isinstance(manifest.get('files'),dict) or not manifest['files']:
+    if manifest.get('schema_version') not in (1,2) or not isinstance(manifest.get('files'),dict) or not manifest['files']:
         raise ValueError('invalid snapshot manifest')
     payload=(snapshot/'payload').resolve()
     for relative,record in manifest['files'].items():
@@ -116,6 +132,11 @@ def verify_snapshot(snapshot):
         if Path(relative).is_absolute() or not path.is_relative_to(payload): raise ValueError('snapshot path escape')
         if not path.is_file() or path.stat().st_size!=record['bytes'] or file_sha256(path)!=record['sha256']:
             raise ValueError('snapshot file missing or changed: '+relative)
+    if manifest.get('schema_version') == 2:
+        for key in ('state_relative', 'episodes_relative'):
+            relative = manifest.get(key)
+            if not isinstance(relative, str) or Path(relative).is_absolute() or not (payload/relative).resolve().is_relative_to(payload):
+                raise ValueError('invalid snapshot workspace layout')
     return manifest
 
 
@@ -128,6 +149,14 @@ def restore_snapshot(snapshot,destination):
         target=destination/relative;target.parent.mkdir(parents=True,exist_ok=True)
         shutil.copy2(snapshot/'payload'/relative,target)
         if file_sha256(target)!=record['sha256']: raise ValueError('restored file mismatch')
+    # Restored queue/process identities still point to the original machine.
+    # Never let a newly launched worker run them before explicit rebinding.
+    state_relative = manifest.get('state_relative', 'workspace/state'
+        if (destination/'.studio-project.json').is_file() else 'state')
+    stop = destination/state_relative/'production-queue/STOP'
+    if not stop.exists():
+        stop.parent.mkdir(parents=True, exist_ok=True)
+        stop.write_text('restored workspace: rebind and review before resuming', encoding='utf-8')
     atomic_json(destination/'RESTORE-INFO.json',dict(snapshot=str(snapshot),source_root=manifest['source_root'],
         automatic_resume=False,requires_path_rebinding=True,credentials_included=False,verified_files=len(manifest['files'])))
     return dict(destination=str(destination),verified_files=len(manifest['files']),automatic_resume=False)

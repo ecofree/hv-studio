@@ -5,6 +5,17 @@ from app.services.narration_pipeline import read, validate_assembly
 from app.services.provenance import atomic_json, file_sha256, fingerprint
 
 
+def decision_identity():
+    """QA policy version, including dependencies and threshold settings."""
+    from importlib.metadata import version, PackageNotFoundError
+    from app.services.asr_check import enabled, max_per
+    try: phonetics = version('pypinyin')
+    except PackageNotFoundError: phonetics = 'missing'
+    return fingerprint(dict(schema=1, files={n:file_sha256(Path(__file__).with_name(n))
+        for n in ('production_quality.py', 'asr_check.py', 'audio_content_qa.py')},
+        phonetics=phonetics, enabled=enabled(), max_per=max_per()))
+
+
 def _check_take(args):
     """Single take: recognize + check. Pure per-take work, safe to parallelize."""
     from app.services.asr_check import check, normalize_numbers, phonetic_equivalent, Transcript
@@ -12,17 +23,20 @@ def _check_take(args):
     from app.services.provenance import file_sha256, fingerprint
 
     unit, take, context, unit_text_fp = args
-    # Short-circuit: a passed take whose QA is still bound to this exact audio
-    # and text needs no re-recognition. recognize+check are deterministic, so
-    # skipping them changes nothing except wall time.
+    # recognize() validates the independently cached transcript against current
+    # audio/model/options/runtime. A rule change need not reload/infer the model.
+    recognized, evidence = recognize(take['audio_path'], context=context)
+    evidence_sha = file_sha256(evidence)
+    policy = decision_identity()
     prior = take.get('quality') or {}
     if (prior.get('status') == 'passed'
+            and prior.get('decision_sha256') == policy
+            and prior.get('recognition_sha256') == evidence_sha
             and prior.get('expected_sha256') == unit_text_fp
             and prior.get('audio_sha256') == take.get('audio_sha256')
             and file_sha256(take['audio_path']) == take.get('audio_sha256')):
         quality = dict(prior)
     else:
-        recognized, evidence = recognize(take['audio_path'], context=context)
         transcript = Transcript(recognized['text'])
         transcript.request_id = recognized['request_id']; transcript.checker_version = recognized['checker_version']
         transcript.recognition_path = str(evidence.resolve())
@@ -30,6 +44,7 @@ def _check_take(args):
         quality = quality.to_dict() if hasattr(quality, 'to_dict') else quality
         if quality['audio_sha256'] != take['audio_sha256'] or quality['expected_sha256'] != unit_text_fp:
             raise ValueError('quality evidence not bound to current audio/source')
+    quality = dict(quality, decision_sha256=policy, recognition_sha256=evidence_sha)
     from app.services.audio_content_qa import evaluate
     observed=dict(audio_sha256=take['audio_sha256'],text=quality.get('transcript',''))
     content=evaluate(take['audio_path'],unit['text'],recognition=observed)
@@ -58,7 +73,7 @@ def build(manifest_path, destination, *, progress=None):
         elif phonetic_equivalent(unit['text'], transcript): row['explanation'] = 'exact whole-utterance syllable and tone equality; ASR spelling variance'
         rows.append(row)
     record = dict(manifest_path=str(Path(manifest_path).resolve()), manifest_sha256=file_sha256(manifest_path),
-                  checker_sha256=file_sha256(Path(__file__).with_name('asr_check.py')), takes=rows,
+                  decision_sha256=decision_identity(), checker_sha256=file_sha256(Path(__file__).with_name('asr_check.py')), takes=rows,
                   content_checker_sha256=file_sha256(Path(__file__).with_name('audio_content_qa.py')),
                   pending_units=[r['unit_id'] for r in rows if r['disposition']=='needs_listening_review'], listening_approved=False)
     path = Path(destination)/(fingerprint(record)+'.json'); atomic_json(path, record)
@@ -137,6 +152,8 @@ def pending(report_path):
         raise ValueError('quality report is stale')
     if report.get('content_checker_sha256') and report['content_checker_sha256']!=file_sha256(Path(__file__).with_name('audio_content_qa.py')):
         raise ValueError('content quality report is stale')
+    if report.get('decision_sha256') != decision_identity():
+        raise ValueError('quality decision policy is stale; rebuild QA using cached recognition')
     result = []
     records = [read(p) for p in (Path(report_path).parent/'dispositions').glob('*.json')]
     for row in report['takes']:

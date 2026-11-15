@@ -75,7 +75,10 @@ def execute(path,request):
                     result.update(status='VOICE_CANDIDATE',audio_path=manifest['master_path'],
                                   voice_reused_without_generation=True)
     except (Exception, KeyboardInterrupt) as exc:
-        result=dict(status='INTERRUPTED' if isinstance(exc,KeyboardInterrupt) else 'BLOCKED',error=str(exc),error_type=type(exc).__name__,
+        from app.services.production_storage import ResourceBusy
+        result=dict(status=('WAITING_RESOURCE' if isinstance(exc,ResourceBusy) else
+                            'INTERRUPTED' if isinstance(exc,KeyboardInterrupt) else 'BLOCKED'),
+                    resource=getattr(exc,'resource',None),error=str(exc),error_type=type(exc).__name__,
                     error_phase=checkpoint.get('stage'),error_stack=traceback.format_tb(exc.__traceback__),
                     approved=False,production_ready=False)
     finally:

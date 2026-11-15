@@ -16,6 +16,24 @@ from app.services.narration_pipeline import read
 class BudgetExceeded(RuntimeError): pass
 
 
+def effective_cap(limits, key):
+    """One definition for dispatch, preflight, queue validation and reporting."""
+    value = limits[key]
+    extra = limits.get('image_retries', 0) if key == 'image_requests' else 0
+    if any(type(v) is not int or v < 0 for v in (value, extra)):
+        raise ValueError('invalid budget limits')
+    return value + extra
+
+
+def validate_usage(limits, used):
+    if not isinstance(used, dict) or set(used) != set(limits):
+        raise ValueError('invalid budget usage')
+    for key, value in used.items():
+        if type(value) is not int or not 0 <= value <= effective_cap(limits, key):
+            raise ValueError('budget usage exceeds limit or is invalid: '+key)
+
+
+
 _image_budget = ContextVar('image_budget', default=None)
 _image_receipt = ContextVar('image_receipt', default=None)
 _image_guard = ContextVar('image_guard', default=None)
@@ -140,9 +158,7 @@ class ProviderBudget:
         with ledger_lock(self.path):
             state = read(self.path)
             for key, value in charge.items():
-                cap = self.limits[key]
-                if key == 'image_requests':
-                    cap += self.limits.get('image_retries', 0)
+                cap = effective_cap(self.limits, key)
                 if state['used'][key]+value > cap:
                     raise BudgetExceeded(
                         f'provider budget exhausted: {key} '
@@ -175,7 +191,7 @@ class ProviderBudget:
         with ledger_lock(self.path):
             state=read(self.path)
             for key, count in requested.items():
-                if count and state['used'][key]+count>self.limits[key]+(self.limits.get('image_retries',0) if key=='image_requests' else 0): raise BudgetExceeded(
+                if count and state['used'][key]+count>effective_cap(self.limits, key): raise BudgetExceeded(
                     'remaining provider budget insufficient: '+key
                     +f' ({state["used"][key]}/{self.limits[key]} used)'
                     +(' (legacy image_retries is included in the total attempt allowance)'

@@ -75,6 +75,13 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         raise ValueError("generation budgets cannot be negative")
     verify_only = requested == ["verify"]
     from app.services.studio_workflow import require_production
+    from app.services.recording_input import episode_source
+    audio_source = episode_source(ep_id, explicit=external_master, mode=audio_mode, source_text=script_md)
+    if not audio_source['requires_tts']:
+        if not audio_source.get('selection'):
+            raise ValueError('legacy audio cuts require an explicit full or numbered recording for V2')
+        external_master = audio_source['selection']['source']
+        audio_mode = audio_source['selection']['kind']
     if external_master and (Path(external_master).is_dir() or audio_mode=='parts'):
         from app.services.recording_input import bind, materialize
         from app.services.studio_workspace import config, library_path
@@ -530,7 +537,9 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         except (ValueError, RuntimeError, OSError) as exc:
             metrics.finish()
             import traceback
-            result.update(status="BLOCKED", run_ok=False, error=str(exc),
+            from app.services.production_storage import ResourceBusy
+            result.update(status="WAITING_RESOURCE" if isinstance(exc, ResourceBusy) else "BLOCKED",
+                          resource=getattr(exc, 'resource', None), run_ok=False, error=str(exc),
                           error_phase=state.get('active_stage'), error_type=type(exc).__name__,
                           error_stack=traceback.format_tb(exc.__traceback__))
             if budget:

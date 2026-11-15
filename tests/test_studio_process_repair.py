@@ -56,12 +56,16 @@ def test_wav_and_forced_text_alone_cannot_pass(tmp_path):
     assert r['findings']==[dict(kind='transcript_check_pending')]
 
 
-def test_existing_transcript_pass_does_not_hide_long_silence(tmp_path):
+def test_existing_transcript_pass_does_not_hide_long_silence(tmp_path,monkeypatch):
     from app.services.production_quality import _check_take
     audio=sound(tmp_path/'a.wav',silence=5)
     text='兵贵神速。';sha=file_sha256(audio)
     take=dict(audio_path=str(audio),audio_sha256=sha,quality=dict(status='passed',expected_sha256=fingerprint(text),
                 audio_sha256=sha,transcript=text))
+    receipt=tmp_path/'cached-recognition.json';atomic_json(receipt,{'offline':True})
+    monkeypatch.setattr('app.services.local_asr.recognize',lambda *a,**k:(
+        dict(text=text,request_id='offline',checker_version='offline'),receipt))
+    monkeypatch.setattr('app.services.asr_check.check',lambda *a,**k:dict(take['quality']))
     _,_,quality=_check_take((dict(text=text),take,None,fingerprint(text)))
     assert quality['content_checks']['status']=='needs_review'
     assert quality['content_checks']['findings'][0]['kind']=='long_silence'
@@ -163,7 +167,7 @@ def test_resource_limits_are_bounded_and_busy_does_not_start_worker(tmp_path,mon
     audio=sound(tmp_path/'long.wav',seconds=60)
     assert R.timeout_for(audio,180)==360
     with R.lease('first',min_available_mb=0):
-        with pytest.raises(RuntimeError,match='busy'):
+        with pytest.raises(RuntimeError,match='waiting for resource'):
             with R.lease('second',wait_seconds=0,min_available_mb=0):pytest.fail('second worker')
     with R.lease('recovered',wait_seconds=0,min_available_mb=0):pass
 
