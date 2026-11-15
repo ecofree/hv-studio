@@ -7,7 +7,10 @@ permissions:
   contents: write
 jobs:
   verify:
-    if: github.repository == 'ecofree/hv-studio' && github.ref == 'refs/heads/codex/four-batch-production-hardening' && startsWith(github.event.head_commit.message, 'maintenance: verify four-batch patch')
+    if: >-
+      github.repository == 'ecofree/hv-studio' &&
+      github.ref == 'refs/heads/codex/four-batch-production-hardening' &&
+      startsWith(github.event.head_commit.message, 'maintenance: verify four-batch patch')
     runs-on: windows-latest
     timeout-minutes: 25
     env:
