@@ -3,7 +3,8 @@
 Reservations are charged before dispatch and never refunded after an ambiguous
 failure or process death. A retry is a new billable attempt.
 """
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
+from copy import copy, deepcopy
 from contextvars import ContextVar
 import time
 import uuid
@@ -23,9 +24,11 @@ _tts_budget = ContextVar('tts_budget', default=None)
 
 @contextmanager
 def tts_budget_scope(budget):
-    token = _tts_budget.set(budget)
-    try: yield
-    finally: _tts_budget.reset(token)
+    scope = budget.execution_scope() if isinstance(budget, ProviderBudget) else nullcontext()
+    with scope:
+        token = _tts_budget.set(budget)
+        try: yield
+        finally: _tts_budget.reset(token)
 
 
 def current_tts_budget():
@@ -37,14 +40,18 @@ def current_tts_budget():
 
 @contextmanager
 def image_budget_scope(budget, response_path=None, request_fp=None, guard=None):
-    token = _image_budget.set(budget)
-    receipt_token = _image_receipt.set((response_path, request_fp) if response_path else None)
-    guard_token = _image_guard.set(guard)
-    try: yield
-    finally:
-        _image_guard.reset(guard_token)
-        _image_receipt.reset(receipt_token)
-        _image_budget.reset(token)
+    # Image workers are separate threads. The scoped handle carries only the
+    # verified task contract, not arbitrary caller ContextVars or mutable timers.
+    scope = budget.execution_scope() if isinstance(budget, ProviderBudget) else nullcontext()
+    with scope:
+        token = _image_budget.set(budget)
+        receipt_token = _image_receipt.set((response_path, request_fp) if response_path else None)
+        guard_token = _image_guard.set(guard)
+        try: yield
+        finally:
+            _image_guard.reset(guard_token)
+            _image_receipt.reset(receipt_token)
+            _image_budget.reset(token)
 
 
 def current_image_budget():
@@ -74,14 +81,56 @@ class ProviderBudget:
         if image_retries:
             self.limits['image_retries'] = image_retries
         if any(type(v) is not int or v < 0 for v in self.limits.values()): raise ValueError('invalid budget limits')
-        from app.services.production_identity import require_task_budget
+        from app.services.production_identity import require_task_budget, current_task, current_execution
         require_task_budget(self.path, self.limits)
+        self._task_binding = (current_task(), current_execution())
         with ledger_lock(self.path):
             if self.path.exists():
                 if read(self.path)['limits'] != self.limits: raise ValueError('budget limits changed; use a new explicit budget ID')
             else: atomic_json(self.path, dict(limits=self.limits, used=dict.fromkeys(self.limits, 0), attempts=[]))
 
+    def for_current_task(self):
+        """Make a scoped handle, preserving the exact ledger and authorization.
+
+        Never mutate the caller's handle or construct/refill another ledger.
+        Explicit rebinding must happen inside the new authorized task scope.
+        """
+        from app.services.production_identity import (
+            current_task, current_execution, require_task_budget, TaskMismatch,
+        )
+        task, execution = current_task(), current_execution()
+        if task is None:
+            raise TaskMismatch('budget rebinding requires an active task')
+        require_task_budget(self.path, self.limits)
+        scoped = copy(self)
+        scoped.limits = deepcopy(self.limits)
+        scoped._task_binding = (task, execution)
+        return scoped
+
+    @contextmanager
+    def execution_scope(self):
+        """Restore this handle's task in a worker, refusing cross-attempt reuse."""
+        from app.services.production_identity import (
+            current_execution, require_execution, require_task_budget, task_scope,
+        )
+        task, execution = self._task_binding
+        if task is None:
+            yield
+        elif current_execution() is not None:
+            require_execution(current_execution(), execution)
+            require_task_budget(self.path, self.limits)
+            yield
+        else:
+            with task_scope(task, execution['attempt_id']):
+                require_task_budget(self.path, self.limits)
+                yield
+
     def reserve(self, kind, request_fingerprint, characters=0, *, supplier=None, queue_seconds=None):
+        with self.execution_scope():
+            return self._reserve(kind, request_fingerprint, characters,
+                                 supplier=supplier, queue_seconds=queue_seconds)
+
+    def _reserve(self, kind, request_fingerprint, characters=0, *, supplier=None, queue_seconds=None):
         if kind not in ('tts', 'image') or type(characters) is not int or characters < 0:
             raise ValueError('invalid provider reservation')
         from app.services.production_identity import require_task_budget
@@ -103,6 +152,10 @@ class ProviderBudget:
             token = uuid.uuid4().hex
             state['attempts'].append(dict(id=token, kind=kind, request_fingerprint=request_fingerprint,
                                           characters=characters, reserved_at=time.time(), status='reserved'))
+            from app.services.production_identity import current_execution
+            execution = current_execution()
+            if execution is not None:
+                state['attempts'][-1]['execution'] = execution
             if supplier is not None:
                 state['attempts'][-1].update(supplier=supplier,queue_seconds=round(queue_seconds or 0.,3))
             atomic_json(self.path, state)

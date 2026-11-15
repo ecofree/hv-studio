@@ -2,7 +2,7 @@ name: Offline production safety
 
 on:
   push:
-    branches: [codex/p0-security-identity-hardening]
+    branches: [main, codex/p0-security-identity-hardening]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -59,7 +59,7 @@ jobs:
       - name: Run execution and safety regressions
         shell: pwsh
         run: |
-          python -m pytest -q tests/test_task_identity.py tests/test_task_identity_contention.py tests/test_episode_execution.py tests/test_api_auth_gate.py tests/test_tts_uncertain_attempt.py tests/test_production_admission_audio_mode.py tests/test_production_readiness.py tests/test_rebuild_freeze_and_drift_split.py tests/test_unattended_operations.py tests/test_studio_process_repair.py tests/test_narration_closeout.py --junitxml=ci-evidence/safety.xml
+          python -m pytest -q tests/test_task_identity.py tests/test_task_identity_contention.py tests/test_task_attribution.py tests/test_episode_execution.py tests/test_api_auth_gate.py tests/test_tts_uncertain_attempt.py tests/test_production_admission_audio_mode.py tests/test_production_readiness.py tests/test_rebuild_freeze_and_drift_split.py tests/test_unattended_operations.py tests/test_studio_process_repair.py tests/test_narration_closeout.py --junitxml=ci-evidence/safety.xml
           exit $LASTEXITCODE
       - name: Run the complete offline production suite
         shell: pwsh

@@ -275,7 +275,8 @@ def task_bound_run(fn):
                 raise TaskMismatch('V2 execution differs from authorized episode or stages')
             if params['budget'] is not None:
                 require_task_budget(params['budget'].path, params['budget'].limits)
-            return fn(ep_id, *args, **kwargs)
+                bound.arguments['budget'] = params['budget'].for_current_task()
+            return fn(*bound.args, **bound.kwargs)
         from app.managers import load
         from app.orchestrator import _load_script_md
         from app.services.provider_budget import budget_path_for, budget_limits
@@ -299,5 +300,7 @@ def task_bound_run(fn):
                          request=request, inputs={'source':fingerprint(text)},
                          budget_path=location, limits=limits, stages=stages)
         with task_scope(task, uuid.uuid4().hex):
-            return fn(ep_id, *args, **kwargs)
+            if params['budget'] is not None:
+                bound.arguments['budget'] = params['budget'].for_current_task()
+            return fn(*bound.args, **bound.kwargs)
     return guarded
