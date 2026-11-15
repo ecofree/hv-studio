@@ -123,6 +123,7 @@ def test_lost_episode_lease_race_does_not_consume_queue_attempt(tmp_path, monkey
     import json
     from app.services import batch_worker as B
     from app.services import production_storage as S
+    from app.services import production_admission as A
     from app.services.narration_pipeline import read
     folder = tmp_path/'queue'
     path = B.enqueue('lease-race', ['race-episode'], {}, retries=1, folder=folder)
@@ -130,6 +131,8 @@ def test_lost_episode_lease_race_does_not_consume_queue_attempt(tmp_path, monkey
     # The advisory probe succeeds; another entry point wins the lease before
     # the spawned child. Its structured result proves no lease was acquired.
     monkeypatch.setattr(S, 'episode_available', lambda eid: True)
+    monkeypatch.setattr(A, 'check', lambda eid: dict(
+        eligible=True, blockers=[], input_fingerprint='stable-input'))
     def command(spec_path, eid, token):
         target = folder/'results'/(token+'.json')
         payload = dict(status='RETRY_WAIT', error='ProductionBusy: episode already running',
