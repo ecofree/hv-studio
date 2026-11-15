@@ -1,0 +1,395 @@
+diff --git a/app/services/provider_budget.py b/app/services/provider_budget.py
+index 2e48513716c65a984289bf167cb7dd374fa80948..f90c1106180b8e288c5b256788d376ad7558bd31 100644
+--- a/app/services/provider_budget.py
++++ b/app/services/provider_budget.py
+@@ -16,6 +16,24 @@ from app.services.narration_pipeline import read
+ class BudgetExceeded(RuntimeError): pass
+ 
+ 
++def effective_cap(limits, key):
++    """One definition for dispatch, preflight, queue validation and reporting."""
++    value = limits[key]
++    extra = limits.get('image_retries', 0) if key == 'image_requests' else 0
++    if any(type(v) is not int or v < 0 for v in (value, extra)):
++        raise ValueError('invalid budget limits')
++    return value + extra
++
++
++def validate_usage(limits, used):
++    if not isinstance(used, dict) or set(used) != set(limits):
++        raise ValueError('invalid budget usage')
++    for key, value in used.items():
++        if type(value) is not int or not 0 <= value <= effective_cap(limits, key):
++            raise ValueError('budget usage exceeds limit or is invalid: '+key)
++
++
++
+ _image_budget = ContextVar('image_budget', default=None)
+ _image_receipt = ContextVar('image_receipt', default=None)
+ _image_guard = ContextVar('image_guard', default=None)
+@@ -140,9 +158,7 @@ class ProviderBudget:
+         with ledger_lock(self.path):
+             state = read(self.path)
+             for key, value in charge.items():
+-                cap = self.limits[key]
+-                if key == 'image_requests':
+-                    cap += self.limits.get('image_retries', 0)
++                cap = effective_cap(self.limits, key)
+                 if state['used'][key]+value > cap:
+                     raise BudgetExceeded(
+                         f'provider budget exhausted: {key} '
+@@ -175,7 +191,7 @@ class ProviderBudget:
+         with ledger_lock(self.path):
+             state=read(self.path)
+             for key, count in requested.items():
+-                if count and state['used'][key]+count>self.limits[key]+(self.limits.get('image_retries',0) if key=='image_requests' else 0): raise BudgetExceeded(
++                if count and state['used'][key]+count>effective_cap(self.limits, key): raise BudgetExceeded(
+                     'remaining provider budget insufficient: '+key
+                     +f' ({state["used"][key]}/{self.limits[key]} used)'
+                     +(' (legacy image_retries is included in the total attempt allowance)'
+diff --git a/app/services/queue_records.py b/app/services/queue_records.py
+index 8251bcee735b38053f9462c0ff29ce66d241b662..79247f56c2a7eff0ea093a11987edc436e55042e 100644
+--- a/app/services/queue_records.py
++++ b/app/services/queue_records.py
+@@ -7,7 +7,7 @@ from app.services.narration_pipeline import read
+ from app.services.provenance import fingerprint
+ 
+ STATUSES = {'QUEUED','RUNNING','RETRY_WAIT','NEEDS_REVIEW','BLOCKED_INPUT',
+-            'BUDGET_EXHAUSTED','FAILED','APPROVED'}
++            'BUDGET_EXHAUSTED','FAILED','APPROVED','WAITING_RESOURCE'}
+ 
+ 
+ def integer(value, minimum=0):
+@@ -52,9 +52,8 @@ def validate_job(job, path):
+     used=ledger.get('used')
+     if not isinstance(used,dict) or set(used)!=set(limits) or not isinstance(ledger.get('attempts'),list):
+         raise ValueError('invalid budget ledger')
+-    for key,value in used.items():
+-        integer(value)
+-        if value>limits[key]: raise ValueError('budget usage exceeds limit')
++    from app.services.provider_budget import validate_usage
++    validate_usage(limits, used)
+ 
+ 
+ def validate_row(row):
+diff --git a/app/services/recording_input.py b/app/services/recording_input.py
+index 059c902288d49956827aece40035292dbd2513ef..450c9b9d549c3fa274cd81c615a965c106ba1e4f 100644
+--- a/app/services/recording_input.py
++++ b/app/services/recording_input.py
+@@ -124,3 +124,93 @@ def materialize(selection, destination):
+             replace_file(tmp,target)
+             atomic_json(folder/'parts.json',rec)
+         return target
++
++
++class StaleRecordingSource(ValueError):
++    """A previously selected recording belongs to a different source text."""
++
++
++def episode_source(ep_id, *, explicit=None, mode='auto', source_text=None):
++    """Read-only audio authority shared by admission, Studio and V2.
++
++    Resolve recordings without synthesizing, assembling numbered parts, changing
++    approvals or treating an existing file alone as a valid V2 binding.
++    """
++    from app import paths
++    from app.managers import load
++    from app.orchestrator import _load_script_md
++    from app.services import studio_narration_handoff as H
++    folder = paths.episode_dir(ep_id); root = folder/'production/v2'
++    selected = H.selected(ep_id) if H.selection_path(ep_id).is_file() else None
++    def recording(value, origin, evidence=None):
++        parts = parts_receipt(value) if Path(value).is_file() else None
++        selection = parts['selection'] if parts else bind(value, mode if explicit is not None else 'auto')
++        validate(selection)
++        return dict(kind='external_recording', origin=origin, requires_tts=False,
++                    selection=selection, evidence=evidence or {},
++                    source_sha256=fingerprint(source_text if source_text is not None
++                                              else _load_script_md(load(ep_id))))
++    if explicit is not None:
++        value = recording(explicit, 'explicit')
++        if selected and (value['selection']['kind'] != 'master'
++                        or value['selection']['files'][0]['sha256'] != selected['master_sha256']):
++            raise ValueError('explicit recording differs from selected narration')
++        return value
++    if selected:
++        return recording(selected['master'], 'studio_selection',
++                         {str(H.selection_path(ep_id)):file_sha256(H.selection_path(ep_id))})
++    state_path = root/'run.json'
++    state = read(state_path) if state_path.is_file() else {}
++    text = source_text if source_text is not None else _load_script_md(load(ep_id))
++    plan_path = root/'external-master.json'
++    if plan_path.is_file():
++        from app.services.narration_master import resolve
++        plan = Path(state['plan_path'])
++        if read(plan)['source_sha256'] != fingerprint(text):
++            raise ValueError('selected recording belongs to another source')
++        return recording(resolve(root, plan), 'repaired_master', {str(plan_path):file_sha256(plan_path)})
++    if state.get('manifest_path'):
++        path = Path(state['manifest_path'])
++        manifest = read(path)
++        from app.services.external_narration import PROVENANCE
++        if manifest.get('provenance') == PROVENANCE:
++            # Resolve the original delivery, not the generated assembly. A
++            # damaged/missing intermediate take may be safely rebuilt locally;
++            # downstream assembly/QA still validates every produced sample.
++            plan = read(manifest['plan_path'])
++            if state.get('source_sha256') != fingerprint(text) or plan['source_sha256'] != fingerprint(text):
++                raise StaleRecordingSource('external narration belongs to another source; explicitly select the new recording')
++            if file_sha256(manifest['plan_path']) != manifest['plan_sha256']:
++                raise ValueError('external narration plan changed')
++            src = manifest['source_recording']
++            if file_sha256(src['delivered_path']) != src['delivered_sha256']:
++                raise ValueError('delivered recording changed：已导入的原始母带已改变，请明确选择录音')
++            return recording(src['delivered_path'], 'v2_manifest', {str(path):file_sha256(path)})
++    legacy = folder/'production/external-audio-binding.json'
++    if legacy.is_file():
++        from app.services.external_audio import verify_binding
++        episode = load(ep_id)
++        check = verify_binding(episode)
++        if not check['ok']: raise ValueError('external audio binding invalid: '+'; '.join(check['fails']))
++        registered=read(paths.episode_json(ep_id)).get('audio_path')
++        if registered:
++            value=recording(registered,'legacy_binding',{str(legacy):file_sha256(legacy)})
++            if value['selection']['kind']!='master' or value['selection']['files'][0]['sha256']!=read(legacy)['source_sha256']:
++                raise ValueError('legacy original recording differs from verified binding')
++            return value
++        return dict(kind='legacy_cut_audio',origin='legacy_binding',requires_tts=False,
++                    selection=None,source_sha256=fingerprint(text),evidence={str(legacy):file_sha256(legacy)})
++    from app.services import studio_workflow as W
++    workflow = W.folder(ep_id)/'workflow.json'
++    if workflow.is_file() and W.load(ep_id)['voice'].get('master'):
++        return recording(W.load(ep_id)['voice']['master'], 'workflow_master')
++    # Imported raw recordings are registered by source import, not arbitrary
++    # media found in a directory. Their explicit source binding is checked.
++    from app.services.studio_sources import contract, require_usable
++    registered = read(paths.episode_json(ep_id)).get('audio_path')
++    if contract(ep_id) and registered:
++        require_usable(ep_id)
++        from app.services.studio_workspace import library_path
++        return recording(library_path(registered), 'imported_source')
++    return dict(kind='tts', origin='voice_asset', requires_tts=True,
++                source_sha256=fingerprint(text), selection=None, evidence={})
+diff --git a/app/services/studio_jobs.py b/app/services/studio_jobs.py
+index f2e088a9ebeefa914c2c3e8bcdc8079663604924..ae9015de69f32f554b1990a798f1be8b87d67b62 100644
+--- a/app/services/studio_jobs.py
++++ b/app/services/studio_jobs.py
+@@ -11,31 +11,11 @@ from app.services import studio_workflow as W
+ 
+ 
+ def imported_master(ep_id):
+-    """Offer only the original delivery already bound to this script and plan."""
+-    from app.services.external_narration import PROVENANCE
+-    state_path=paths.episode_dir(ep_id)/'production/v2/run.json'
+-    if not state_path.is_file():
+-        from app.services.studio_sources import contract,require_usable
+-        if not contract(ep_id): return None
+-        require_usable(ep_id)
+-        episode=json.loads(paths.episode_json(ep_id).read_text('utf-8'))
+-        if not episode.get('audio_path'): return None
+-        from app.services.studio_workspace import library_path
+-        path=library_path(episode['audio_path'])
+-        if not path.exists():raise ValueError('剧集登记中的原始旁白输入不存在')
+-        return str(path.resolve())
+-    state=W.read(state_path)
+-    if not state.get('manifest_path') or state.get('source_sha256')!=W.document(ep_id)['source_sha256']: return None
+-    manifest=W.read(state['manifest_path'])
+-    if manifest.get('provenance')!=PROVENANCE: return None
+-    plan=Path(manifest['plan_path'])
+-    if (manifest['plan_sha256']!=file_sha256(plan)
+-            or W.read(plan)['source_sha256']!=state['source_sha256']):
+-        raise ValueError('已导入的母带与当前正文计划不一致，请重新选择录音')
+-    original=manifest['source_recording']; path=Path(original['delivered_path'])
+-    if not path.is_file() or file_sha256(path)!=original['delivered_sha256']:
+-        raise ValueError('已导入的原始母带缺失或已改变，请明确选择录音')
+-    return str(path.resolve())
++    """Offer the same verified recording source used by V2 and batch admission."""
++    from app.services.recording_input import episode_source, StaleRecordingSource
++    try: audio = episode_source(ep_id)
++    except StaleRecordingSource: return None  # offer only the current source, never retag it
++    return audio['selection']['source'] if audio.get('selection') else None
+ 
+ 
+ def launch(ep_id,*,max_requests=0,max_characters=0,max_images=0,external_master=None,mode='video',
+@@ -159,7 +139,7 @@ def resume(root):
+         result=root/'result.json'
+         if result.exists():
+             previous=json.loads(result.read_text('utf-8'))
+-            if previous.get('status') not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING'):raise ValueError('completed job does not need resume')
++            if previous.get('status') not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING','WAITING_RESOURCE'):raise ValueError('completed job does not need resume')
+             atomic_json(root/'history'/(fingerprint(previous)+'.json'),previous)
+         execution_path=root/'execution.json'
+         if execution_path.exists():
+@@ -240,7 +220,7 @@ def check_resume(root):
+     require_no_active(request['ep_id'],exclude=root)
+     if (root/'result.json').exists():
+         status=json.loads((root/'result.json').read_text('utf-8')).get('status')
+-        if status not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING'):raise ValueError('completed job does not need resume')
++        if status not in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING','WAITING_RESOURCE'):raise ValueError('completed job does not need resume')
+     return request,old
+ 
+ 
+@@ -263,7 +243,7 @@ def jobs(ep_id):
+                  stage=phase.get('stage'),progress=phase.get('progress'),stage_timings=phase.get('stage_timings',[]),
+                  heartbeat_at=phase.get('heartbeat_at'),updated_at=phase.get('updated_at'),
+                  error=phase.get('error'),error_phase=phase.get('error_phase'),
+-                 recoverable=not live and (current is None or current.get('status') in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING')))
++                 recoverable=not live and (current is None or current.get('status') in ('BLOCKED','INTERRUPTED','QUEUED','RUNNING','WAITING_RESOURCE')))
+         if status=='INTERRUPTED':row['exit_reason']='进程已退出，未留下完成记录；具体退出原因未记录'
+         if phase.get('budget_path') and Path(phase['budget_path']).is_file():
+             b=json.loads(Path(phase['budget_path']).read_text('utf-8'))
+diff --git a/app/webui/app_pages/production.py b/app/webui/app_pages/production.py
+index 0848c90e9350c6d45268b72ac0338ec35d9be2c4..89738cce9b1dc7c727388ba0688acf769f8bce38 100644
+--- a/app/webui/app_pages/production.py
++++ b/app/webui/app_pages/production.py
+@@ -207,3 +207,15 @@ for job in J.jobs(eid):
+     with st.expander('运行记录'):st.text(job.get('log','尚无日志'))
+ from app.webui.studio_finish import render_finish
+ render_finish(eid,full_candidate)
++
++with st.expander('只读诊断：任务、听看疑点与效率'):
++    st.caption('不会生成图片、配音、修改素材或自动审批。数据来自当前任务及媒体证据。')
++    if st.button('读取当前诊断',key='diagnostics-'+eid):
++        from app.services.production_diagnostics import report
++        try:
++            diagnostic=report(eid)
++            st.json(diagnostic)
++            import json
++            st.download_button('保存诊断 JSON',json.dumps(diagnostic,ensure_ascii=False,indent=2),
++                               file_name=eid+'-diagnostics.json',mime='application/json')
++        except (ValueError,OSError,KeyError,TypeError,RuntimeError) as exc:st.error(str(exc))
+diff --git a/bin/accept_production.py b/bin/accept_production.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..21228486a697a24b520a39bdc6f06305234d9929
+--- /dev/null
++++ b/bin/accept_production.py
+@@ -0,0 +1,31 @@
++"""Prepare, authorize and run repeatable acceptance without automatic approvals."""
++from pathlib import Path
++import argparse
++import json
++import sys
++sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
++from app.services import acceptance_runner as R
++
++
++def main():
++    p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='action',required=True)
++    plan=sub.add_parser('plan');plan.add_argument('--episodes',nargs='+',required=True)
++    plan.add_argument('--output',required=True);plan.add_argument('--offline',action='store_true')
++    plan.add_argument('--max-requests',type=int,default=0);plan.add_argument('--max-characters',type=int,default=0)
++    plan.add_argument('--max-images',type=int,default=0);plan.add_argument('--timeout',type=int,default=3600)
++    auth=sub.add_parser('authorize');auth.add_argument('--plan',required=True)
++    auth.add_argument('--operator',required=True);auth.add_argument('--reason',required=True)
++    auth.add_argument('--allow-paid',action='store_true');auth.add_argument('--allow-faults',action='store_true')
++    run=sub.add_parser('run');run.add_argument('--plan',required=True);run.add_argument('--scenarios',nargs='+');run.add_argument('--resume',action='store_true')
++    a=p.parse_args()
++    if a.action=='plan':
++        value=R.make_plan(a.episodes,dict(max_requests=a.max_requests,max_characters=a.max_characters,max_images=a.max_images),
++                          a.output,mode='offline' if a.offline else 'real',timeout=a.timeout)
++    elif a.action=='authorize':
++        value=dict(authorization=str(R.authorize(a.plan,a.operator,a.reason,allow_paid=a.allow_paid,allow_faults=a.allow_faults)))
++    else:value=R.run(a.plan,scenarios=a.scenarios,resume=a.resume)
++    print(json.dumps(value,ensure_ascii=False,indent=2))
++    return 1 if any(v.get('status')!='PASS' for v in value.get('scenarios',{}).values()) else 0
++
++
++if __name__=='__main__':raise SystemExit(main())
+diff --git a/bin/acceptance_worker.py b/bin/acceptance_worker.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..eea0548c9563d49b1ec00ddaa121e516f732a7a0
+--- /dev/null
++++ b/bin/acceptance_worker.py
+@@ -0,0 +1,6 @@
++"""Private owned child of the acceptance supervisor; not a general command hook."""
++from pathlib import Path
++import sys
++sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
++from app.services.acceptance_runner import child
++if __name__=='__main__':raise SystemExit(child(sys.argv[1]))
+diff --git a/bin/check_project.py b/bin/check_project.py
+index 9ab42149404e524e1bbe46b2401d900f6dd736ca..8cf3bfa3278f1853fbcc59eb38673ce59d8013b3 100644
+--- a/bin/check_project.py
++++ b/bin/check_project.py
+@@ -53,14 +53,8 @@ def main():
+             if run.returncode: raise RuntimeError('offline acceptance tests failed')
+         status, error = 'PASS', None
+     except Exception as exc: status, error = 'FAIL', str(exc)
+-    sources = {str(p.relative_to(ROOT)): file_sha256(p) for folder in ('app','bin','tests','scripts')
+-               for p in (ROOT/folder).rglob('*') if p.is_file() and p.suffix in ('.py','.yaml','.ps1') and '__pycache__' not in str(p)}
+-    for relative in ('pyproject.toml', '.ai-project/contract.yaml', '.studio-project.json', '.streamlit/config.toml',
+-                     'resource/风趣历史.writing-DNA/scripts/generate_chutang_v2.py',
+-                     'resource/风趣历史.writing-DNA/scripts/generate_chutang_emotional.py',
+-                     'resource/风趣历史.writing-DNA/scripts/generate_qwen3_local_audio.py'):
+-        sources[relative] = file_sha256(ROOT/relative)
+-    source_fp = fingerprint(sources)
++    from app.services.production_acceptance import source_fingerprint
++    source_fp = source_fingerprint()
+     revision = subprocess.run(['git','rev-parse','HEAD'], cwd=ROOT, capture_output=True,text=True)
+     dirty = subprocess.run(['git','status','--porcelain','--','app','bin','tests','scripts','.ai-project'],
+                            cwd=ROOT,capture_output=True,text=True)
+diff --git a/bin/production_diagnostics.py b/bin/production_diagnostics.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..1970b4a6ee5da93644a36c6b8c9a79033cdb9f84
+--- /dev/null
++++ b/bin/production_diagnostics.py
+@@ -0,0 +1,20 @@
++"""Export a source-bound review queue and metrics without production calls."""
++import argparse
++import json
++from pathlib import Path
++import sys
++sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
++from app.services import production_diagnostics as D
++
++
++def main():
++    p=argparse.ArgumentParser(description=__doc__);p.add_argument('--episode',required=True)
++    p.add_argument('--output');p.add_argument('--baseline');a=p.parse_args()
++    value=D.report(a.episode)
++    if a.baseline:value['comparison']=D.compare(json.loads(Path(a.baseline).read_text('utf-8')),value)
++    if a.output:print(D.write_report(value,a.output))
++    else:print(json.dumps(value,ensure_ascii=False,indent=2))
++    return 1 if value['errors'] else 0
++
++
++if __name__=='__main__':raise SystemExit(main())
+diff --git a/bin/record_production_validation.py b/bin/record_production_validation.py
+index c218f63fff4bdbd5605d1b2e306f178405a1fe95..582155d4b075697b5679955473321437c4795be4 100644
+--- a/bin/record_production_validation.py
++++ b/bin/record_production_validation.py
+@@ -20,7 +20,7 @@ def main():
+     parser.add_argument("--git-revision", required=True)
+     parser.add_argument("--episodes", nargs="+", required=True)
+     parser.add_argument("--evidence-root", required=True)
+-    parser.add_argument("--output", default="state/acceptance/production-validation.json")
++    parser.add_argument("--output", help="default: current active workspace acceptance path")
+     args = parser.parse_args()
+     if not re.fullmatch(r"[0-9a-f]{40}", args.git_revision):
+         raise SystemExit("git revision must be a full 40-character SHA")
+@@ -31,7 +31,8 @@ def main():
+     from app.services.provenance import atomic_json
+     record = collect_validation(args.source_fingerprint, args.git_revision,
+                                 args.episodes, args.evidence_root)
+-    destination = Path(args.output)
++    from app.paths import state_dir
++    destination = Path(args.output) if args.output else state_dir()/"acceptance/production-validation.json"
+     if not destination.is_absolute():
+         destination = ROOT/destination
+     atomic_json(destination, record)
+diff --git a/bin/studio_job.py b/bin/studio_job.py
+index 13069339b9527ad81bd4a71bac191dcb8f81ac86..288927416e2b13bf102a69da76ee714a09f7b738 100644
+--- a/bin/studio_job.py
++++ b/bin/studio_job.py
+@@ -75,7 +75,10 @@ def execute(path,request):
+                     result.update(status='VOICE_CANDIDATE',audio_path=manifest['master_path'],
+                                   voice_reused_without_generation=True)
+     except (Exception, KeyboardInterrupt) as exc:
+-        result=dict(status='INTERRUPTED' if isinstance(exc,KeyboardInterrupt) else 'BLOCKED',error=str(exc),error_type=type(exc).__name__,
++        from app.services.production_storage import ResourceBusy
++        result=dict(status=('WAITING_RESOURCE' if isinstance(exc,ResourceBusy) else
++                            'INTERRUPTED' if isinstance(exc,KeyboardInterrupt) else 'BLOCKED'),
++                    resource=getattr(exc,'resource',None),error=str(exc),error_type=type(exc).__name__,
+                     error_phase=checkpoint.get('stage'),error_stack=traceback.format_tb(exc.__traceback__),
+                     approved=False,production_ready=False)
+     finally:

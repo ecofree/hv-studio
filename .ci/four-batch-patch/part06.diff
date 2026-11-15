@@ -1,0 +1,393 @@
+diff --git a/tests/test_four_batch_recovery.py b/tests/test_four_batch_recovery.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..fcc7c74d1c40107fc497dcf49d08936be93a85ca
+--- /dev/null
++++ b/tests/test_four_batch_recovery.py
+@@ -0,0 +1,93 @@
++"""Audio authority, configuration compatibility and resource waits."""
++import copy
++import wave
++import pytest
++from pathlib import Path
++from app import paths
++from app.services import recording_input as R, production_identity as I, production_storage as S
++from app.services.provenance import atomic_json, file_sha256, fingerprint
++from app.services.narration_pipeline import read
++from app.services.process_lock import file_lock
++from test_production_entrypoint import production_episode
++from test_task_identity import contract
++
++pytestmark=pytest.mark.production
++
++
++def wav(p):
++    p.parent.mkdir(parents=True,exist_ok=True)
++    with wave.open(str(p),'wb') as f:
++        f.setnchannels(1);f.setsampwidth(2);f.setframerate(24000);f.writeframes(b'\0\0'*240)
++    return p
++
++
++def test_operational_token_rotation_preserves_task_but_model_setting_does_not(tmp_path,monkeypatch):
++    monkeypatch.setattr(I,'load_env',lambda:{'HV_API_TOKEN':'old','IMAGE_MODEL':'a'})
++    t=contract(tmp_path)
++    monkeypatch.setattr(I,'load_env',lambda:{'HV_API_TOKEN':'new','IMAGE_MODEL':'a'})
++    I.require_same_task(t,contract(tmp_path))
++    with I.task_scope(t,'b'*32): assert I.current_execution()['task_id']==t['task_id']
++    monkeypatch.setattr(I,'load_env',lambda:{'HV_API_TOKEN':'new','IMAGE_MODEL':'b'})
++    with pytest.raises(I.TaskMismatch): I.require_same_task(t,contract(tmp_path))
++
++
++def test_machine_contention_is_typed_before_any_source_or_work(monkeypatch):
++    from app.services.batch_worker import classify
++    monkeypatch.setattr('app.managers.load',lambda *a:pytest.fail('source touched'))
++    @S.production_storage
++    def work(ep_id):pytest.fail('work ran')
++    with file_lock(paths.state_dir()/'production-storage.lock'):
++        with pytest.raises(S.ResourceBusy) as exc:work('resource-fixture')
++    assert classify(type(exc.value).__name__+': '+str(exc.value))=='WAITING_RESOURCE'
++
++
++def test_resource_wait_keeps_budget_and_does_not_consume_failure_allowance(tmp_path):
++    from app.services.batch_worker import accept_child_result
++    from app.services.provider_budget import ProviderBudget
++    task=contract(tmp_path);execution=I.execution_ref(task,'a'*32)
++    budget=ProviderBudget(task['budget']['path'],**task['budget']['limits'])
++    budget.reserve('tts','already-done',2);before=read(budget.path)
++    row=dict(task=task,token='a'*32,execution=execution,attempts=1,status='RUNNING')
++    result=tmp_path/'result.json'
++    atomic_json(result,dict(execution=execution,status='WAITING_RESOURCE',
++                           error_type='ResourceBusy',error='machine busy',lease_acquired=True))
++    accept_child_result(row,result)
++    assert row['attempts']==0 and row['status']=='WAITING_RESOURCE' and row['resource_waits']==1
++    assert read(budget.path)==before
++
++
++def test_explicit_numbered_recordings_are_resolved_without_materializing_or_tts(production_episode,monkeypatch,tmp_path):
++    ep,_,_=production_episode
++    wav(tmp_path/'parts/1.wav');wav(tmp_path/'parts/2.wav')
++    monkeypatch.setattr('app.services.voice_assets.resolve_voice_asset',lambda *a,**k:pytest.fail('TTS lookup'))
++    audio=R.episode_source(ep.id,explicit=tmp_path/'parts',mode='parts')
++    assert not audio['requires_tts'] and audio['selection']['kind']=='parts'
++    assert len(audio['selection']['files'])==2
++    assert not list((tmp_path/'parts').glob('master.wav'))
++
++
++def test_validated_v2_external_source_does_not_need_legacy_sidecar(production_episode,monkeypatch,tmp_path):
++    ep,folder,_=production_episode
++    master=wav(tmp_path/'original.wav');plan=tmp_path/'plan.json'
++    from app.orchestrator import _load_script_md
++    from app.managers import load
++    source=fingerprint(_load_script_md(load(ep.id)))
++    atomic_json(plan,dict(source_sha256=source))
++    manifest=tmp_path/'manifest.json'
++    atomic_json(manifest,dict(provenance='external_recording',plan_path=str(plan),plan_sha256=file_sha256(plan),
++                source_recording=dict(delivered_path=str(master),delivered_sha256=file_sha256(master))))
++    atomic_json(folder/'production/v2/run.json',dict(source_sha256=source,manifest_path=str(manifest)))
++    called=[]
++    monkeypatch.setattr('app.services.narration_pipeline.validate_assembly',lambda p:called.append('assembly'))
++    monkeypatch.setattr('app.services.external_narration.validate_external',lambda m:called.append('external'))
++    monkeypatch.setattr('app.services.voice_assets.resolve_voice_asset',lambda *a,**k:pytest.fail('TTS lookup'))
++    audio=R.episode_source(ep.id)
++    assert audio['origin']=='v2_manifest' and not audio['requires_tts']
++    assert called==[]  # original source resolution does not certify generated takes
++    master.write_bytes(b'changed')
++    with pytest.raises(ValueError,match='delivered recording changed'):R.episode_source(ep.id)
++
++
++def test_tts_mode_remains_explicit_when_no_recording_exists(production_episode):
++    audio=R.episode_source(production_episode[0].id)
++    assert audio['kind']=='tts' and audio['requires_tts']
+diff --git a/tests/test_production_readiness.py b/tests/test_production_readiness.py
+index fc6fcf8b28a32ce1c4ca844497a3631b996e0138..9a9cbd93bed544dcc03bbae3d27209ddc64ec5df 100644
+--- a/tests/test_production_readiness.py
++++ b/tests/test_production_readiness.py
+@@ -14,12 +14,15 @@ SCENARIOS = {
+         {"event":"episode_rebuild_completed","episode_id":"two"},
+     ],
+     "kill_resume": [
++        {"event":"worker_started","episode_id":"one"},
+         {"event":"worker_terminated","episode_id":"one"},
+         {"event":"resume_started","episode_id":"one"},
+         {"event":"resume_completed","episode_id":"one"},
+     ],
+     "timeout_recovery": [
++        {"event":"worker_started","episode_id":"one"},
+         {"event":"timeout_detected","episode_id":"one"},
++        {"event":"worker_terminated","episode_id":"one"},
+         {"event":"recovery_started","episode_id":"one"},
+         {"event":"recovery_completed","episode_id":"one"},
+     ],
+@@ -51,31 +54,61 @@ def evidence(tmp_path, monkeypatch):
+     for name, rows in SCENARIOS.items():
+         run_id = "run-"+name
+         if name == "real_provider_models":
+-            provider_receipt = tmp_path/"provider-receipt.json"
+-            provider_audio = tmp_path/"provider-audio.wav"
+-            provider_audio.write_bytes(b"actual provider audio fixture")
+-            audio_sha = file_sha256(provider_audio)
+-            atomic_json(provider_receipt, dict(status="succeeded", request_id="provider-task-123",
+-                                               model="real-model-id", audio_sha256=audio_sha))
+-            rows = [dict(rows[0], receipt_path=str(provider_receipt),
+-                         receipt_sha256=file_sha256(provider_receipt),
+-                         audio_path=str(provider_audio), audio_sha256=audio_sha)]
+-        events = [dict(row, run_id=run_id, at=time.time()) for row in rows]
++            rows=[]
++            for kind in ('tts','image'):
++                output=tmp_path/(kind+'-provider-output.bin');output.write_bytes(kind.encode())
++                output_sha=file_sha256(output);dispatch='dispatch-'+kind
++                execution=dict(task_id='a'*64,attempt_id='b'*32,task_sha256='d'*64)
++                receipt=dict(model='real-model-id',execution=execution,budget_attempt_id=dispatch,budget_path='original-provider-ledger',
++                    status='succeeded',request_id='provider-task-123',audio_sha256=output_sha)
++                row=dict(event='provider_request_succeeded',provider='fixture-provider',
++                    model='real-model-id',request_id='provider-task-123',is_mock=False,
++                    provider_kind=kind,provider_attempt_id=dispatch,task_sha256='d'*64,
++                    output_path=str(output),output_sha256=output_sha)
++                if kind=='image':
++                    receipt.update(attempt_id=dispatch,response={'fixture':True},channel='fixture-provider',request_fingerprint='e'*64)
++                    install=tmp_path/'image-install.json'
++                    atomic_json(install,dict(request_fingerprint='e'*64,output_sha256=output_sha))
++                    row.update(install_path=str(install),install_sha256=file_sha256(install))
++                provider_receipt=tmp_path/(kind+'-receipt.json');atomic_json(provider_receipt,receipt)
++                ledger=tmp_path/(kind+'-budget.json')
++                atomic_json(ledger,dict(limits={kind+'_requests':1},used={kind+'_requests':1},
++                    attempts=[dict(id=dispatch,status='succeeded',kind=kind,execution=execution)]))
++                row.update(receipt_path=str(provider_receipt),receipt_sha256=file_sha256(provider_receipt),
++                    budget_path='original-provider-ledger',budget_receipt_path=str(ledger),budget_receipt_sha256=file_sha256(ledger))
++                rows.append(row)
++        stamp = time.time()
++        events = [dict(row, run_id=run_id, at=stamp, sequence=i+1,
++                       task_id='a'*64, attempt_id='b'*32) for i,row in enumerate(rows)]
++        for e in events:
++            if e['event']=='provider_request_succeeded': e['episode_id']='one'
++            if e['event'] in ('resume_started','resume_completed','recovery_started','recovery_completed'):
++                e.update(attempt_id='c'*32, previous_attempt_id='b'*32)
++            if e['event'] in ('worker_started', 'worker_terminated'):
++                e.update(pid=123, process_created_at=stamp-1, exit_code=-9)
++            if name == 'unattended_worker_full_batch': e['batch_id']='batch-1'
++            if e['event'] in ('episode_rebuild_completed','episode_candidate_completed','resume_completed','recovery_completed'):
++                e.update(artifact_path=str(artifact), artifact_sha256=file_sha256(artifact))
++            if e['event'] in ('worker_started','resume_completed','recovery_completed'):
++                budget_file=tmp_path/(name+e['event']+'-budget.json')
++                atomic_json(budget_file, dict(limits=dict(image_requests=1), used=dict(image_requests=1), attempts=[]))
++                e.update(budget_path=str(tmp_path/'original-ledger.json'),
++                         budget_receipt_path=str(budget_file), budget_receipt_sha256=file_sha256(budget_file))
+         events_path = tmp_path/(name+"-events.json")
+         atomic_json(events_path, events)
+-        manifest = dict(schema_version=1, scenario=name, run_id=run_id,
++        manifest = dict(schema_version=2, evidence_mode="real", scenario=name, run_id=run_id,
+                         source_fingerprint="current", git_revision=REVISION,
+                         status="passed", started_at=time.time()-2, finished_at=time.time())
+         manifest_path = tmp_path/(name+"-manifest.json")
+         atomic_json(manifest_path, manifest)
+         scenario_evidence[name] = dict(
+-            schema_version=1, scenario=name, run_id=run_id,
++            schema_version=2, scenario=name, run_id=run_id,
+             source_fingerprint="current", git_revision=REVISION,
+             manifest_path=str(manifest_path), manifest_sha256=file_sha256(manifest_path),
+             events_path=str(events_path), events_sha256=file_sha256(events_path),
+             artifacts={str(artifact):file_sha256(artifact)},
+         )
+-    record = dict(schema_version=2, source_fingerprint="current", git_revision=REVISION,
++    record = dict(schema_version=3, source_fingerprint="current", git_revision=REVISION,
+                   artifacts={str(artifact):file_sha256(artifact)},
+                   episodes=["one","two"], scenario_evidence=scenario_evidence)
+     path = tmp_path/'acceptance/production-validation.json'
+@@ -94,7 +127,7 @@ def test_legacy_boolean_flags_are_not_production_evidence(evidence):
+     atomic_json(path, legacy)
+     result = production_readiness.assess("current")
+     assert not result["ready"]
+-    assert any("schema_version=2" in blocker for blocker in result["blockers"])
++    assert any("schema_version=3" in blocker for blocker in result["blockers"])
+ 
+ 
+ def test_missing_scenario_evidence_blocks_readiness(evidence):
+diff --git a/tests/test_quality_disposition_loop.py b/tests/test_quality_disposition_loop.py
+index 342025a3b957d3db546a73e5c615edf03703181e..6f985814198af99cb5d21a56eb372bbd6e77abcb 100644
+--- a/tests/test_quality_disposition_loop.py
++++ b/tests/test_quality_disposition_loop.py
+@@ -27,6 +27,7 @@ def _report(tmp_path):
+     rp.write_text(json.dumps({
+         "manifest_path": str(tmp_path / "manifest.json"),
+         "manifest_sha256": file_sha256(tmp_path / "manifest.json"),
++        "decision_sha256": __import__("app.services.production_quality", fromlist=["decision_identity"]).decision_identity(),
+         "checker_sha256": file_sha256(
+             Path(__file__).resolve().parents[1]/"app/services/asr_check.py"),
+         "takes": [
+diff --git a/tests/test_resource_diagnostics.py b/tests/test_resource_diagnostics.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..e37031e0a9620bd6f9fa8b6bc324db7b11094195
+--- /dev/null
++++ b/tests/test_resource_diagnostics.py
+@@ -0,0 +1,141 @@
++"""Opt-in resource overlap and read-only quality/efficiency diagnostics."""
++from concurrent.futures import ThreadPoolExecutor
++from contextlib import contextmanager
++from pathlib import Path
++from types import SimpleNamespace
++import json
++import subprocess
++import sys
++import time
++import pytest
++from app import paths
++from app.services import production_storage as S, production_diagnostics as D
++from app.services.provenance import atomic_json,file_sha256
++pytestmark=pytest.mark.production
++
++
++@pytest.fixture
++def resources(monkeypatch):
++    monkeypatch.setattr('psutil.virtual_memory',lambda:SimpleNamespace(available=64*1024**3))
++    checks=[]
++    monkeypatch.setattr('app.orchestrator._check_disk_space',lambda p,*,need_mb:checks.append((p,need_mb)))
++    return checks
++
++
++def test_default_capacity_is_one_not_unbounded(resources):
++    with S.resource_reservation('one','fixed script'):
++        with pytest.raises(S.ResourceBusy,match='episode-capacity'):
++            with S.resource_reservation('two','fixed script'):pass
++    with S.machine_storage():assert S.active_reservations()==[]
++    assert list((paths.state_dir()/'resource-leases').glob('*.lock'))
++
++
++def test_opt_in_two_episodes_reserve_combined_disk_and_serialize_render(resources):
++    atomic_json(paths.state_dir()/'resource-policy.json',dict(max_active_episodes=2))
++    with S.resource_reservation('one','script'),S.resource_reservation('two','script'):
++        with S.machine_storage():assert len(S.active_reservations())==2
++        with pytest.raises(S.ResourceBusy):
++            with S.resource_reservation('three','script'):pass
++        with S.render_lease():
++            with S.render_lease():pass  # same-thread reentrancy only
++            def render():
++                with pytest.raises(S.ResourceBusy,match='video-encoder'):
++                    with S.render_lease():pass
++            with ThreadPoolExecutor(max_workers=1) as pool:pool.submit(render).result(timeout=5)
++    # Existing free-space tests remain authoritative. We check reservation
++    # demand grows rather than counting the same free bytes twice.
++    assert max(n for _,n in resources)>=min(n for _,n in resources)*2
++
++
++def test_policy_changes_require_existing_production_to_drain(resources):
++    atomic_json(paths.state_dir()/'resource-policy.json',dict(max_active_episodes=2))
++    with S.resource_reservation('one','script'):
++        atomic_json(paths.state_dir()/'resource-policy.json',dict(max_active_episodes=3))
++        with pytest.raises(S.ResourceBusy,match='policy-change'):
++            with S.resource_reservation('two','script'):pass
++
++
++def test_memory_wait_is_not_a_supplier_failure(resources,monkeypatch):
++    monkeypatch.setattr('psutil.virtual_memory',lambda:SimpleNamespace(available=512*1024**2))
++    with pytest.raises(S.ResourceBusy,match='available-memory'):
++        with S.resource_reservation('one','script'):pytest.fail('started without memory')
++
++
++def test_live_resource_reservation_blocks_snapshot(resources,tmp_path,monkeypatch):
++    from app.services import production_backup as B
++    atomic_json(paths.episode_json('one'),dict(id='one'))
++    with S.resource_reservation('one','script'):
++        with pytest.raises(S.ResourceBusy,match='snapshot'):
++            B.create_snapshot(['one'],tmp_path/'snapshot',dry_run=True)
++
++
++def test_process_death_reclaims_capacity_without_deleting_kernel_lock(tmp_path):
++    root=tmp_path/'worker';ready=tmp_path/'ready';state=paths.state_dir()
++    script=tmp_path/'resource-owner.py'
++    script.write_text('''import sys,time
++from pathlib import Path
++from types import SimpleNamespace
++sys.path.insert(0,sys.argv[1])
++from app import paths
++paths.state_dir=lambda:Path(sys.argv[2])
++paths.episode_dir=lambda eid:Path(sys.argv[3])/eid
++import psutil
++psutil.virtual_memory=lambda:SimpleNamespace(available=64*1024**3)
++from app import orchestrator
++orchestrator._check_disk_space=lambda *a,**k:None
++from app.services.production_storage import resource_reservation
++with resource_reservation('one','script'):
++    Path(sys.argv[4]).write_text('ready')
++    time.sleep(30)
++''',encoding='utf-8')
++    child=subprocess.Popen([sys.executable,str(script),str(paths.ROOT),str(state),str(root),str(ready)],
++        stdout=subprocess.DEVNULL,stderr=subprocess.PIPE)
++    try:
++        deadline=time.monotonic()+15
++        while not ready.exists() and child.poll() is None and time.monotonic()<deadline:time.sleep(.02)
++        assert ready.exists(),child.stderr.read().decode() if child.poll() is not None else 'child timeout'
++        with S.machine_storage():assert len(S.active_reservations())==1
++        child.kill();child.wait(timeout=10)
++        with S.machine_storage():assert S.active_reservations()==[]
++        assert list((state/'resource-leases').glob('*.lock'))
++    finally:
++        if child.poll() is None:child.kill();child.wait(timeout=10)
++        child.stderr.close()
++
++
++def test_selective_rework_is_advice_not_new_approval():
++    value=D.impact({'source':'same','visual':'old'},{'source':'same','visual':'new'})
++    assert 'images' in value['suggested_stages'] and 'tts' not in value['suggested_stages']
++    assert not value['automatic_execution'] and value['requires_current_stage_validation']
++    assert 'tts' in D.impact({'source':'old'},{'source':'new'})['suggested_stages']
++    assert D.compare({'inputs':{'x':1}},{'inputs':{'x':2}})['quality_improvement_proven'] is False
++
++
++def test_missing_media_is_not_a_green_diagnostic(tmp_path):
++    value=D.report('no-records')
++    assert value['errors']
++    assert value['approved'] is False and value['production_ready'] is False
++    assert value['metrics']['human_review_minutes'] is None
++    assert value['metrics']['approved_cost_per_minute'] is None
++
++
++def test_same_pixels_group_contiguous_holds_and_escape_review_text(tmp_path,monkeypatch):
++    from app.services import narration_pipeline as N, production_v2 as V, delivery
++    image=tmp_path/'one.png';image.write_bytes(b'pixels')
++    other=tmp_path/'two.png';other.write_bytes(b'pixels')
++    timeline=tmp_path/'timeline.json'
++    atomic_json(timeline,dict(shots=[dict(image_path=str(image),sample_start=0,sample_end=70),
++        dict(image_path=str(other),sample_start=70,sample_end=100)],
++        subtitles=[dict(unit_id='one',sample_start=0,sample_end=1,text='too many letters')]))
++    manifest=dict(sample_rate=1,samples=100,alignment=[dict(unit_id='one',text='<script>alert(1)</script>',sample_start=0,sample_end=100)])
++    monkeypatch.setattr(N,'validate_assembly',lambda *a:manifest)
++    monkeypatch.setattr(V,'validate_timeline',lambda *a:None)
++    monkeypatch.setattr(D,'input_snapshot',lambda *a:{'source':'fixed'})
++    atomic_json(paths.episode_dir('diagnostic')/'production/v2/run.json',dict(manifest_path='fixture',timeline_path=str(timeline)))
++    value=D.report('diagnostic')
++    assert len(value['shots'])==1 and value['shots'][0]['review_long_hold']
++    assert value['shots'][0]['duration_seconds']==100
++    assert value['subtitle_flags'][0]['advisory_only'] is True
++    page=D.write_report(value,tmp_path/'report')
++    assert '<script>' not in page.read_text('utf-8')
++    assert '&lt;script&gt;' in page.read_text('utf-8')
+diff --git a/tests/test_studio_process_repair.py b/tests/test_studio_process_repair.py
+index bb1dda9b5a9eca90601e9fa1a46faef4c2c2cdb3..6209889cc57bc85971ea51414441c84e05d55211 100644
+--- a/tests/test_studio_process_repair.py
++++ b/tests/test_studio_process_repair.py
+@@ -56,12 +56,16 @@ def test_wav_and_forced_text_alone_cannot_pass(tmp_path):
+     assert r['findings']==[dict(kind='transcript_check_pending')]
+ 
+ 
+-def test_existing_transcript_pass_does_not_hide_long_silence(tmp_path):
++def test_existing_transcript_pass_does_not_hide_long_silence(tmp_path,monkeypatch):
+     from app.services.production_quality import _check_take
+     audio=sound(tmp_path/'a.wav',silence=5)
+     text='兵贵神速。';sha=file_sha256(audio)
+     take=dict(audio_path=str(audio),audio_sha256=sha,quality=dict(status='passed',expected_sha256=fingerprint(text),
+                 audio_sha256=sha,transcript=text))
++    receipt=tmp_path/'cached-recognition.json';atomic_json(receipt,{'offline':True})
++    monkeypatch.setattr('app.services.local_asr.recognize',lambda *a,**k:(
++        dict(text=text,request_id='offline',checker_version='offline'),receipt))
++    monkeypatch.setattr('app.services.asr_check.check',lambda *a,**k:dict(take['quality']))
+     _,_,quality=_check_take((dict(text=text),take,None,fingerprint(text)))
+     assert quality['content_checks']['status']=='needs_review'
+     assert quality['content_checks']['findings'][0]['kind']=='long_silence'
+@@ -163,7 +167,7 @@ def test_resource_limits_are_bounded_and_busy_does_not_start_worker(tmp_path,mon
+     audio=sound(tmp_path/'long.wav',seconds=60)
+     assert R.timeout_for(audio,180)==360
+     with R.lease('first',min_available_mb=0):
+-        with pytest.raises(RuntimeError,match='busy'):
++        with pytest.raises(RuntimeError,match='waiting for resource'):
+             with R.lease('second',wait_seconds=0,min_available_mb=0):pytest.fail('second worker')
+     with R.lease('recovered',wait_seconds=0,min_available_mb=0):pass
+ 

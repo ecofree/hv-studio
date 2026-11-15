@@ -1,0 +1,300 @@
+diff --git a/.github/workflows/offline-safety.yml b/.github/workflows/offline-safety.yml
+index 0913543a3a811ed55e4cc0162cfeaafd2c0c0fac..2b59956a4965507e297162097d2b25a3bbf02914 100644
+--- a/.github/workflows/offline-safety.yml
++++ b/.github/workflows/offline-safety.yml
+@@ -2,7 +2,7 @@ name: Offline production safety
+ 
+ on:
+   push:
+-    branches: [main, codex/p0-security-identity-hardening]
++    branches: [main, codex/p0-security-identity-hardening, codex/four-batch-production-hardening]
+   pull_request:
+     branches: [main]
+   workflow_dispatch:
+@@ -56,6 +56,11 @@ jobs:
+           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+           python -m compileall -q app bin tests
+           exit $LASTEXITCODE
++      - name: Run four-batch regressions
++        shell: pwsh
++        run: |
++          python -m pytest -q tests/test_four_batch_correctness.py tests/test_four_batch_recovery.py tests/test_acceptance_runner.py tests/test_resource_diagnostics.py --junitxml=ci-evidence/four-batches.xml
++          exit $LASTEXITCODE
+       - name: Run execution and safety regressions
+         shell: pwsh
+         run: |
+diff --git a/app/services/acceptance_capture.py b/app/services/acceptance_capture.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..0f5a61ae42960018838e7759a5a469e0ae57e329
+--- /dev/null
++++ b/app/services/acceptance_capture.py
+@@ -0,0 +1,77 @@
++"""Write immutable run evidence observed by the acceptance supervisor.
++
++No caller-provided passed flag. Closing verifies the causal contract. Offline
++runs are useful regression evidence but are never eligible for readiness.
++"""
++from pathlib import Path
++import time
++import uuid
++from app.services.provenance import atomic_json, file_sha256
++from app.services.narration_pipeline import read
++
++
++def budget_snapshot(budget_path, folder):
++    p=Path(folder)/'budgets'/(uuid.uuid4().hex+'.json')
++    atomic_json(p,read(budget_path))
++    return dict(budget_path=str(Path(budget_path).resolve()),
++                budget_receipt_path=str(p.resolve()),budget_receipt_sha256=file_sha256(p))
++
++
++class Capture:
++    def __init__(self, folder, scenario, source_fingerprint, revision, *, mode):
++        from app.services.production_acceptance import SCENARIOS
++        if scenario not in SCENARIOS or mode not in ('offline','real'):
++            raise ValueError('unsupported scenario or evidence mode')
++        self.folder=Path(folder).resolve()
++        self.folder.mkdir(parents=True,exist_ok=False)
++        self.events=[];self.artifacts={}
++        self.manifest=dict(schema_version=2,scenario=scenario,run_id=uuid.uuid4().hex,
++            source_fingerprint=source_fingerprint,git_revision=revision,evidence_mode=mode,
++            status='running',started_at=time.time())
++        atomic_json(self.folder/'run.json',self.manifest)
++
++    def emit(self, name, *, task=None, attempt=None, at=None, **details):
++        forbidden={'run_id','sequence','event','task_id','attempt_id','episode_id'} & details.keys()
++        if forbidden: raise ValueError('event identity cannot be overridden')
++        event=dict(details,event=name,run_id=self.manifest['run_id'],sequence=len(self.events)+1,
++                   at=time.time() if at is None else at)
++        if task is not None:
++            event.update(episode_id=task['episode_id'],task_id=task['task_id'],attempt_id=attempt)
++        self.events.append(event)
++        atomic_json(self.folder/'events.json',self.events)
++        return event
++
++    def completed(self, name, result, *, task, attempt, **details):
++        from app.services.production_identity import require_execution, execution_ref
++        require_execution(result.get('execution'),execution_ref(task,attempt))
++        if result.get('run_ok') is not True: raise ValueError('execution did not complete')
++        p=Path(result['final_mp4']).resolve();sha=file_sha256(p)
++        if result.get('candidate_sha256')!=sha: raise ValueError('result candidate changed')
++        self.artifacts[str(p)]=sha
++        atomic_json(self.folder/'artifacts.json',self.artifacts)
++        return self.emit(name,task=task,attempt=attempt,artifact_path=str(p),artifact_sha256=sha,**details)
++
++    def close(self):
++        from app.services.production_acceptance import verify_scenario
++        self.manifest.update(status='passed',finished_at=time.time())
++        atomic_json(self.folder/'run.json',self.manifest)
++        atomic_json(self.folder/'events.json',self.events)
++        atomic_json(self.folder/'artifacts.json',self.artifacts)
++        record=self.record()
++        try:
++            verify_scenario(self.manifest['scenario'],record,self.manifest['source_fingerprint'],
++                            require_real=self.manifest['evidence_mode']=='real')
++        except Exception as exc:
++            self.fail(exc);raise
++        return record
++
++    def fail(self, exc):
++        self.manifest.update(status='blocked',finished_at=time.time(),error_type=type(exc).__name__,error=str(exc)[:1000])
++        atomic_json(self.folder/'run.json',self.manifest)
++
++    def record(self):
++        return dict(schema_version=2,scenario=self.manifest['scenario'],run_id=self.manifest['run_id'],
++            source_fingerprint=self.manifest['source_fingerprint'],git_revision=self.manifest['git_revision'],
++            manifest_path=str(self.folder/'run.json'),manifest_sha256=file_sha256(self.folder/'run.json'),
++            events_path=str(self.folder/'events.json'),events_sha256=file_sha256(self.folder/'events.json'),
++            artifacts=dict(self.artifacts))
+diff --git a/app/services/acceptance_events.py b/app/services/acceptance_events.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..361c2b5ae8dfd4fa6cd8a0cc3dcb9984905e1d69
+--- /dev/null
++++ b/app/services/acceptance_events.py
+@@ -0,0 +1,103 @@
++"""Causal contracts for acceptance evidence; no work dispatch or approvals.
++
++Hashes establish integrity, not origin/authenticity against a local administrator.
++Real acceptance must be produced by the supervised runner, not handwritten flags.
++"""
++import math
++import re
++from pathlib import Path
++from app.services.narration_pipeline import read
++from app.services.provenance import file_sha256
++
++_COMPLETIONS = {'episode_rebuild_completed', 'episode_candidate_completed',
++                'resume_completed', 'recovery_completed'}
++_RECOVERY = {
++    'kill_resume': ('worker_started', 'worker_terminated', 'resume_started', 'resume_completed'),
++    'timeout_recovery': ('worker_started', 'timeout_detected', 'worker_terminated',
++                         'recovery_started', 'recovery_completed'),
++}
++
++
++def _digest(value, size):
++    return isinstance(value, str) and re.fullmatch(r'[0-9a-f]{%d}' % size, value) is not None
++
++
++def _budget(event):
++    p, sha = event.get('budget_receipt_path'), event.get('budget_receipt_sha256')
++    if not isinstance(p, str) or not _digest(sha, 64) or file_sha256(p) != sha:
++        raise ValueError('recovery budget snapshot missing or changed')
++    receipt = read(p)
++    from app.services.provider_budget import validate_usage
++    validate_usage(receipt['limits'], receipt['used'])
++    return receipt
++
++
++def validate_chain(name, manifest, events, artifacts, *, require_real=True):
++    mode = manifest.get('evidence_mode')
++    if mode not in ('real', 'offline') or require_real and mode != 'real':
++        raise ValueError('real acceptance cannot use offline or unclassified evidence')
++    started, finished = manifest['started_at'], manifest['finished_at']
++    last = started
++    for i, event in enumerate(events, 1):
++        at = event.get('at')
++        if (type(event.get('sequence')) is not int or event['sequence'] != i
++                or type(at) not in (float, int) or not math.isfinite(at)
++                or not last <= at <= finished):
++            raise ValueError('event order, sequence or run time window is invalid')
++        last = at
++        if event['event'] not in ('batch_started', 'batch_completed'):
++            if (not isinstance(event.get('episode_id'), str) or not event['episode_id']
++                    or not _digest(event.get('task_id'), 64)
++                    or not _digest(event.get('attempt_id'), 32)):
++                raise ValueError('event must bind an episode, task and execution attempt')
++        if event['event'] in _COMPLETIONS:
++            p, sha = event.get('artifact_path'), event.get('artifact_sha256')
++            if not isinstance(p, str) or not _digest(sha, 64) or artifacts.get(p) != sha:
++                raise ValueError('completion is not bound to its scenario artifact')
++            if file_sha256(p) != sha:
++                raise ValueError('completed artifact changed')
++    if name in _RECOVERY:
++        sequence = _RECOVERY[name]
++        selected = [e for e in events if e['event'] in sequence]
++        if [e['event'] for e in selected] != list(sequence):
++            raise ValueError('recovery events are missing, repeated or out of causal order')
++        first, ended = selected[0], next(e for e in selected if e['event']=='worker_terminated')
++        begin, final = selected[-2:]
++        if len({(e['episode_id'], e['task_id']) for e in selected}) != 1:
++            raise ValueError('recovery crosses episode or task')
++        original = selected[:-2]
++        if (any(e['attempt_id'] != first['attempt_id'] for e in original)
++                or begin['attempt_id'] != final['attempt_id']
++                or begin['attempt_id'] == first['attempt_id']
++                or begin.get('previous_attempt_id') != first['attempt_id']):
++            raise ValueError('recovery attempt linkage is invalid')
++        pid, created = first.get('pid'), first.get('process_created_at')
++        if (type(pid) is not int or pid <= 0 or type(created) not in (int,float)
++                or not math.isfinite(created) or created <= 0
++                or (ended.get('pid'), ended.get('process_created_at')) != (pid, created)
++                or type(ended.get('exit_code')) is not int):
++            raise ValueError('terminated process identity/exit evidence is invalid')
++        before, after = _budget(first), _budget(final)
++        if (first.get('budget_path') != final.get('budget_path')
++                or not isinstance(first.get('budget_path'), str)
++                or before['limits'] != after['limits']
++                or any(after['used'].get(k, -1) < v for k,v in before['used'].items())):
++            raise ValueError('recovery replaced budget or erased spending')
++        # Existing reserved calls cannot disappear or silently become new calls.
++        originals = {r['id']:r for r in before['attempts']}
++        later = {r['id']:r for r in after['attempts']}
++        for key, row in originals.items():
++            if key not in later or any(later[key].get(k) != row.get(k)
++                    for k in ('kind','request_fingerprint','characters','reserved_at')):
++                raise ValueError('recovery lost or rewrote a prior provider attempt')
++    if name == 'unattended_worker_full_batch':
++        if events[0]['event'] != 'batch_started' or events[-1]['event'] != 'batch_completed':
++            raise ValueError('batch completion must bracket episode execution')
++        batch = events[0].get('batch_id')
++        if not isinstance(batch, str) or not batch or any(e.get('batch_id') != batch for e in events):
++            raise ValueError('batch evidence mixes batch identities')
++    completed = [e['episode_id'] for e in events if e['event'] in _COMPLETIONS]
++    if name in ('multi_episode_current_rebuild', 'unattended_worker_full_batch'):
++        if len(completed) < 2 or len(completed) != len(set(completed)):
++            raise ValueError('batch requires distinct completed episodes, without duplicates')
++    return sorted(set(completed))
+diff --git a/app/services/acceptance_providers.py b/app/services/acceptance_providers.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..4b746d3bc2526ac8d10422f520040eb1a6665747
+--- /dev/null
++++ b/app/services/acceptance_providers.py
+@@ -0,0 +1,77 @@
++"""Bind real-provider acceptance to actual ledger attempts and output receipts."""
++from pathlib import Path
++from app.services.narration_pipeline import read
++from app.services.provenance import file_sha256
++
++
++def verify(event, verify_file):
++    kind=event.get('provider_kind')
++    if kind not in ('tts','image') or event.get('is_mock') is not False:
++        raise ValueError('non-mock provider receipt required for TTS and images')
++    receipt=read(verify_file(event.get('receipt_path'),event.get('receipt_sha256'),'provider receipt'))
++    ledger=read(verify_file(event.get('budget_receipt_path'),event.get('budget_receipt_sha256'),'provider budget'))
++    from app.services.provider_budget import validate_usage
++    validate_usage(ledger['limits'],ledger['used'])
++    if receipt.get('budget_path')!=event.get('budget_path') or not event.get('budget_path'):
++        raise ValueError('provider ledger path differs')
++    execution=dict(task_id=event['task_id'],attempt_id=event['attempt_id'],task_sha256=event['task_sha256'])
++    matches=[r for r in ledger.get('attempts',[]) if r.get('id')==event.get('provider_attempt_id')]
++    if (len(matches)!=1 or matches[0].get('status')!='succeeded' or matches[0].get('kind')!=kind
++            or matches[0].get('execution')!=execution or receipt.get('execution')!=execution):
++        raise ValueError('provider success is not bound to this paid execution')
++    if receipt.get('model')!=event.get('model') or not event.get('model'):
++        raise ValueError('provider model differs')
++    output=verify_file(event.get('output_path'),event.get('output_sha256'),'provider output')
++    if kind=='tts':
++        if (receipt.get('status')!='succeeded' or receipt.get('request_id')!=event.get('request_id')
++                or not event.get('request_id') or receipt.get('budget_attempt_id')!=event['provider_attempt_id']
++                or receipt.get('audio_sha256')!=event['output_sha256']):
++            raise ValueError('TTS receipt differs from output or dispatch')
++    else:
++        install=read(verify_file(event.get('install_path'),event.get('install_sha256'),'image installation'))
++        if (receipt.get('attempt_id')!=event['provider_attempt_id'] or not receipt.get('response')
++                or receipt.get('channel')!=event.get('provider')
++                or install.get('request_fingerprint')!=receipt.get('request_fingerprint')
++                or install.get('output_sha256')!=event['output_sha256']):
++            raise ValueError('image output is not bound to returned response')
++    return kind
++
++
++def capture(capture, cases, budget):
++    """Observe only successful calls made in this acceptance run, not old cache."""
++    from app import paths
++    from app.services.acceptance_capture import budget_snapshot
++    ledger=budget.snapshot()
++    attempts={r['id']:r for r in ledger['attempts'] if r.get('status')=='succeeded'
++              and r.get('reserved_at',0)>=capture.manifest['started_at'] and r.get('execution')}
++    snapshot=budget_snapshot(budget.path,capture.folder)
++    seen=set()
++    for case in cases:
++        folder=paths.episode_dir(case['episode_id'])/'production/v2'
++        # Read only this explicitly scoped acceptance episode's output tree.
++        audio={file_sha256(p):p for p in folder.rglob('*.wav')}
++        receipts=list(folder.rglob('effective_request.json'))
++        receipts += list(folder.rglob('*.response.json'))
++        for p in receipts:
++            receipt=read(p);key=receipt.get('budget_attempt_id',receipt.get('attempt_id'))
++            row=attempts.get(key)
++            if row is None or key in seen:continue
++            execution=row['execution'];kind=row['kind']
++            if receipt.get('execution')!=execution:continue
++            extras={}
++            if kind=='tts':
++                out=audio.get(receipt.get('audio_sha256'))
++                if out is None:continue
++            else:
++                out=Path(str(p)[:-len('.response.json')]);install=out.with_suffix(out.suffix+'.request.json')
++                if not out.is_file() or not install.is_file():continue
++                extras=dict(install_path=str(install),install_sha256=file_sha256(install))
++            task=dict(episode_id=case['episode_id'],task_id=execution['task_id'])
++            capture.artifacts[str(out.resolve())]=file_sha256(out)
++            capture.emit('provider_request_succeeded',task=task,attempt=execution['attempt_id'],
++                task_sha256=execution['task_sha256'],provider_kind=kind,is_mock=False,
++                provider=receipt.get('channel','dashscope'),model=receipt.get('model'),
++                request_id=receipt.get('request_id'),provider_attempt_id=key,
++                receipt_path=str(p.resolve()),receipt_sha256=file_sha256(p),
++                output_path=str(out.resolve()),output_sha256=file_sha256(out),**snapshot,**extras)
++            seen.add(key)
