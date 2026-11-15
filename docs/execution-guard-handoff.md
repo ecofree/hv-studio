@@ -8,9 +8,12 @@ or paid work. A process death releases the kernel lease; the lock file remains.
 
 The queue probes known busy episodes BEFORE admission, spawning and incrementing
 attempts, then proceeds to other episodes. The child independently acquires the
-lease because a preflight probe cannot guarantee ownership after a race. A race
-lost after spawning still uses a process attempt and bounded RETRY_WAIT; this is
-not a claim of atomic cross-process reservation handoff or a complete scheduler.
+lease because a preflight probe cannot guarantee ownership after a race. If the
+child loses that race, it returns a structured ProductionBusy result with
+lease_acquired=false; the supervisor returns the row to QUEUED and rolls back
+the process-attempt counter. No provider budget is touched and no retry backoff
+is added. The child process may still have been spawned, so this is not an
+atomic cross-process reservation handoff or a complete scheduler.
 The conservative global storage lock remains. Different explicit authorizations
 still have separate budgets; this patch does not silently merge/refill them.
 

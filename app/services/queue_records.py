@@ -80,4 +80,7 @@ def load_result(path):
         raise ValueError('invalid child result')
     validate_row(dict(value,attempts=0))
     # Child results cannot replace process ownership or the durable attempt count.
-    return {k:v for k,v in value.items() if k in {'status','candidate_path','artifacts','identity','blockers','error'}}
+    return {k:v for k,v in value.items() if k in {
+        'status','candidate_path','artifacts','identity','blockers','error',
+        'error_type','lease_acquired'
+    }}

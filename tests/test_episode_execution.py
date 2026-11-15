@@ -117,3 +117,30 @@ with episode_execution('shared'):
     finally:
         if child.poll() is None:child.kill();child.wait(timeout=10)
         child.stderr.close()
+
+
+def test_lost_episode_lease_race_does_not_consume_queue_attempt(tmp_path, monkeypatch):
+    import json
+    from app.services import batch_worker as B
+    from app.services import production_storage as S
+    from app.services.narration_pipeline import read
+    folder = tmp_path/'queue'
+    path = B.enqueue('lease-race', ['race-episode'], {}, retries=1, folder=folder)
+    before = read(read(path)['budget_path'])
+    # The advisory probe succeeds; another entry point wins the lease before
+    # the spawned child. Its structured result proves no lease was acquired.
+    monkeypatch.setattr(S, 'episode_available', lambda eid: True)
+    def command(spec_path, eid, token):
+        target = folder/'results'/(token+'.json')
+        payload = dict(status='RETRY_WAIT', error='ProductionBusy: episode already running',
+                       error_type='ProductionBusy', lease_acquired=False)
+        code = 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); p.parent.mkdir(exist_ok=True); p.write_text(json.dumps(json.loads(sys.argv[2])))'
+        return [sys.executable, '-c', code, str(target), json.dumps(payload)]
+    B.run_once(folder, command_factory=command)
+    state = read(path)
+    row = state['episodes']['race-episode']
+    assert row['status'] == 'QUEUED'
+    assert row['attempts'] == 0
+    assert 'retry_at' not in row
+    assert 'episode already running' in row['last_contention']
+    assert read(state['budget_path']) == before

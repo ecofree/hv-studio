@@ -102,9 +102,11 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
     from app.orchestrator import produce
     from app.services.production_identity import artifact_receipt, input_identity
     result_path = spec_path.parent/'results'/(token+'.json')
+    lease_acquired = False
     try:
         from app.services.production_storage import episode_execution
         with episode_execution(eid):
+            lease_acquired = True
             admission = check(eid)
             if not admission['eligible']: raise ValueError('review required: '+'; '.join(admission['blockers']))
             options = job['spec']['options']
@@ -120,7 +122,8 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
                           identity=input_identity(eid, None, options), blockers=status['blockers'])
     except Exception as exc:
         error = f'{type(exc).__name__}: {str(exc)[:1000]}'
-        record = dict(status=classify(error), error=error)
+        record = dict(status=classify(error), error=error,
+                      error_type=type(exc).__name__, lease_acquired=lease_acquired)
     atomic_json(result_path, record)
     return 0
 
@@ -292,7 +295,18 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
                 else: child.terminate()
             child.wait(timeout=10)
     result_path = folder/'results'/(token+'.json')
-    if result_path.exists(): row.update(load_result(result_path))
-    else: row.update(status='RETRY_WAIT', error='interrupted or timed out child')
+    if result_path.exists():
+        result = load_result(result_path)
+        row.update(result)
+        if result.get('error_type') == 'ProductionBusy' and result.get('lease_acquired') is False:
+            # The preflight probe lost a race to another entry point. The child
+            # never owned the episode lease, so no production attempt occurred.
+            row.update(status='QUEUED',
+                       attempts=max(0, row['attempts']-1),
+                       last_contention=result.get('error', 'episode lease was acquired elsewhere'))
+            row.pop('error', None)
+            row.pop('retry_at', None)
+    else:
+        row.update(status='RETRY_WAIT', error='interrupted or timed out child')
     if row['status']=='RETRY_WAIT': row['retry_at']=time.time()+min(2**row['attempts'],60)
-    event(job,eid,row['status'],row.get('error')); atomic_json(path,job)
+    event(job,eid,row['status'],row.get('error') or row.get('last_contention')); atomic_json(path,job)
