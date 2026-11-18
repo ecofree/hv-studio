@@ -6,13 +6,15 @@ from app.services import studio_narration_handoff as H
 from app.webui.studio_components import current
 eid,v,doc=current();s=W.status(eid)
 st.subheader('把已经选定的方案做成完整作品')
+from app.webui.attraction_panel import render as render_attraction
+render_attraction(eid,doc)
 state_path=paths.episode_dir(eid)/'production/v2/run.json'
 full_candidate=None
 if state_path.is_file():
     from app.services.narration_pipeline import read
     if read(state_path).get('receipt_path'):
         from app.services.production_status import get_status
-        full_candidate=get_status(eid)
+        full_candidate=get_status(eid, display=True)
         if full_candidate.get('candidate_path'):
             st.info('整集已登记，可在这里观看。声音方案和短样片的确认继续保留；整集仍需完整听看。')
             st.video(full_candidate['candidate_path'],start_time=st.session_state.get('video-start-'+eid,0))
@@ -190,6 +192,8 @@ for job in J.jobs(eid):
         if result.get('audio_path'):
             st.audio(result['audio_path']);st.caption('候选音轨：'+result['audio_path'])
             if result.get('source_map_path'):
+                from app.webui.voice_consistency_panel import render as consistency_panel
+                consistency_panel(result['audio_path'],result['source_map_path'],key=job['path'])
                 st.caption('选用只登记整集输入，不启动配音或渲染，也不代表已完成整集试听审核。')
                 if st.button('选用这条旁白制作整集',key='select-voice-'+job['path']):
                     try:
@@ -208,14 +212,7 @@ for job in J.jobs(eid):
 from app.webui.studio_finish import render_finish
 render_finish(eid,full_candidate)
 
-with st.expander('只读诊断：任务、听看疑点与效率'):
-    st.caption('不会生成图片、配音、修改素材或自动审批。数据来自当前任务及媒体证据。')
-    if st.button('读取当前诊断',key='diagnostics-'+eid):
-        from app.services.production_diagnostics import report
-        try:
-            diagnostic=report(eid)
-            st.json(diagnostic)
-            import json
-            st.download_button('保存诊断 JSON',json.dumps(diagnostic,ensure_ascii=False,indent=2),
-                               file_name=eid+'-diagnostics.json',mime='application/json')
-        except (ValueError,OSError,KeyError,TypeError,RuntimeError) as exc:st.error(str(exc))
+from app.webui.studio_workbench_tools import recovery, cleanup, review
+recovery(eid)
+review(eid,(full_candidate or {}).get('candidate_path'))
+cleanup(eid)

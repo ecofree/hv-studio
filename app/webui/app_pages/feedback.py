@@ -7,7 +7,7 @@ st.subheader('用真实反馈检验创作判断')
 st.caption('比较相近题材、时长、观测窗口和流量来源。没有的指标留空，不把单条作品的表现当作规律。')
 from app.services.production_status import get_status
 from app.services.provenance import file_sha256
-current_video=get_status(eid).get('candidate_path')
+current_video=get_status(eid, display=True).get('candidate_path')
 duration=float(v['target_seconds'])
 if current_video:
     from app import paths

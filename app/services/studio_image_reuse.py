@@ -61,6 +61,14 @@ def _matches_file(path, expected):
     return _display_digest(path.resolve(),st.st_size,st.st_mtime_ns,st.st_ctime_ns)==expected
 
 
+def validate_motions(scene, directing):
+    from app.models.shot import MotionSpec
+    from app.services.motion import resolve_motion
+    for row in (*scene.get('scenes', scene.get('unit_scenes', [])), *directing.get('visual_events', [])):
+        if row.get('motion') is not None:
+            resolve_motion(MotionSpec(**dict(row['motion'], geometry_version='fit_cover_v2')))
+
+
 def validate_scene_source(scene, document):
     bound = scene.get('source_sha256')
     if bound and bound != document['source_sha256']:
@@ -161,6 +169,7 @@ def _coverage(eid, state, doc, master, scene_path, audio_mode, prepared, planned
         if planned or not exact:
             if pending_design:exact=False
             design=draft
+    validate_motions(plan, design)
     if direction.is_file() and str(direction.resolve()) not in inputs:exact=False
     if exact:
         spans = [(s['image_id'], s['sample_start'], s['sample_end']) for s in timeline['shots']]

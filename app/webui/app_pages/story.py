@@ -26,7 +26,7 @@ with st.expander('查看正文与来源版本'):
     from app.services.studio_sources import contract
     source_contract=contract(eid)
     if source_contract:
-        st.caption('用户原稿已锁定。要更新正文，请修改原项目后从左侧导入新版本。')
+        st.caption('当前原稿快照已锁定。要更新正文，请修改本项目的源稿后从左侧导入新版本。')
         revision=Path(source_contract['revision'])
         st.text_area('原稿（只读）',value=(revision/'source.md').read_text('utf-8'),height=300,disabled=True)
         st.download_button('下载原稿原始文件',data=(revision/'source.md').read_bytes(),file_name='source.md')

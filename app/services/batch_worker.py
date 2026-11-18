@@ -81,6 +81,31 @@ def event(job, eid, status, reason=None):
     job['events'] = job['events'][-200:]
 
 
+def _owns_current_process(pid, created):
+    """Accept the recorded process or its exact Windows venv redirector child.
+
+    Windows venv python.exe launches the base interpreter and stays alive as its
+    parent. Keep the recorded wrapper PID for monitoring/termination; do not
+    admit arbitrary descendants, different commands, or recycled process IDs.
+    """
+    this = psutil.Process()
+    if this.pid == pid:
+        return this.create_time() == created
+    if os.name != 'nt':
+        return False
+    try:
+        parent = this.parent()
+        executable = Path(sys.executable).resolve()
+        base = Path(getattr(sys, '_base_executable', sys.executable)).resolve()
+        return bool(base != executable and parent and parent.pid == pid
+                    and parent.create_time() == created
+                    and Path(parent.exe()).resolve() == executable
+                    and Path(this.exe()).resolve() == base
+                    and parent.cmdline() == this.cmdline())
+    except (psutil.Error, OSError):
+        return False
+
+
 def execute(spec_path, eid, token, owner_pid, owner_created):
     """Private child entry: durable RUNNING record must exist before work starts."""
     import threading
@@ -95,8 +120,7 @@ def execute(spec_path, eid, token, owner_pid, owner_created):
     from app.services.queue_records import validate_job, validate_row
     from app.services.production_identity import execution_ref, require_execution
     validate_job(job, spec_path); validate_row(row)
-    this = psutil.Process()
-    if (row.get('child_pid') != this.pid or row.get('child_created') != this.create_time()
+    if (not _owns_current_process(row.get('child_pid'), row.get('child_created'))
             or row.get('owner_pid') != owner_pid or row.get('owner_created') != owner_created):
         return 1  # A stale/replayed command cannot impersonate the current child.
     execution = execution_ref(row['task'], token) if row.get('task') else None
@@ -272,7 +296,8 @@ def _run_episode(folder, path, job, eid, row, owner, command_factory):
                 row.pop(key, None)
             row['status']='APPROVED'; event(job,eid,'APPROVED'); atomic_json(path,job)
             return
-        elif status['status'] == 'STALE' and not status['quality_pending_units'] and not status['delivery_pending']:
+        elif ((status['status'] == 'STALE' or status.get('dimensions', {}).get('quality') == 'stale_or_invalid')
+              and not status['quality_pending_units'] and not status['delivery_pending']):
             row['status']='QUEUED'
         else: return
     if row['status'] in ('BUDGET_EXHAUSTED','FAILED'): return

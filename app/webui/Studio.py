@@ -24,7 +24,7 @@ with st.sidebar:
     else:
         chosen=None;st.info('先从旧项目建立新版本，或导入一段正文。')
     with st.expander('从同步原稿建立新版本'):
-        st.caption('读取副本中的文件，并核对原项目。正文与配套 TTS 文本不一致时停止导入。')
+        st.caption('读取本项目中的原稿并保存冻结快照。正文与配套 TTS 文本不一致时停止导入。')
         with st.form('import-authoring'):
             author_id=st.text_input('新原稿版本名称',placeholder='history-user-02')
             author_title=st.text_input('原稿作品标题')
@@ -58,7 +58,7 @@ with st.sidebar:
                 try:
                     S.create_episode(ident,title,source,scope='pilot' if scope=='短样片' else 'full');st.rerun()
                 except (ValueError,OSError) as exc:st.error(str(exc))
-    st.caption('原项目与旧素材保留。新任务使用独立工作区；模型调用默认零预算。')
+    st.caption('原稿与旧素材保留。新任务使用本项目工作区；模型调用默认零预算。')
 
 if chosen:
     if Sources.external_updates(chosen):

@@ -13,8 +13,20 @@ def input_files(ep_id):
                          'production/v2/source_image_briefs.json', 'studio/image-reuse.json')}
 
 
+def storyboard_jobs(ep_id, scene, briefs, directing, *, create_output_dir):
+    from app.orchestrator import build_image_jobs
+    from app.services.existing_images import include_registered
+    from app.services.studio_image_reuse import validate_motions
+    validate_motions(scene, directing)
+    used = {s['image'] for s in scene.get('scenes', scene.get('unit_scenes', []))}
+    used.update(e['image_id'] for e in directing.get('visual_events', []))
+    keys = used.intersection(briefs)
+    generated = build_image_jobs(ep_id, only=keys, strict=True, create_output_dir=create_output_dir) if keys else []
+    return include_registered(ep_id, generated, only=used), used
+
+
 def prepare(ep, plan_path, root, *, preview=False):
-    from app.orchestrator import build_image_jobs, _episode_dir
+    from app.orchestrator import _episode_dir
     from app.services.image import ImageJob
     from app.models import ImageGenRequest
     from app.config.config import get_settings
@@ -27,25 +39,23 @@ def prepare(ep, plan_path, root, *, preview=False):
     if scene_path.exists() != prompt_path.exists():
         raise ValueError('scene_plan.json and image_prompts.json must be supplied together')
     if scene_path.exists():
-        jobs = build_image_jobs(ep.id, strict=True, create_output_dir=not preview)
-        from app.services.existing_images import include_registered
-        jobs = include_registered(ep.id,jobs)
         scene = read(scene_path)
         image_briefs = read(prompt_path)
+        jobs, used = storyboard_jobs(ep.id, scene, image_briefs, directing, create_output_dir=not preview)
         from app.services.studio_image_reuse import validate_scene_source
         validate_scene_source(scene, plan)
         if 'scenes' in scene:
             from app.services.production_timeline import scene_bindings
             source_manifest = {'alignment': [dict(unit_id=u['unit_id'], text=u['source_text']) for u in plan['units']]}
             scene_bindings(ep, source_manifest, scene)
-        used = {s['image'] for s in scene.get('scenes', scene.get('unit_scenes', []))}
-        used.update(e['image_id'] for e in directing.get('visual_events', []))
         local={k for k,v in scene.get('images',{}).items() if v.get('local_only')}
         unmet=sorted((used&local)-{j.id for j in jobs if getattr(j,'imported',False)})
         if unmet:raise ValueError('请先登记分镜中的本地素材：'+'、'.join(unmet))
         if not used or not used.issubset({j.id for j in jobs}): raise ValueError('scene references missing image jobs')
         jobs=[j for j in jobs if j.id in used]
     else:
+        from app.services.studio_image_reuse import validate_motions
+        validate_motions({}, directing)
         # Deterministic source-derived draft; semantic review remains explicit.
         # No added historical facts or silent LLM/provider calls.
         settings = get_settings(); style = settings.get_profile().image; primary = settings.image.primary

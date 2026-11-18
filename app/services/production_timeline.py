@@ -57,6 +57,21 @@ def timed_scenes(ep, manifest, plan, evidence):
     return result
 
 
+def select_after_quality_refresh(previous, proposed):
+    """Keep the reviewed timeline when only its separately validated QA report changed."""
+    if not previous or not Path(previous).is_file() or Path(proposed) == Path(previous):
+        return proposed
+    try:
+        old, new = read(previous), read(proposed)
+        for timeline in (old, new):
+            quality = timeline.pop('quality_report_path')
+            if timeline['inputs'].pop(quality) != file_sha256(quality):
+                return proposed
+        return Path(previous) if old == new else proposed
+    except (KeyError, OSError, ValueError, TypeError):
+        return proposed
+
+
 def build(ep, manifest_path, alignment_path, image_assets, scene_plan_path, destination, quality_path=None):
     from app.services.studio_workflow import require_direction_current
     require_direction_current(ep.id)

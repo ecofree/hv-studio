@@ -12,6 +12,8 @@ with st.expander('系列共用声音方案',expanded=not VC.path_for(eid).exists
         try:
             locked=VC.load(VC.path_for(eid),source_sha256=doc['source_sha256'],voice=v['voice'])
             st.info(f"本集已锁定 {locked['speaker']} · {locked['target_rate']} 倍速。")
+            from app.services.qwen_voice import effective
+            st.caption('后续配音与补录共用的讲述要求：'+effective(locked)['instruction'])
             st.caption('保留原声音绑定。新稿用独立版本绑定共用方案，不继承旧音轨、旧字幕或审核。')
         except (ValueError,OSError,KeyError) as exc:st.error(str(exc))
     elif schemes:

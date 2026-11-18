@@ -269,10 +269,37 @@ def ensure(ep_id: str, document_path, quality_path, **kwargs) -> Path:
     return author(ep_id, document_path, quality_path, **kwargs)
 
 
+def combined_cards(sidecar, directed, total_ms):
+    """A direction may edit a card at its anchor; other author-approved cards survive."""
+    from dataclasses import replace
+    base = O.load_path(sidecar, total_ms=total_ms) if sidecar and Path(sidecar).is_file() else None
+    if base is None:
+        O.validate(directed, total_ms=total_ms)
+        return O.Plan(list(directed))
+    check_title(base)
+    O.validate(directed, total_ms=total_ms)
+    slots = {(s.kind, s.start_ms): s for s in base.specs}
+    for card in directed:
+        slot = (card.kind, card.start_ms)
+        if card.kind == O.KIND_TITLE and slot in slots:
+            original = slots[slot]
+            card = replace(card, subtitle=card.subtitle or original.subtitle, episode=card.episode or original.episode)
+        slots[slot] = card
+    plan = O.Plan(sorted(slots.values(), key=lambda card: card.start_ms))
+    O.validate(plan.specs, total_ms=total_ms)
+    check_title(plan)
+    return plan
+
+
 def check_sidecar(path, *, total_ms=None):
+    check_title(O.load_path(path, total_ms=total_ms))
+
+
+def check_title(plan):
     """An authored v2 episode must open with a readable title at frame zero."""
     from app.services import overlay
-    plan=overlay.load_path(path,total_ms=total_ms)
     titles=[s for s in plan.specs if s.kind==overlay.KIND_TITLE]
     if len(titles)!=1 or titles[0].start_ms!=0:
         raise ValueError('本集字卡需要一个从第 0 帧开始的片头标题')
+    if overlay._f(titles[0], 0) < 1:
+        raise ValueError('片头标题应在第 0 帧完整可见，请将 fade_in_ms 设为 0')

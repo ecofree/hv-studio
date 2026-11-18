@@ -56,53 +56,56 @@ if episode_ids:
         st.caption('累计实际调用：'+str(current['budget']['used']))
     if st.button('刷新进度'): st.rerun()
 
-    with st.expander('无人生产输入审核'):
-        from app.services.production_admission import check as admission_check, record_approval
+    with st.expander('批量制作检查'):
+        from app.services.production_admission import check as admission_check, record_approval, studio_managed
         admission=admission_check(selected)
         if admission['eligible']: st.success('当前输入已具备进入无人生产队列的条件。成片仍需审核。')
         else:
             for blocker in admission['blockers']: st.write('• '+blocker)
-        st.caption('仅在已核对原稿史实、分镜和图片提示词后提交；此操作不批准音频或成片。')
-        from app.services.production_admission import review_materials
-        material_key='input-material-'+selected
-        if st.button('重新载入当前审核材料',key='reload-input-'+selected):
-            st.session_state.pop(material_key,None)
-        try:
-            if material_key not in st.session_state:
-                st.session_state[material_key]=review_materials(selected)
-            material=st.session_state[material_key]
-        except (ValueError,RuntimeError,OSError,KeyError,TypeError) as exc:
-            st.error('无法准备当前审核材料：'+str(exc));material=None
-        directions=material['directions'] if material else []
-        stale=not material or material['input_fingerprint']!=admission.get('input_fingerprint')
-        if stale: st.warning('材料缺失或已变化，请重新载入并核查后再提交。')
-        if material:
-            st.caption('本次审核版本：'+material['input_fingerprint'][:16])
-            st.text_area('完整原稿',value=material['source'],height=300,disabled=True,
-                         key=material_key+'-'+material['input_fingerprint'])
-            with st.expander('显式分镜与图片提示词'):
-                st.json(material['storyboard']);st.json(material['prompts'])
-            previews=material['previews']
-            if previews and st.checkbox('展示已有图片供核对',key='show-input-images-'+selected):
-                page=int(st.number_input('图片页码（每页 12 张）',min_value=1,max_value=max(1,(len(previews)+11)//12),
-                                         value=1,key='input-image-page-'+selected))
-                cols=st.columns(4)
-                for i,preview in enumerate(previews[(page-1)*12:page*12]):
-                    cols[i%4].image(preview['path'],caption=preview['id'],width=180)
-        for cue in directions: st.write('待执行/核查：'+cue['text'])
-        with st.form('input-review-'+selected+'-'+(material['input_fingerprint'] if material else 'missing')):
-            reviewer=st.text_input('输入审核人')
-            finding=st.text_area('原稿与分镜核查结论')
-            confirmed=st.checkbox('我已核对当前原稿、分镜与图片提示词')
-            deferred=st.checkbox('允许先按现有控制生成候选；未支持的表演和画面要求在成片后逐项审核，不视为已实现',value=False) if directions else False
-            if st.form_submit_button('保存输入审核',disabled=stale):
-                if not confirmed or not reviewer.strip() or not finding.strip(): st.error('请完成核查并填写结论。')
-                else:
-                    try:
-                        record_approval(selected,reviewer,finding,'candidate_review_required' if deferred else None,
-                                        expected_fingerprint=material['input_fingerprint'])
-                        st.success('已保存输入审核。')
-                    except (ValueError,OSError) as exc: st.error(str(exc))
+        if studio_managed(selected):
+            st.caption('沿用工作台当前正文的关键事件确认；画面和录音继续做技术检查，无需重复填写输入审核。')
+        else:
+            st.caption('仅在已核对原稿史实、分镜和图片提示词后提交；此操作不批准音频或成片。')
+            from app.services.production_admission import review_materials
+            material_key='input-material-'+selected
+            if st.button('重新载入当前审核材料',key='reload-input-'+selected):
+                st.session_state.pop(material_key,None)
+            try:
+                if material_key not in st.session_state:
+                    st.session_state[material_key]=review_materials(selected)
+                material=st.session_state[material_key]
+            except (ValueError,RuntimeError,OSError,KeyError,TypeError) as exc:
+                st.error('无法准备当前审核材料：'+str(exc));material=None
+            directions=material['directions'] if material else []
+            stale=not material or material['input_fingerprint']!=admission.get('input_fingerprint')
+            if stale: st.warning('材料缺失或已变化，请重新载入并核查后再提交。')
+            if material:
+                st.caption('本次审核版本：'+material['input_fingerprint'][:16])
+                st.text_area('完整原稿',value=material['source'],height=300,disabled=True,
+                             key=material_key+'-'+material['input_fingerprint'])
+                with st.expander('显式分镜与图片提示词'):
+                    st.json(material['storyboard']);st.json(material['prompts'])
+                previews=material['previews']
+                if previews and st.checkbox('展示已有图片供核对',key='show-input-images-'+selected):
+                    page=int(st.number_input('图片页码（每页 12 张）',min_value=1,max_value=max(1,(len(previews)+11)//12),
+                                             value=1,key='input-image-page-'+selected))
+                    cols=st.columns(4)
+                    for i,preview in enumerate(previews[(page-1)*12:page*12]):
+                        cols[i%4].image(preview['path'],caption=preview['id'],width=180)
+            for cue in directions: st.write('待执行/核查：'+cue['text'])
+            with st.form('input-review-'+selected+'-'+(material['input_fingerprint'] if material else 'missing')):
+                reviewer=st.text_input('输入审核人')
+                finding=st.text_area('原稿与分镜核查结论')
+                confirmed=st.checkbox('我已核对当前原稿、分镜与图片提示词')
+                deferred=st.checkbox('允许先按现有控制生成候选；未支持的表演和画面要求在成片后逐项审核，不视为已实现',value=False) if directions else False
+                if st.form_submit_button('保存输入审核',disabled=stale):
+                    if not confirmed or not reviewer.strip() or not finding.strip(): st.error('请完成核查并填写结论。')
+                    else:
+                        try:
+                            record_approval(selected,reviewer,finding,'candidate_review_required' if deferred else None,
+                                            expected_fingerprint=material['input_fingerprint'])
+                            st.success('已保存输入审核。')
+                        except (ValueError,OSError) as exc: st.error(str(exc))
 
 st.subheader('无人生产队列')
 from app.services.batch_worker import queue_dir, alive

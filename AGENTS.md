@@ -6,7 +6,7 @@
 
 # 当前剧本创作来源（用户同步，2026-10-21）
 
-- 后续创作以用户在原项目 `D:/hv/resource/风趣历史.writing-DNA/` 修改的规则和文案为准。本项目对应目录中的副本已逐字同步；继续工作前先读取当前文件，不使用旧记忆代替。
+- 自 2026-11-16 起，本项目 `resource/风趣历史.writing-DNA/` 中的规则和文案是唯一创作来源。原项目不再作为同步或比较来源；复制文件中的旧目录说明仅作历史记录，以本条和 `docs/studio-workflow-policy.md` 为准。继续工作前读取本项目当前文件。
 - 玄奘当前正文：`resource/风趣历史.writing-DNA/scripts/初唐异人传_第一集_西行五万里：被通缉的硬汉玄奘.md`；配套文本：同目录 `初唐异人传_第一集_Gemini_TTS专版.md`。二者本次仅按原字节复制，没有改写。
 - 不使用助手之前的 `workspace/editorial-reviews/ytrm-01-story-revision-20261021/` 修订稿作为创作或制作输入。旧样片（包括 `ytrm-01-xz-1p2-pilot-02-factcheck`）及其文案只保留用于追溯，不是后续创作底稿。
 - 本次仅同步来源文件。当前旧音轨、字幕、画面和单集生产绑定均保留，不能称为新版文案对应的产物。用户要求暂不配音、不渲染；在新的制作指令到来前不得启动这些工序。
@@ -19,8 +19,10 @@
   is the preserved historical library. Never promote copied approvals or run
   copied live queue state. Start `studio.bat`; keep the original `D:/hv` unchanged.
 - New studio production uses current source-bound key-fact confirmation; pilots are optional.
-  Imported drafts remain unapproved. The Qwen model service is an external local
-  dependency; do not start it or spend generation budget as part of UI tests.
+  Imported drafts remain unapproved. Qwen uses the project-owned
+  `.venv-qwen3-tts` and `bin/qwen_worker.py`; shared model weights are data only.
+  Never launch the old shared HTTP service or archived worker scripts. Do not
+  start a model or spend generation budget as part of UI tests.
 
 - Preserve source narration, old raw takes, approved media, and image caches.
 - Use `.venv-core/Scripts/python.exe`; local ASR runs in `.venv-asr`.

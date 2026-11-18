@@ -11,7 +11,7 @@ def execution_overview(ep_id):
     from app.services import studio_jobs, batch_worker
     rows=[];errors=[]
     try:
-        for row in studio_jobs.jobs(ep_id):
+        for row in studio_jobs.jobs(ep_id, diagnostics=errors):
             rows.append(dict(origin='studio',path=row['path'],status=row['status'],stage=row.get('stage'),
                              running=row['running'],budget=row.get('budget'),reason=row.get('error') or row.get('recovery_issue')))
     except (OSError,ValueError,KeyError,TypeError,RuntimeError) as exc:
@@ -97,6 +97,8 @@ def report(ep_id, *, max_hold_seconds=60., max_subtitle_cps=12.):
             timeline=read(state['timeline_path'])
             from app.services.production_v2 import validate_timeline
             validate_timeline(manifest,timeline)
+            from app.services.studio_attraction import rhythm_points
+            value['attraction_points'] = rhythm_points(timeline, sr)
             prompts=read(folder/'image_prompts.json') if (folder/'image_prompts.json').is_file() else {}
             previous=None
             for shot in timeline['shots']:
@@ -146,6 +148,8 @@ def report(ep_id, *, max_hold_seconds=60., max_subtitle_cps=12.):
                 shared_budget_limits=ledger['limits'],shared_budget_used=ledger['used'])
         except (OSError,ValueError,KeyError,TypeError) as exc:errors.append('budget: '+str(exc))
     value['metrics']=metrics
+    from app.services.production_metrics import accumulated
+    value['metrics']['accumulated']=accumulated(folder/'production/v2')
     value['interpretation']='Technical flags and reference comparison only; no artistic or identity approval.'
     return value
 
@@ -157,6 +161,29 @@ def compare(before,after):
         impact=impact(before.get('inputs',{}),after.get('inputs',{})),
         before_metrics=before.get('metrics'),after_metrics=after.get('metrics'),
         quality_improvement_proven=False)
+
+
+def review_points(value):
+    """One ordered navigation list, not a new review gate."""
+    points=[]
+    attraction = {p['start_seconds']: p for p in value.get('attraction_points', [])}
+    for shot in value.get('shots',[]):
+        hint = attraction.pop(shot['start_seconds'], None)
+        if hint:
+            points.append(dict(hint, image_path=shot['image_path'],
+                               text=hint['text']+' '+' '.join(shot['narration'])))
+            continue
+        points.append(dict(start_seconds=shot['start_seconds'],label=(
+            '连续同图 '+str(round(shot['duration_seconds'],1))+' 秒' if shot['review_long_hold'] else '画面切换'),
+            text=' '.join(shot['narration']),image_path=shot['image_path']))
+    points.extend(attraction.values())
+    for row in value.get('listening',[]):
+        if row.get('kinds'):
+            points.append(dict(start_seconds=row['start_seconds'],label='语音疑点 '+', '.join(row['kinds']),
+                               text=row['text'],audio_path=row['audio_path']))
+    for row in value.get('subtitle_flags',[]):
+        points.append(dict(start_seconds=row['start_seconds'],label='字幕阅读密度提醒',text=row['text']))
+    return sorted(points,key=lambda p:p['start_seconds'])
 
 
 def write_report(value,destination):

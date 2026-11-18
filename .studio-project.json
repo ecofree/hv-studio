@@ -1,7 +1,8 @@
 {
   "version": 1,
   "name": "历史创作工作台",
-  "original_root": "D:/hv",
+  "legacy_path_roots": ["D:/hv"],
+  "project_path_aliases": ["D:/hv-studio"],
   "active_directory": "workspace",
   "historical_library": "episodes",
   "default_provider_budget": 0,

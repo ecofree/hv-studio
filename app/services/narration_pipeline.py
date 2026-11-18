@@ -435,6 +435,9 @@ def _synthesize(plan_path, asset_path, *, max_requests, max_characters, force=Fa
 
 def validate_assembly(manifest_path):
     manifest=read(manifest_path)
+    if manifest.get('provenance') == 'external_recording':
+        from app.services.recording_alignment_recovery import validate_range_inputs
+        validate_range_inputs(manifest)
     if file_sha256(manifest["master_path"])!=manifest["master_sha256"]:
         raise ValueError("master audio changed after assembly")
     if file_sha256(manifest["plan_path"])!=manifest["plan_sha256"]:

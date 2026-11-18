@@ -81,10 +81,12 @@ def _submit(ep_id,max_requests,max_characters,max_images,external_master,mode,ma
     if mode=='voice':request['expected_narration_identity']=W.narration_identity(ep_id)
     if external_master:
         from app.services.studio_workspace import library_path
+        from app.services.recording_alignment_recovery import range_identity
         p=library_path(external_master)
         if not p.is_file():raise ValueError('所选旁白文件不存在')
         request['external_master']=str(p)
         request['external_master_sha256']=file_sha256(p)
+        request['expected_alignment_ranges']=range_identity(ep_id, W.document(ep_id)['source_sha256'], request['external_master_sha256'])
         request['external_input']=selection
     if voice_contract.exists():request['voice_contract_sha256']=file_sha256(voice_contract)
     if narration:request['narration_selection_sha256']=narration['selection_sha256']
@@ -124,9 +126,11 @@ def alive(root):
     import psutil
     path=Path(root)/'process.json'
     if not path.exists():return False
-    r=json.loads(path.read_text('utf-8'))
-    try:return psutil.Process(r['pid']).create_time()==r.get('created_at')
-    except (psutil.Error,ValueError):return False
+    try:
+        record = W.read(path)
+        return psutil.Process(record['pid']).create_time() == record.get('created_at')
+    except (psutil.Error, OSError, ValueError, KeyError, TypeError):
+        return False
 
 
 def resume(root):
@@ -163,6 +167,14 @@ def resume(root):
 
 
 def validate_request(request):
+    if 'expected_alignment_ranges' in request:
+        from app.services.recording_alignment_recovery import range_identity
+        source_sha = W.document(request['ep_id'])['source_sha256']
+        master_sha = request['external_master_sha256']
+        key = fingerprint([source_sha, master_sha])+'.json'
+        original = {k:v for k,v in request['expected_alignment_ranges'].items() if k==key}
+        if original != range_identity(request['ep_id'], source_sha, master_sha):
+            raise ValueError('局部定位已更新，请新建本地旁白任务以复用录音和识别缓存')
     from app.services.studio_sources import require_usable
     require_usable(request['ep_id'])
     if 'expected_image_inputs' in request:
@@ -192,13 +204,27 @@ def validate_request(request):
             raise ValueError('选用旁白已改变，请重新提交制作')
 
 
+def _request_owner(path):
+    """Use frozen submission metadata only to identify a damaged job, never to run it."""
+    for candidate in (path, path.parent/'submission.json', path.parent/'process.json'):
+        try:
+            record = W.read(candidate)
+            request = record if candidate == path else record['request']
+            if isinstance(request.get('ep_id'), str):
+                return request, candidate != path
+        except (OSError, ValueError, TypeError, KeyError, AttributeError):
+            continue
+    return {}, True
+
+
 def require_no_active(ep_id,*,exclude=None):
     from app.services.production_storage import episode_available, ProductionBusy
     if not episode_available(ep_id):
         raise ProductionBusy(f'episode {ep_id} already running in another entry point')
     for p in (paths.state_dir()/'studio-jobs').glob('*/request.json'):
         if exclude and p.parent.resolve()==Path(exclude).resolve():continue
-        if json.loads(p.read_text('utf-8')).get('ep_id')==ep_id and alive(p.parent):
+        request, _ = _request_owner(p)
+        if request.get('ep_id') == ep_id and alive(p.parent):
             raise ValueError('本集已有运行中的任务，请等待或查看原任务')
 
 
@@ -224,16 +250,27 @@ def check_resume(root):
     return request,old
 
 
-def jobs(ep_id):
+def jobs(ep_id, *, diagnostics=None):
     rows=[]
     for p in sorted((paths.state_dir()/'studio-jobs').glob('*/request.json'),key=lambda p:p.stat().st_mtime,reverse=True):
-        request=json.loads(p.read_text('utf-8'))
-        if request['ep_id']!=ep_id:continue
+        request, damaged = _request_owner(p)
+        if damaged and not request and diagnostics is not None:
+            diagnostics.append('无法确认历史任务的所属剧集：'+str(p))
+        if request.get('ep_id') != ep_id: continue
         result=p.parent/'result.json'
-        current=json.loads(result.read_text('utf-8')) if result.exists() else None
-        live=alive(p.parent)
         checkpoint=p.parent/'checkpoint.json'
-        checkpoint=json.loads(checkpoint.read_text('utf-8')) if checkpoint.exists() else {}
+        try:
+            if damaged: raise ValueError('原任务请求损坏')
+            current=W.read(result) if result.exists() else None
+            checkpoint=W.read(checkpoint) if checkpoint.exists() else {}
+            if (current is not None and not isinstance(current,dict)) or not isinstance(checkpoint,dict):
+                raise ValueError('任务状态记录格式无效')
+        except (ValueError, OSError) as exc:
+            rows.append(dict(path=str(p.parent), status='BLOCKED', result=None, running=alive(p.parent),
+                             recoverable=False, error=str(exc), recovery_issue='请查看该任务的日志和提交记录'))
+            if len(rows) == 5: break
+            continue
+        live=alive(p.parent)
         terminal=current and current.get('status') not in ('QUEUED','RUNNING')
         phase={**checkpoint,**current} if terminal and not live else checkpoint or current or {}
         status=phase.get('status','QUEUED' if live else 'INTERRUPTED')

@@ -7,8 +7,8 @@ from app.services.provenance import file_sha256, fingerprint, replace_file
 from app.services.narration_pipeline import read
 
 SCHEMA = 'video-segment-inputs-v2'
-# Direct pixel/geometry/encoder implementation dependencies. Full candidate
-# receipts still bind every app module and configuration, including validators.
+# Direct pixel, geometry and encoder implementation dependencies used by both
+# the segment cache and full candidate receipts.
 DEPENDENCIES = (
     'app/services/production_v2.py', 'app/services/video_segment_cache.py',
     'app/services/compose.py', 'app/services/motion.py',

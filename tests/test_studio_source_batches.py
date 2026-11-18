@@ -32,7 +32,7 @@ def test_standalone_import_without_original_checkout(tmp_path, monkeypatch, orig
     assert not S.issues('standalone') and S.external_updates('standalone')
 
 
-def test_existing_original_still_rejects_mismatch(tmp_path, monkeypatch):
+def test_existing_original_does_not_override_local_source(tmp_path, monkeypatch):
     from app.services import studio_workspace as workspace
     root=tmp_path/'studio';root.mkdir();original=tmp_path/'original';original.mkdir()
     monkeypatch.setattr(paths, 'ROOT', root)
@@ -41,8 +41,9 @@ def test_existing_original_still_rejects_mismatch(tmp_path, monkeypatch):
     monkeypatch.setattr(workspace, 'config', lambda root=None: {'original_root': str(original)})
     source=root/'author.md';source.write_text(AUTHOR,encoding='utf-8')
     (original/'author.md').write_text('不同原文',encoding='utf-8')
-    with pytest.raises(ValueError,match='不一致'):
-        S.import_authoring('mismatch','校验',source)
+    revision = S.import_authoring('mismatch','校验',source)
+    assert (revision/'source.md').read_bytes() == source.read_bytes()
+    assert S.contract('mismatch')['inputs'][0]['original_path'] is None
 
 
 def test_authoring_channels_are_lossless_and_never_read_as_narration(tmp_path):
@@ -99,17 +100,20 @@ def test_import_separates_new_source_from_old_media_and_cannot_rewrite(source_fi
     assert not S.issues('user-fixture') and not W.review_valid('user-fixture','editorial')
     assert W.load('user-fixture')['voice']['master']==''
     assert S.selectable()==['user-fixture']
-    with pytest.raises(ValueError,match='原项目'):
+    with pytest.raises(ValueError,match='本项目'):
         W.replace_source('user-fixture',AUTHOR,expected_identity=W.identity('user-fixture'))
     with pytest.raises(ValueError,match='旧版本'):
         imported(root)
 
 
 @pytest.mark.parametrize('file',['author.md','tts.md','rules.md'])
-def test_changed_original_prevents_further_use(source_files,file):
+def test_original_changes_are_ignored_but_local_updates_are_reported(source_files,file):
     imported(source_files)
     p=source_files/'original'/file;p.write_bytes(p.read_bytes()+b'\n')
-    assert S.external_updates('user-fixture')
+    assert not S.external_updates('user-fixture')
+    local = source_files/file
+    local.write_bytes(local.read_bytes()+b'\n')
+    assert S.external_updates('user-fixture') == [str(local.resolve())]
     S.require_usable('user-fixture')
 
 

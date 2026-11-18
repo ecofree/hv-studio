@@ -15,7 +15,10 @@ def test_registered_full_episode_is_visible_without_launching_a_job(tmp_episodes
     media=tmp_path/'fixture.mp4';media.write_bytes(b'UI-only fixture; no encoding')
     atomic_json(paths.episode_dir(eid)/'production/v2/run.json',{'receipt_path':'fixture'})
     status={'candidate_path':str(media),'full_episode_registration':{'approved':False},'blockers':[]}
-    monkeypatch.setattr(P,'get_status',lambda _:status)
+    def browse_status(episode_id, *, display):
+        assert episode_id == eid and display
+        return status
+    monkeypatch.setattr(P,'get_status',browse_status)
     monkeypatch.setattr(J,'jobs',lambda _:[])
     monkeypatch.setattr(J,'launch',lambda *a,**k:pytest.fail('page navigation must never generate'))
     app=AppTest.from_file(str(Path(__file__).resolve().parents[1]/'app/webui/Studio.py'),default_timeout=30).run()
@@ -41,7 +44,7 @@ def test_five_pages_render_and_brief_edit_does_not_approve(tmp_episodes):
         app.switch_page(f'app_pages/{page}.py').run()
         assert not app.exception, (page,[e.message for e in app.exception])
 
-def test_narration_request_carries_source_and_scoped_direction(tmp_episodes):
+def test_narration_request_reuses_selected_voice_and_preserves_editorial_directions(tmp_episodes,tmp_path):
     import importlib.util
     script=Path(__file__).resolve().parents[1]/'bin/studio_narrate.py'
     spec=importlib.util.spec_from_file_location('studio_narrate_fixture',script)
@@ -50,9 +53,14 @@ def test_narration_request_carries_source_and_scoped_direction(tmp_episodes):
     v=W.load(eid);u=W.document(eid)['units'];v['voice']['model']='Qwen3-TTS-12Hz-1.7B-CustomVoice';v['voice']['identity']='dylan'
     v['beats']=[dict(id='b1',unit_id=u[0]['unit_id'],text_start=0,purpose='测试',new_information='测试',claim_ids=[],image_id='plate1',
                     performance='只重读第一段',motion=dict(type='static',start_zoom=1.,end_zoom=1.,start_xy=[.5,.5],end_xy=[.5,.5]))]
-    W.save(eid,v,expected_revision=v['revision']);_,parts=mod.requests(eid)
-    assert [p['text'] for p in parts]==[x['source_text'] for x in u]
-    assert '只重读第一段' in parts[0]['instruction'] and '只重读第一段' not in parts[1]['instruction']
+    W.save(eid,v,expected_revision=v['revision'])
+    from test_series_production_flow import recipe
+    from app.services import series_voice as SV
+    scheme,_=recipe(tmp_path);SV.prepare_episode(eid,scheme,expected_identity=W.identity(eid))
+    _,parts=mod.requests(eid)
+    assert '\n\n'.join(p['text'] for p in parts)=='\n\n'.join(x['source_text'] for x in u)
+    assert all(p['instruction']==SV.load_scheme(scheme)['recipe']['instruction'] for p in parts)
+    assert W.load(eid)['beats'][0]['performance']=='只重读第一段'
 
 
 @pytest.mark.NEEDS_FFMPEG
@@ -70,7 +78,18 @@ def test_local_narration_keeps_raw_audio_and_returns_clock_preserving_derivative
     L.save(raw,np.rint(2600*np.sin(2*np.pi*220*np.arange(sr*5)/sr)).astype('<i2'),sr)
     calls=[]
     def provider(*a,**k):calls.append(a[0]);return raw.read_bytes()
-    monkeypatch.setattr(mod,'call_tts_api',provider)
+    from test_series_production_flow import recipe
+    from app.services import series_voice as SV
+    scheme,_=recipe(tmp_path);SV.prepare_episode(eid,scheme,expected_identity=W.identity(eid))
+    class FakeProvider:
+        def __init__(self,*a):pass
+        def __enter__(self):return self
+        def __exit__(self,*a):pass
+        def validate_request(self,r):
+            from app.services.studio_voice_contract import validate
+            validate(r)
+        def __call__(self,*a,**k):return provider(*a,**k)
+    monkeypatch.setattr('app.services.locked_voice_provider.LockedVoiceProvider',FakeProvider)
     # This fixture checks clock/leveling, not a real model's transcript of a tone.
     from app.services import local_asr
     from app.services.provenance import atomic_json,file_sha256,fingerprint
@@ -84,6 +103,6 @@ def test_local_narration_keeps_raw_audio_and_returns_clock_preserving_derivative
     receipt=verify_repair(result.with_suffix('.level.json'))
     source_map=json.loads((result.parent/'source-map.json').read_text('utf-8'))
     assert calls==['这是一次离线配音检查。']
-    assert receipt['samples']==sr*5 and receipt['exact_sample_clock']
+    assert abs(receipt['samples']-sr*5/1.2)<sr*.02 and receipt['exact_sample_clock']
     assert Path(source_map['raw_master']).is_file() and not source_map['approved']
     assert source_map['parts'][0]['text']==calls[0]

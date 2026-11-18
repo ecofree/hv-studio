@@ -69,7 +69,7 @@ class ExistingImage:
         return True
 
 
-def include_registered(eid,jobs):
+def include_registered(eid,jobs, *, only=None):
     receipt=paths.episode_dir(eid)/'production/existing-images.json'
     if not receipt.exists():return jobs
     manifest=read(receipt)
@@ -77,6 +77,7 @@ def include_registered(eid,jobs):
         raise ValueError('existing image mapping is stale; review and re-register explicitly')
     imported=[]
     for key,record in manifest['images'].items():
+        if only is not None and key not in only: continue
         paths.validate_episode_id(key)
         if not Path(record['path']).resolve().is_relative_to(paths.ROOT.resolve()):
             raise ValueError('existing image must be inside this project')

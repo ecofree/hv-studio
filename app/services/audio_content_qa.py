@@ -83,5 +83,17 @@ def require_content(audio,text,destination,*,recognizer=None):
         raise ValueError('audio QA needs review: long silence / no speech; raw take preserved')
     result,path=(recognizer or recognize)(audio)
     record=evaluate(audio,text,recognition=result,recognition_path=path,destination=destination)
-    if record['status']!='passed_machine':raise ValueError('audio QA needs review: missing/repeated/content mismatch; no automatic re-TTS')
+    confirmation=Path(audio).parent/'user-content-confirmation.json'
+    if record['status']!='passed_machine' and confirmation.is_file():
+        import json
+        c=json.loads(confirmation.read_text('utf-8'))
+        if (c.get('kind')=='user_content_confirmation_v1' and c.get('audio_sha256')==record['audio_sha256']
+                and c.get('source_sha256')==fingerprint(text) and c.get('reviewer')=='user'
+                and c.get('decision')=='pronunciation_confirmed' and c.get('recognized_text')==result['text']
+                and record['findings'] and all(f['kind']=='content_mismatch' for f in record['findings'])):
+            record['machine_findings']=record['findings'];record['findings']=[]
+            record['status']='passed_user_confirmation'
+            record['inputs'][str(confirmation.resolve())]=file_sha256(confirmation)
+            atomic_json(Path(destination)/(fingerprint(record)+'.json'),record)
+    if record['status'] not in ('passed_machine','passed_user_confirmation'):raise ValueError('audio QA needs review: missing/repeated/content mismatch; no automatic re-TTS')
     return record

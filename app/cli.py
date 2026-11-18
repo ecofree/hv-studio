@@ -273,6 +273,14 @@ def cmd_clean(args):
     if not ep_dirs:
         raise SystemExit("error: 没有匹配到任何集")
 
+    if getattr(args,'v2',False):
+        from app.services import v2_cleanup
+        for eid in ep_dirs:
+            preview=v2_cleanup.plan(eid,include_segments=args.segments)
+            for item in preview['items']: print(f"  [{item['tier']}] {_human(item['size'])}  {item['path']}")
+            print(f"{eid}: {_human(preview['total_bytes'])}; skipped {len(preview['skipped'])}")
+            if args.apply: print(v2_cleanup.apply(eid,preview))
+        return
     res = clean_episodes(ep_dirs, include_build=True,
                          include_segments=args.segments, apply=args.apply)
 
@@ -468,6 +476,7 @@ def main():
                    help="指定集，可多次：--episode hw-001 --episode lsm-15min")
     p.add_argument("--segments", action="store_true",
                    help="连 build/segments/seg-*.mp4 一起清（删后下次全量重编）")
+    p.add_argument("--v2", action="store_true", help="检查已完成 v2 渲染的中间文件，保留成片和原始素材")
     p.add_argument("--apply", action="store_true",
                    help="实际删除（默认只列出清单与体积）")
     p.set_defaults(func=cmd_clean)

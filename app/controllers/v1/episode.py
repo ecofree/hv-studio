@@ -18,6 +18,8 @@ router = APIRouter()
 
 @router.get("/{episode_id}")
 def get_episode(episode_id: str):
+    if not episode_path(episode_id).is_file():
+        raise HTTPException(404, '剧集不存在')
     ep = load(episode_id)
     from app.services.production_status import get_status
     result = ep.model_dump(mode='json'); production = get_status(episode_id)
@@ -28,6 +30,8 @@ def get_episode(episode_id: str):
 
 @router.get('/{episode_id}/production')
 def get_production(episode_id: str):
+    if not episode_path(episode_id).is_file():
+        raise HTTPException(404, '剧集不存在')
     from app.services.production_status import get_status
     return get_status(episode_id)
 

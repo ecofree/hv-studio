@@ -5,6 +5,9 @@ from app.services.narration_pipeline import read, validate_assembly
 from app.services.provenance import atomic_json, file_sha256, fingerprint
 
 
+POLICY_MODULES = ('production_quality.py', 'asr_check.py', 'audio_content_qa.py')
+
+
 def decision_identity():
     """QA policy version, including dependencies and threshold settings."""
     from importlib.metadata import version, PackageNotFoundError
@@ -12,7 +15,7 @@ def decision_identity():
     try: phonetics = version('pypinyin')
     except PackageNotFoundError: phonetics = 'missing'
     return fingerprint(dict(schema=1, files={n:file_sha256(Path(__file__).with_name(n))
-        for n in ('production_quality.py', 'asr_check.py', 'audio_content_qa.py')},
+        for n in POLICY_MODULES},
         phonetics=phonetics, enabled=enabled(), max_per=max_per()))
 
 
@@ -146,14 +149,20 @@ def review_queue(report_path, *, all_units=False):
 
 
 
-def pending(report_path):
+class StaleQualityReport(ValueError):
+    """A previous QA decision that the local quality stage must recompute."""
+
+
+def pending(report_path, *, manifest_path=None):
     report = read(report_path)
+    if manifest_path is not None and Path(report['manifest_path']).resolve() != Path(manifest_path).resolve():
+        raise StaleQualityReport('quality report belongs to a different narration manifest')
     if file_sha256(report['manifest_path']) != report['manifest_sha256'] or file_sha256(Path(__file__).with_name('asr_check.py')) != report['checker_sha256']:
-        raise ValueError('quality report is stale')
+        raise StaleQualityReport('quality report is stale')
     if report.get('content_checker_sha256') and report['content_checker_sha256']!=file_sha256(Path(__file__).with_name('audio_content_qa.py')):
-        raise ValueError('content quality report is stale')
+        raise StaleQualityReport('content quality report is stale')
     if report.get('decision_sha256') != decision_identity():
-        raise ValueError('quality decision policy is stale; rebuild QA using cached recognition')
+        raise StaleQualityReport('quality decision policy is stale; rebuild QA using cached recognition')
     result = []
     records = [read(p) for p in (Path(report_path).parent/'dispositions').glob('*.json')]
     for row in report['takes']:

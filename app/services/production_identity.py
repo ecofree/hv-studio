@@ -38,9 +38,15 @@ def input_identity(ep_id, stages, options=None):
     # Include path references outside the episode directory (voice, reused images,
     # approved manifests, fonts and final videos), without traversing arbitrary folders.
     seen = set()
+    from app.services.studio_workspace import asset_path
     def visit(value):
         if isinstance(value, dict):
-            for item in value.values(): visit(item)
+            for field, item in value.items():
+                if field in ('original_path', 'original_root', 'legacy_path_roots', 'project_path_aliases'):
+                    continue
+                if field == 'path' and value.get('snapshot') and value.get('sha256'):
+                    continue
+                visit(item)
         elif isinstance(value, list):
             for item in value: visit(item)
         elif isinstance(value, str) and len(value) < 4096 and "\n" not in value:
@@ -50,9 +56,9 @@ def input_identity(ep_id, stages, options=None):
                 # operational limit, not an input to already completed media.
                 if p.parent.name == 'budgets': return
                 if p.suffix.lower() not in (".json", ".md", ".wav", ".mp3", ".mp4", ".png", ".jpg", ".webp", ".ttf", ".otf"): return
-                if not p.is_absolute(): p = ROOT / p
+                p = asset_path(value, root=paths.ROOT)
                 if p.is_file(): files.add(p)
-            except OSError:
+            except (OSError, ValueError):
                 pass
     profile = get_settings().get_profile().model_dump(mode="json")
     visit(profile)
@@ -113,7 +119,7 @@ def _is_renderer(path: str) -> bool:
     return False
 
 
-def split_receipt_drift(receipt):
+def split_receipt_drift(receipt, *, quality_path=None, manifest_path=None):
     """Split drifted receipt inputs into content vs renderer paths.
 
     Returns (content_drift, renderer_drift), each a sorted list of paths whose
@@ -123,14 +129,35 @@ def split_receipt_drift(receipt):
     must not revoke an approval -- it only means the next rebuild will render
     with new code and needs a fresh review. Content drift invalidates.
     """
-    content, renderer = [], []
+    from app.services.production_quality import POLICY_MODULES, pending
+    content, renderer, quality_changes = [], [], []
     for p, sha in (receipt or {}).items():
+        # Before scoped render receipts, the renderer included even UI and backup code.
+        path = Path(p)
+        if path.suffix == '.py' and path.is_relative_to(ROOT):
+            relative = path.relative_to(ROOT).as_posix()
+            if relative.startswith('app/webui/') or relative in {
+                'app/services/production_backup.py', 'app/services/production_diagnostics.py',
+                'app/services/production_metrics.py',
+            }:
+                continue
         try:
             current = file_sha256(p)
         except OSError:
             current = None
         if current != sha:
-            (renderer if _is_renderer(p) else content).append(p)
+            if (quality_path and manifest_path and path.parent == ROOT/'app/services'
+                    and path.name in POLICY_MODULES):
+                quality_changes.append(p)
+            else:
+                (renderer if _is_renderer(p) else content).append(p)
+    if quality_changes:
+        try:
+            needs_review = pending(quality_path, manifest_path=manifest_path)
+        except (OSError, ValueError, KeyError, TypeError):
+            needs_review = True
+        if needs_review:
+            content.extend(quality_changes)
     return sorted(content), sorted(renderer)
 
 

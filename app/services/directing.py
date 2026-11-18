@@ -32,6 +32,16 @@ def anchor_sample(anchor, manifest, evidence):
     return rows[0]['sample_start']
 
 
+def effective_cards(manifest, design, evidence, sidecar):
+    from app.services import overlay, overlay_author
+    cards = []
+    for event in design.get('cards', []):
+        sample = anchor_sample(event['at'], manifest, evidence)
+        start = round(sample * 1000 / manifest['sample_rate'])
+        cards.append(overlay.Spec(start_ms=start, end_ms=start+event['duration_ms'], **event['card']))
+    return overlay_author.combined_cards(sidecar, cards, round(manifest['samples']*1000/manifest['sample_rate']))
+
+
 def apply(manifest, timeline, design_path, image_assets, destination):
     from app.services.forced_alignment import require_evidence
     from app.services import overlay
@@ -44,7 +54,6 @@ def apply(manifest, timeline, design_path, image_assets, destination):
     evidence = read(timeline['alignment_evidence_path'])
     resolve = lambda a: anchor_sample(a, manifest, evidence)
     result = copy.deepcopy(timeline)
-    sr = manifest['sample_rate']
     visual = design.get('visual_events', [])
     if visual:
         starts = [resolve(v['at']) for v in visual]
@@ -64,13 +73,12 @@ def apply(manifest, timeline, design_path, image_assets, destination):
                 from app.services.scene_animation import validate as validate_animation
                 shots[-1]['animation'] = validate_animation(event['animation'], file_sha256(image_assets[key]))
         result['shots'] = shots
-    cards = []
-    for event in design.get('cards', []):
-        start = round(resolve(event['at']) * 1000 / sr)
-        cards.append(overlay.Spec(start_ms=start, end_ms=start + event['duration_ms'], **event['card']))
-    if cards:
-        overlay.validate(cards, total_ms=manifest['samples'] * 1000 / sr)
-        payload = {'version': overlay.SCHEMA_VERSION, 'overlays': [c.payload() for c in cards]}
+    if design.get('cards'):
+        sidecar = Path(design_path).parent/'overlays.json'
+        cards = effective_cards(manifest, design, evidence, sidecar)
+        if sidecar.is_file():
+            result.setdefault('inputs', {})[str(sidecar.resolve())] = file_sha256(sidecar)
+        payload = {'version': overlay.SCHEMA_VERSION, 'overlays': [c.payload() for c in cards.specs]}
         path = Path(destination) / ('overlays-' + fingerprint(payload)[:24] + '.json')
         atomic_json(path, payload)
         result['overlay_path'] = str(path.resolve())

@@ -5,10 +5,15 @@ from app.services.narration_pipeline import read
 from app.services.provenance import fingerprint
 
 
-def get_status(ep_id):
+def get_status(ep_id, *, display=False):
+    from app.services.provenance import status_hashes
+    with status_hashes(display=display):
+        return _get_status(ep_id)
+
+
+def _get_status(ep_id):
     from app.orchestrator import _episode_dir, _load_script_md
     from app.managers import load
-    from app.services.production_identity import artifacts_current
     root = _episode_dir(ep_id)/'production/v2'; state_path = root/'run.json'
     if not state_path.exists():
         # No v2 run state. If this episode was delivered through the
@@ -81,6 +86,9 @@ def get_status(ep_id):
             raise ValueError('visual inputs changed; rebuild images and timeline')
         if state.get('receipt_path'):
             receipt = read(state['receipt_path'])
+            if state.get('timeline_path'):
+                from app.services.production_v2 import check_overlay_receipt
+                check_overlay_receipt(ep_id, read(state['timeline_path']), receipt)
             if receipt.get('kind') == 'metadata_amendment_v1':
                 from app.services.production_revision import verify_amendment
                 verify_amendment(state['receipt_path'])
@@ -94,11 +102,12 @@ def get_status(ep_id):
                     raise ValueError('registered full episode receipt changed')
                 result['full_episode_registration'] = registration
                 result['audio_master_path'] = state.get('audio_master_path')
-            from app.services.production_identity import artifacts_current, split_receipt_drift
-            if not artifacts_current(receipt['inputs']):
-                content_drift, renderer_drift = split_receipt_drift(receipt['inputs'])
-                if content_drift:
-                    raise ValueError('candidate inputs changed; rebuild required')
+            from app.services.production_identity import split_receipt_drift
+            content_drift, renderer_drift = split_receipt_drift(
+                receipt['inputs'], quality_path=state.get('quality_path'), manifest_path=receipt.get('manifest_path'))
+            if not receipt['inputs'] or content_drift:
+                raise ValueError('candidate inputs changed; rebuild required')
+            if renderer_drift:
                 # Renderer-only drift: the approved bytes and their reviews are
                 # untouched (a source edit cannot rewrite a file). The candidate
                 # stands; the next rebuild renders with new code and needs a

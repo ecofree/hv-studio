@@ -261,6 +261,30 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
             _safe_unlink(temp)
 
 
+def timeline_cards(ep_id, timeline, total_ms):
+    from app.services import overlay, overlay_author
+    sidecar = overlay.path_for(ep_id) if ep_id else None
+    directed = overlay.load_path(timeline['overlay_path'], total_ms=total_ms).specs if timeline.get('overlay_path') else []
+    plan = overlay_author.combined_cards(sidecar, directed, total_ms)
+    return plan, fingerprint([c.payload() for c in plan.specs])
+
+
+def check_overlay_receipt(ep_id, timeline, receipt):
+    if not timeline.get('overlay_path'):
+        return
+    from app.services import overlay
+    if not overlay.path_for(ep_id).is_file():
+        return
+    total_ms = round(receipt['samples']*1000/receipt['sample_rate'])
+    _, expected = timeline_cards(ep_id, timeline, total_ms)
+    recorded = receipt.get('effective_overlay_sha256')
+    if recorded is None:
+        old = overlay.load_path(timeline['overlay_path'], total_ms=total_ms)
+        recorded = fingerprint([s.payload() for s in old.specs])
+    if expected != recorded:
+        raise ValueError('候选采用的字卡缺少当前片头或幕卡，请重新合成')
+
+
 def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=None, on_verified=None):
     """Render a v2 candidate with resumable, shot-boundary video segments."""
     from PIL import Image
@@ -306,7 +330,10 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
             inputs[str(sidecar.resolve())] = file_sha256(sidecar)
     if timeline.get('overlay_path'):
         inputs[str(Path(timeline['overlay_path']).resolve())] = file_sha256(timeline['overlay_path'])
-    for dependency in list((ROOT / "app").rglob("*.py")) + list((ROOT / "app/config").glob("*.yaml")):
+    from app.services.video_segment_cache import DEPENDENCIES
+    render_sources = [ROOT/name for name in (*DEPENDENCIES, 'app/services/sound_design.py',
+                                              'app/services/bgm.py', 'app/services/upscale.py')]
+    for dependency in render_sources + list((ROOT / "app/config").glob("*.yaml")):
         inputs[str(dependency.resolve())] = file_sha256(dependency)
     for dependency in [ROOT / "bin/local_asr_worker.py", ROOT / "requirements.asr.lock.txt"]:
         if dependency.is_file():
@@ -339,7 +366,9 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
         inputs[str(core_lock.resolve())] = file_sha256(core_lock)
         runtime['packages'] = runtime_versions(Path(sys.executable), core_lock)
     runtime['ffmpeg'] = subprocess.run(['ffmpeg','-version'],capture_output=True,text=True,timeout=10,check=True).stdout.splitlines()[0]
-    render_fp = fingerprint({"inputs": inputs, "runtime":runtime, "renderer": "v2-segmented-3"})
+    overlay_plan, overlay_sha = timeline_cards(ep_id, timeline, round(manifest['samples']*1000/sr))
+    render_fp = fingerprint({"inputs": inputs, "runtime":runtime, "renderer": "v2-segmented-3",
+                             "effective_overlays": overlay_sha})
     target = Path(output_dir) / render_fp[:32]
     target.mkdir(parents=True, exist_ok=True)
     state_path = target / "render_state.json"
@@ -378,17 +407,6 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
     # only the overlays intersecting its own time window: editing one title
     # card re-encodes one segment instead of the film.
     from app.services import karaoke as _karaoke
-    overlay_plan = None
-    if timeline.get('overlay_path'):
-        from app.services.overlay import load_path
-        overlay_plan = load_path(timeline['overlay_path'])
-    elif ep_id:
-        try:
-            from app.services import compose as _C
-            _C.overlay_plan(ep_id)
-            overlay_plan = _C.overlay_plan()
-        except (ValueError, OSError) as exc:
-            raise ValueError(f'{ep_id} overlays.json 无效：{exc}') from exc
     karaoke_index = _karaoke.EMPTY
     alignment_path = timeline.get('alignment_evidence_path')
     if alignment_path and Path(alignment_path).is_file():
@@ -515,6 +533,8 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
         receipt = {
             "candidate_path": str(candidate.resolve()),
             "candidate_sha256": integrity["sha256"],
+            "effective_overlay_sha256": overlay_sha,
+            "timeline_path": str(Path(timeline_path).resolve()),
             "inputs": inputs,
             # Visibility only: segments keep the exact vcodec argv they were
             # encoded with; a mid-render NVENC->software fallback leaves a
@@ -580,14 +600,28 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
         from app.services.production_revision import verify_amendment
         verify_amendment(receipt_path)
     manifest=validate_assembly(receipt["manifest_path"])
+    from app.paths import episodes_dir
+    relative_pointer = Path(pointer_path).resolve()
+    quality_path = receipt.get('quality_report_path')
+    if relative_pointer.is_relative_to(episodes_dir().resolve()):
+        eid = relative_pointer.relative_to(episodes_dir().resolve()).parts[0]
+        timeline_path = receipt.get('timeline_path')
+        state_path = relative_pointer.parent/'run.json'
+        current = read(state_path) if state_path.is_file() else {}
+        if current.get('receipt_path') and Path(current['receipt_path']).resolve() == Path(receipt_path).resolve():
+            timeline_path = timeline_path or current.get('timeline_path')
+            quality_path = current.get('quality_path') or quality_path
+        if timeline_path:
+            check_overlay_receipt(eid, read(timeline_path), receipt)
     from app.services.audio_disposition import require_usable
     require_usable(manifest)
     if 'delivery_dispositions' in manifest:
         from app.services.delivery import pending as pending_directions
         if pending_directions(receipt['manifest_path']): raise ValueError('delivery directions have unresolved dispositions')
-    if receipt.get('quality_report_path'):
+    if quality_path:
         from app.services.production_quality import pending
-        if pending(receipt['quality_report_path']): raise ValueError('audio quality findings have unresolved dispositions')
+        if pending(quality_path, manifest_path=receipt['manifest_path']):
+            raise ValueError('audio quality findings have unresolved dispositions')
     if review.get("decision")!="approved" or review.get("receipt_sha256")!=file_sha256(receipt_path):
         raise ValueError("candidate has no current approval")
     if review.get("candidate_sha256")!=receipt["candidate_sha256"]:
@@ -595,7 +629,8 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
     if listening.get("decision")!="approved" or listening.get("manifest_sha256")!=file_sha256(receipt["manifest_path"]) or listening.get("master_sha256")!=manifest["master_sha256"]:
         raise ValueError("master audio has no current human listening approval")
     from app.services.production_identity import split_receipt_drift
-    content_drift,renderer_drift=split_receipt_drift(receipt["inputs"])
+    content_drift,renderer_drift=split_receipt_drift(
+        receipt["inputs"], quality_path=quality_path, manifest_path=receipt['manifest_path'])
     if content_drift: raise ValueError("candidate input changed after review")
     if file_sha256(receipt["candidate_path"])!=receipt["candidate_sha256"]:
         raise ValueError("candidate bytes changed after review")
@@ -605,7 +640,7 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
     atomic_json(pointer_path,{"candidate_path":receipt["candidate_path"],"sha256":receipt["candidate_sha256"],
                 "receipt":str(Path(receipt_path).resolve()),"review":str(Path(review_path).resolve()),
                 "listening_review":str(Path(listening_review_path).resolve()),"approved":True,
-                "renderer_drift":renderer_drift})
+                "quality_report_path":str(quality_path) if quality_path else None, "renderer_drift":renderer_drift})
     return Path(pointer_path)
 
 

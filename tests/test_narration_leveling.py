@@ -65,9 +65,12 @@ def generator():
 
 
 def test_generation_caches_raw_chunks_and_charges_only_actual_attempts(tmp_path,tmp_episodes,monkeypatch):
-    g=generator();src=recording(tmp_path/'fixture.wav');calls=[]
+    from app.services import studio_voice as V
+    src=recording(tmp_path/'fixture.wav');calls=[]
     def fake(*args,**kwargs):calls.append((args,kwargs));return src.read_bytes()
-    monkeypatch.setattr(g,'call_tts_api',fake)
+    def render(budget=None):
+        return V.render_act([('旁白。','固定测试讲述')],tmp_path/'act.wav',speaker='dylan',mode='custom',
+                            model='fixture',engine_revision='fixture',provider=fake,budget=budget)
     from app.services import local_asr
     from app.services.provenance import fingerprint
     def recognize_fixture(p):
@@ -76,11 +79,11 @@ def test_generation_caches_raw_chunks_and_charges_only_actual_attempts(tmp_path,
         atomic_json(receipt,dict(request=dict(audio_sha256=file_sha256(p)),result=r,result_sha256=fingerprint(r)))
         return r,receipt
     monkeypatch.setattr(local_asr,'recognize',recognize_fixture)
-    with pytest.raises(ValueError,match='budget'):g.render_act('test','旁白。',tmp_path/'act.wav')
+    with pytest.raises(ValueError,match='budget'):render()
     assert not calls
     budget=ProviderBudget(tmp_path/'budget.json',tts_requests=1,characters=100)
-    g.render_act('test','旁白。',tmp_path/'act.wav',budget=budget)
-    g.render_act('test','旁白。',tmp_path/'act.wav')
+    render(budget)
+    render()
     assert len(calls)==1 and budget.snapshot()['used']['tts_requests']==1
     receipt=json.loads((tmp_path/'act.chunks.json').read_text(encoding='utf-8'))
     assert receipt['chunks'][0]['text']=='旁白。' and receipt['chunks'][0]['active_rms_dbfs'] is not None
@@ -88,12 +91,15 @@ def test_generation_caches_raw_chunks_and_charges_only_actual_attempts(tmp_path,
 
 
 def test_uncertain_generation_consumes_attempt_and_does_not_retry(tmp_path,tmp_episodes,monkeypatch):
-    g=generator();budget=ProviderBudget(tmp_path/'budget.json',tts_requests=1,characters=100);calls=[]
+    from app.services import studio_voice as V
+    budget=ProviderBudget(tmp_path/'budget.json',tts_requests=1,characters=100);calls=[]
     def fail(*a,**k):calls.append(1);raise TimeoutError('unknown result')
-    monkeypatch.setattr(g,'call_tts_api',fail)
-    with pytest.raises(TimeoutError):g.render_act('test','旁白。',tmp_path/'act.wav',budget=budget)
+    def render():
+        return V.render_act([('旁白。','固定测试讲述')],tmp_path/'act.wav',speaker='dylan',mode='custom',
+                            model='fixture',engine_revision='fixture',provider=fail,budget=budget)
+    with pytest.raises(TimeoutError):render()
     assert len(calls)==1 and budget.snapshot()['attempts'][0]['status']=='failed_or_uncertain'
-    with pytest.raises(BudgetExceeded):g.render_act('test','旁白。',tmp_path/'act.wav',budget=budget)
+    with pytest.raises(BudgetExceeded):render()
     assert len(calls)==1
 
 

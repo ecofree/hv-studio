@@ -286,6 +286,7 @@ def test_batch_rejects_partial_success_for_full_run(tmp_path,monkeypatch):
     assert not r['done'] and r['failed']
 
 
+@pytest.mark.api_transport
 def test_api_uses_v2_and_returns_blocked_status(production_episode):
     from fastapi.testclient import TestClient
     from app.main import app

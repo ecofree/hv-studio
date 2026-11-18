@@ -39,6 +39,8 @@ def _voice_asset_version_for_inputs(folder):
 
 
 def inputs(ep_id, *, _legacy=False):
+    if not _legacy and studio_managed(ep_id):
+        return _studio_inputs(ep_id)
     from app.managers import load
     from app.orchestrator import _load_script_md, build_image_jobs
     from app.services.script_document import parse_document
@@ -58,12 +60,18 @@ def inputs(ep_id, *, _legacy=False):
         if not chk['ok']:
             raise ValueError('external audio binding invalid: ' + '; '.join(chk['fails']))
         files.append(binding)
-    jobs = build_image_jobs(ep_id, strict=True, create_output_dir=False)
-    from app.services.existing_images import include_registered
-    jobs = include_registered(ep_id,jobs)
-    if not jobs: raise ValueError('image jobs missing')
     document = parse_document(text)
     scene = read(files[0])
+    briefs = read(files[1])
+    directing = folder/'directing.json'
+    directions = read(directing) if directing.is_file() else {}
+    if _legacy:
+        from app.services.existing_images import include_registered
+        jobs = include_registered(ep_id, build_image_jobs(ep_id, strict=True, create_output_dir=False))
+    else:
+        from app.services.production_inputs import storyboard_jobs
+        jobs, _ = storyboard_jobs(ep_id, scene, briefs, directions, create_output_dir=False)
+    if not jobs: raise ValueError('image jobs missing')
     from app.services.studio_image_reuse import validate_scene_source
     validate_scene_source(scene,document)
     if 'scenes' in scene:
@@ -72,7 +80,6 @@ def inputs(ep_id, *, _legacy=False):
     used={s['image'] for s in scene.get('scenes',scene.get('unit_scenes',[]))}
     if not used or not used.issubset({j.id for j in jobs}):raise ValueError('scene references missing image jobs')
     unsupported = [c for c in document.get('delivery_cues', []) if c['intent'] != 'pause']
-    briefs = read(files[1])
     if _legacy:
         from app.config.config import get_settings
         requests = {}
@@ -85,9 +92,7 @@ def inputs(ep_id, *, _legacy=False):
     else:
         from app.services.scene_models import plan_scene_models
         from app.services.studio_image_reuse import apply
-        directing = folder/'directing.json'
         jobs = apply(ep_id, jobs)
-        directions = read(directing) if directing.is_file() else {}
         used.update(e['image_id'] for e in directions.get('visual_events', []))
         # Match the production slate's allocation before reviewing any unused briefs.
         jobs.sort(key=lambda j: j.id not in used)
@@ -135,6 +140,11 @@ def record_approval(ep_id, reviewer, finding, direction_policy=None, *, expected
     value = inputs(ep_id)
     if expected_fingerprint is not None and expected_fingerprint!=fingerprint(value):
         raise ValueError('review inputs changed; reload and review the current material')
+    if studio_managed(ep_id):
+        from app.services import studio_workflow as W
+        W.record_review(ep_id,'editorial',reviewer,finding,'approved',
+                        expected_identity=W.identity(ep_id),checks={'facts_and_story':True})
+        return W.folder(ep_id)/'review-editorial.json'
     # Output binding: bind the approval to the exact bytes of the delivered mp4.
     # Without it, re-rendering or swapping the file keeps eligible=true -- the
     # approval only described the inputs. v2 has the same guarantee on its
@@ -160,21 +170,58 @@ def record_approval(ep_id, reviewer, finding, direction_policy=None, *, expected
     return path
 
 
+def studio_managed(ep_id):
+    from app import paths
+    from app.services.studio_workspace import config
+    return bool(config(paths.ROOT) and episode_dir(ep_id).resolve().is_relative_to((paths.ROOT/'workspace').resolve()))
+
+
+def _studio_inputs(ep_id):
+    """Use the same visual and recording preparation as interactive production."""
+    from app.managers import load
+    from app.orchestrator import _load_script_md
+    from app.services.script_document import parse_document
+    from app.services.production_inputs import prepare, input_files
+    from app.services.recording_input import episode_source
+    from app.services.recording_alignment_recovery import range_identity
+    ep=load(ep_id);text=_load_script_md(ep);doc=parse_document(text)
+    jobs,_=prepare(ep,doc,episode_dir(ep_id)/'production/v2',preview=True)
+    audio=episode_source(ep_id,source_text=text)
+    unsupported=[c for c in doc.get('delivery_cues',[]) if c['intent']!='pause']
+    from app.services.recording_input import selected_master_sha
+    master_sha = selected_master_sha(audio.get('selection'), episode_dir(ep_id)/'production/v2/recordings')
+    return dict(source_sha256=fingerprint(text),files=input_files(ep_id),
+        alignment_ranges=range_identity(ep_id, fingerprint(text), master_sha) if master_sha else {},
+        image_requests={j.id:j.request_fingerprint() for j in jobs},
+        audio_source={k:audio[k] for k in ('kind','requires_tts','selection','source_sha256')},
+        voice_asset_version=_voice_asset_version_for_inputs(episode_dir(ep_id)) if audio['requires_tts'] else None,
+        direction_cues=[dict(cue_id=c['cue_id'],text=c['raw_text']) for c in unsupported],
+        unsupported_cues=[c['cue_id'] for c in unsupported])
+
+
 def check(ep_id):
     blockers = []
     try:
         value = inputs(ep_id)
         path = episode_dir(ep_id)/'production/input-approval.json'
         review = read(path) if path.exists() else {}
+        studio = studio_managed(ep_id)
         approved_inputs = (review.get('decision') == 'approved_inputs' and bool(review.get('reviewer'))
                 and bool(review.get('finding')) and review.get('input_fingerprint') == fingerprint(value))
-        if not approved_inputs:
+        if studio:
+            from app.services import studio_workflow as W
+            from app.services.studio_sources import require_usable
+            require_usable(ep_id)
+            current = W.status(ep_id)
+            approved_inputs = current['ready_for_generation']
+            blockers.extend(current['blockers'])
+        elif not approved_inputs:
             blockers.append('source facts and explicit storyboard require current input approval')
         if value['unsupported_cues']:
             state_path = episode_dir(ep_id) / 'production/v2/run.json'
             state = read(state_path) if state_path.exists() else {}
             from app.services.delivery import pending
-            planned = (approved_inputs and review.get('direction_policy')=='candidate_review_required'
+            planned = studio or (approved_inputs and review.get('direction_policy')=='candidate_review_required'
                 and review.get('direction_plan')==[dict(cue_id=c,action='candidate_review_required') for c in value['unsupported_cues']])
             if not planned and (state.get('source_sha256') != value['source_sha256'] or not state.get('manifest_path')
                     or pending(state['manifest_path'])):
@@ -182,18 +229,24 @@ def check(ep_id):
         # The approval must describe the bytes that were reviewed. If the mp4 was
         # replaced or re-rendered afterwards, the review no longer applies.
         bound = review.get('output_sha256')
-        if bound:
+        if bound and not studio:
             from app.services import output_binding
             chk = output_binding.verify(ep_id)
             if not chk['ok']:
                 blockers.append('delivered video no longer matches the approved bytes: '
                                 + '; '.join(chk['fails']))
+        quality_refresh = False
         state_path = episode_dir(ep_id)/'production/v2/run.json'
         if state_path.exists():
             state = read(state_path)
             if state.get('quality_path') and state.get('source_sha256')==value['source_sha256']:
-                from app.services.production_quality import pending
-                if pending(state['quality_path']): blockers.append('existing audio findings require disposition')
-        return dict(eligible=not blockers, blockers=blockers, input_fingerprint=fingerprint(value))
+                from app.services.production_quality import pending, StaleQualityReport
+                try:
+                    if pending(state['quality_path']): blockers.append('existing audio findings require disposition')
+                except (StaleQualityReport, FileNotFoundError):
+                    quality_refresh = True
+        return dict(eligible=not blockers, blockers=blockers, quality_refresh_required=quality_refresh,
+                    input_fingerprint=fingerprint(value),
+                    approval_source='studio_editorial' if studio else 'legacy_input_review')
     except (OSError, ValueError, KeyError, RuntimeError, TypeError) as exc:
         return dict(eligible=False, blockers=[str(exc)], input_fingerprint=None)

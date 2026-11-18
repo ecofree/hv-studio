@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import io
 import wave
+from contextlib import ExitStack
 from contextvars import ContextVar
 from pathlib import Path
 
@@ -45,12 +46,41 @@ def wav_info(data):
     return frames,rate
 
 
+def repair_internal_silence(path, receipt):
+    """Create a traceable copy with long internal silent intervals shortened."""
+    from app.services.audio_content_qa import acoustic
+    from app.services.narration_leveling import load, save
+    findings=acoustic(path)['findings']
+    if not findings or any(f.get('kind')!='long_silence' or f.get('position')!='internal' for f in findings):
+        return path,receipt
+    pcm,sr=load(path); pieces=[]; cursor=0; edits=[]
+    for f in findings:
+        a,b=f['start_sample'],f['end_sample']; keep=min(b-a,round(sr*1.0))
+        cut_a=a+(b-a-keep)//2; cut_b=cut_a+(b-a-keep)
+        pieces.append(pcm[cursor:cut_a]);cursor=cut_b;edits.append([cut_a,cut_b])
+    pieces.append(pcm[cursor:])
+    import numpy as np
+    target=path.parent/'internal-silence-v1.wav'; proof=path.parent/'internal-silence-v1.receipt.json'
+    result=np.concatenate(pieces)
+    if target.exists():
+        existing,rate=load(target)
+        if rate!=sr or not np.array_equal(existing,result):raise ValueError('silence repair output changed')
+    else:save(target,result,sr)
+    record=dict(receipt,kind='internal_silence_repair_v1',audio_sha256=file_sha256(target),
+                provider_raw_path=str(path.resolve()),provider_raw_sha256=file_sha256(path),
+                provider_receipt_path=str(path.with_name('receipt.json').resolve()),
+                provider_receipt_sha256=file_sha256(path.with_name('receipt.json')),removed_sample_ranges=edits)
+    if proof.exists() and read(proof)!=record:raise ValueError('silence repair receipt changed')
+    if not proof.exists():atomic_json(proof,record)
+    return target,record
+
+
 def render_take(req,cache,provider,*,budget=None,retry_uncertain=False):
     from app.services.studio_voice_contract import validate
     locked=validate(req)
     cache=Path(cache);key=fingerprint(req);root=cache/key
     raw=root/'raw.wav';receipt=root/'receipt.json';attempt=root/'attempt.json'
-    with file_lock(cache/(key+'.lock')):
+    with file_lock(cache/(key+'.lock')), ExitStack() as dispatch_resources:
         if receipt.exists():
             r=read(receipt)
             if r.get('request')!=req or not raw.exists() or r.get('audio_sha256')!=file_sha256(raw):
@@ -70,7 +100,11 @@ def render_take(req,cache,provider,*,budget=None,retry_uncertain=False):
             raise ValueError('voice reference changed before dispatch')
         validator=getattr(provider,'validate_request',None)
         if locked and not validator:raise ValueError('provider cannot enforce the confirmed voice contract')
-        if validator:validator(req)
+        acquire = getattr(provider, 'dispatch_lease', None)
+        if acquire:
+            dispatch_resources.enter_context(acquire())
+        if validator:
+            validator(req)
         token=budget.reserve('tts',key,characters=len(req['text']))
         parent_attempt=read(attempt)['attempt_id'] if attempt.exists() else None
         if attempt.exists(): atomic_json(root/'attempts'/(read(attempt)['attempt_id']+'.json'),read(attempt))
@@ -117,14 +151,16 @@ def render_act(chunks,output,*,speaker,mode,model,engine_revision,provider,budge
             raise ValueError('raw act overwrite refused; choose a new output revision')
     for req in requests:
         path,receipt=render_take(req,Path(cache) if cache else output.parent/'takes',provider,budget=budget,retry_uncertain=retry_uncertain)
+        path,receipt=repair_internal_silence(path,receipt)
         from app.services.audio_content_qa import require_content
         qa=require_content(path,req['text'],path.parent/'content-qa',recognizer=recognizer)
         pcm,sr=load(path)
         if sample_rate is not None and sr!=sample_rate: raise ValueError('句块采样率不同，不能保持同一时钟')
         sample_rate=sr
         if parts: cursor+=round(sr*.35)
-        records.append(dict(request_fingerprint=receipt['request_fingerprint'],receipt_path=str(path.with_name('receipt.json').resolve()),
-                            receipt_sha256=file_sha256(path.with_name('receipt.json')),raw_path=str(path.resolve()),raw_sha256=receipt['audio_sha256'],
+        receipt_path=path.with_name('internal-silence-v1.receipt.json' if receipt.get('kind')=='internal_silence_repair_v1' else 'receipt.json')
+        records.append(dict(request_fingerprint=receipt['request_fingerprint'],receipt_path=str(receipt_path.resolve()),
+                            receipt_sha256=file_sha256(receipt_path),raw_path=str(path.resolve()),raw_sha256=receipt['audio_sha256'],
                             text=req['text'],instruction=req['instruction'],content_qa=qa,sample_start=cursor,sample_end=cursor+len(pcm),active_rms_dbfs=active_db(pcm,sr)))
         parts.append(pcm.tobytes());cursor+=len(pcm)
     if not parts: raise ValueError('没有可朗读正文')

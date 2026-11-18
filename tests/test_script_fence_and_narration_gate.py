@@ -247,3 +247,12 @@ def test_short_paragraph_stays_whole_and_stub_merges():
     doc2 = parse_document("前" * 100 + "。后十个字而已。\n", "probe.md")
     assert len(doc2["units"]) == 1, "短尾必须并入上一 chunk，不得产生碎 unit"
     assert doc2["units"][0]["source_text"] == "前" * 100 + "。后十个字而已。"
+
+
+def test_oversized_sentence_keeps_closing_quote_with_narration():
+    from app.services.script_document import parse_document
+
+    text = "甲" * 112 + "！”"
+    units = parse_document(text + "\n", "probe.md")["units"]
+    assert [u["source_text"] for u in units] == [text]
+    assert units[0]["source_map"] == list(range(len(text)))

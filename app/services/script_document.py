@@ -29,7 +29,7 @@ from app.services.script import PAREN_CUE_WORDS as _PAREN_WORDS  # noqa: E402
 
 _PAREN_CUE = re.compile(r"[（(][^（()）\n]+[)）]")
 _PAUSE = re.compile(r"(?:停顿\s*(\d+(?:\.\d+)?)\s*秒|pause\s*(?:=|:|\s)\s*(\d+(?:\.\d+)?)\s*(?:seconds?|s))", re.I)
-_DIRECTION_PREFIX = re.compile(r"^(?:语气|重音|叹息|叹气|轻笑|气音|微混响|音效|画面|转场|配乐|导演|停顿|pause\b)", re.I)
+_DIRECTION_PREFIX = re.compile(r"^(?:语气|重音|叹息|叹气|轻笑|气音|微混响|音效|画面|视听构图|转场|配乐|导演|停顿|pause\b)", re.I)
 _AMBIGUOUS_PREFIX = re.compile(r"^(?:语音|声音|声线|音量)")
 _EDITORIAL_LINE = re.compile(r"^\s*[-*+]\s+(?:\*\*)?(本幕利害切口|视听构图)(?:\*\*)?\s*[：:]")
 _END_CARD = re.compile(r"^【片尾字幕】\s*[：:]?\s*$")
@@ -108,6 +108,11 @@ def parse_document(source: str, source_name: str = "script.md", *, authoring_lay
                 end = rem[0] if rem else n
             ranges.append((start, end))
             start = end
+        # Closing quotation marks and other punctuation have no independent
+        # speech. Keep a punctuation-only tail with its preceding narration,
+        # even when that narration already exceeds the preferred unit length.
+        if len(ranges) > 1 and not any(ch.isalnum() for ch in text[ranges[-1][0]:ranges[-1][1]]):
+            ranges[-2:] = [(ranges[-2][0], ranges[-1][1])]
         return [(a, b) for a, b in ranges if b > a]
 
     def flush():
@@ -239,7 +244,7 @@ def parse_document(source: str, source_name: str = "script.md", *, authoring_lay
             if m.start() not in registered:
                 registered.add(m.start())
                 channel = "pause" if pause else next((value for prefix, value in (
-                    ("画面", "visual"), ("音效", "sfx"), ("配乐", "music"),
+                    ("画面", "visual"), ("视听构图", "visual"), ("音效", "sfx"), ("配乐", "music"),
                     ("转场", "transition"), ("导演", "director")) if inner.startswith(prefix)),
                     "performance" if known else "unknown")
                 cue = {"cue_id":f"cue-{len(cues):05d}", "block_id":block["block_id"],

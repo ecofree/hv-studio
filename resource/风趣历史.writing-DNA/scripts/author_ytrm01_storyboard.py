@@ -7,8 +7,12 @@ request is independent; the model has no memory between calls.
 import json
 from pathlib import Path
 
-EP = Path(r"D:/hv/episodes/ytrm-01")
-PLAN = Path(r"D:/hv/episodes/ytrm-01/production/v2/plans/1fb2b2df8d21bd63b2ff0551bb313fbae5d0521c8488a2d67d4c66f48d23f1b3/plan.json")
+import sys
+ROOT = Path(__file__).resolve().parents[3]
+sys.path.insert(0, str(ROOT))
+from app import paths
+EP = paths.episode_dir('ytrm-01')
+PLAN = EP/'production/v2/plans/1fb2b2df8d21bd63b2ff0551bb313fbae5d0521c8488a2d67d4c66f48d23f1b3/plan.json'
 
 M_YOUNG = ("the lean Chinese monk with a shaved head, sun-darkened skin "
            "and a worn ochre kasaya")

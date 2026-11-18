@@ -73,6 +73,27 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
         raise ValueError('stages must follow '+', '.join(order)+' order')
     if min(max_requests, max_characters, max_images, max_image_retries) < 0:
         raise ValueError("generation budgets cannot be negative")
+    if script_md is not None:
+        from app.services.production_admission import studio_managed
+        directory = _episode_dir(ep_id)
+        protected = (studio_managed(ep_id) or (directory/'studio/workflow.json').is_file()
+                     or (directory/'editorial/source-binding.json').is_file())
+        selected = _load_script_md(load(ep_id)) if protected else ''
+        if protected and selected != script_md:
+            if not selected.strip() or requested != ['script'] or not script_md.strip():
+                raise ValueError('临时稿只能独立试排。正式制作请先导入并选定对应版本')
+            draft = _episode_dir(ep_id) / 'studio' / 'script-previews' / fingerprint(script_md)
+            draft.mkdir(parents=True, exist_ok=True)
+            source = draft / 'source.md'
+            if source.exists() and source.read_text(encoding='utf-8') != script_md:
+                raise ValueError('临时稿快照不一致')
+            if not source.exists():
+                source.write_text(script_md, encoding='utf-8')
+            plan = N.prepare(source, draft / 'plans')
+            return dict(ep_id=ep_id, pipeline_version='production_v2', status='SCRIPT_PREVIEW', run_ok=True,
+                        stages_done=['script'], requested_stages=requested, approved=False,
+                        production_ready=False, plan_path=str(plan.resolve()), final_mp4=None,
+                        artifacts=[str(plan.resolve()), str((plan.parent/'document.json').resolve())])
     verify_only = requested == ["verify"]
     from app.services.studio_workflow import require_production
     from app.services.recording_input import episode_source
@@ -181,7 +202,9 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
             nonlocal cards_checked
             from app.services.overlay import path_for
             sidecar=path_for(ep_id)
-            if cards_checked and sidecar.is_file() and file_sha256(sidecar)==cards_checked:return
+            design_path = _episode_dir(ep_id)/'directing.json'
+            design_sha = file_sha256(design_path) if design_path.is_file() else None
+            if sidecar.is_file() and cards_checked == (file_sha256(sidecar), design_sha): return
             quality_path = state.get("quality_path")
             if not quality_path:
                 raise ValueError("title cards need the current quality report")
@@ -200,8 +223,12 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                 total_ms=int(round(manifest["samples"] * 1000 / manifest["sample_rate"])),
                 sample_rate=manifest["sample_rate"],
             )
-            overlay_author.check_sidecar(sidecar,total_ms=round(manifest['samples']*1000/manifest['sample_rate']))
-            cards_checked=file_sha256(sidecar)
+            from app.services.directing import effective_cards
+            design = N.read(design_path) if design_sha else {}
+            evidence = N.read(state['alignment_path']) if design.get('cards') and state.get('alignment_path') else {'words': {}}
+            final_cards = effective_cards(manifest, design, evidence, sidecar)
+            result['effective_overlay_sha256'] = fingerprint([card.payload() for card in final_cards.specs])
+            cards_checked=(file_sha256(sidecar), design_sha)
 
         def current_candidate():
             manifest_path, manifest = current_manifest()
@@ -218,7 +245,8 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                 raise ValueError("candidate uses stale narration")
             from app.services.production_identity import split_receipt_drift
             if not artifacts_current(receipt["inputs"]):
-                content_drift, renderer_drift = split_receipt_drift(receipt["inputs"])
+                content_drift, renderer_drift = split_receipt_drift(
+                    receipt["inputs"], quality_path=state.get('quality_path'), manifest_path=manifest_path)
                 if content_drift:
                     raise ValueError("candidate or its inputs changed; run stage compose")
                 # Renderer-only drift: bytes and reviews intact; verify and later
@@ -226,7 +254,10 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                 result["renderer_changed"] = renderer_drift
             if file_sha256(receipt["candidate_path"]) != receipt["candidate_sha256"]:
                 raise ValueError("candidate is missing or changed; run stage compose")
-            if state.get('timeline_path'): P.validate_timeline(manifest, N.read(state['timeline_path']))
+            if state.get('timeline_path'):
+                candidate_timeline = N.read(state['timeline_path'])
+                P.validate_timeline(manifest, candidate_timeline)
+                P.check_overlay_receipt(ep_id, candidate_timeline, receipt)
             return path, receipt
 
         if locked_voice and 'tts' in requested and not selected_narration:
@@ -496,6 +527,8 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                                   " --image-key <KEY> 逐张补齐")
                     made = build(ep, manifest_path, state['alignment_path'], state['image_assets'],
                                  state['scene_plan_path'], root/'timelines', quality_path=state.get('quality_path'))
+                    from app.services.production_timeline import select_after_quality_refresh
+                    made = select_after_quality_refresh(state.get('timeline_path'), made)
                     state['timeline_path'] = str(made.resolve()); artifacts.append(str(made.resolve()))
                 elif stage == "compose":
                     manifest_path, manifest = current_manifest()
@@ -547,6 +580,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                 result["budget"]=dict(path=str(budget.path.resolve()),limits=snapshot["limits"],used=snapshot["used"])
             state.update(running=False, completed_at=time.time())
             state["last_result"] = result
+            if not verify_only: metrics.persist(root,result)
             save()
             return result
         metrics.finish()
@@ -559,6 +593,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
             snapshot = budget.snapshot()
             result['budget'] = dict(path=str(budget.path.resolve()), limits=snapshot['limits'], used=snapshot['used'])
         state["last_result"] = result
+        if not verify_only: metrics.persist(root,result)
         save()
         result["artifacts"] = sorted(set(artifacts + [str(state_path.resolve())]))
         return result

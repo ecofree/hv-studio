@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import copy
 import json
+import ntpath
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath, PurePosixPath
 
 
 def config(root=None):
@@ -14,25 +15,81 @@ def config(root=None):
     return json.loads(file.read_text('utf-8')) if file.is_file() else None
 
 
+def legacy_path_roots(root=None):
+    """Old address prefixes only: never discover or consult another checkout."""
+    value = config(root) or {}
+    return tuple(value.get('legacy_path_roots', ()) or
+                 ([value['original_root']] if value.get('original_root') else []))
+
+
+def _relative_path(value, prefix):
+    """Lexical matching, including Windows paths on a non-Windows host."""
+    windows = bool(PureWindowsPath(str(prefix)).drive)
+    cls = PureWindowsPath if windows else PurePosixPath
+    norm = ntpath.normpath if windows else os.path.normpath
+    path, base = cls(norm(os.fsdecode(value))), cls(norm(str(prefix)))
+    if not path.is_absolute() or not base.is_absolute():
+        return None
+    try:
+        return path.relative_to(base).parts
+    except ValueError:
+        return None
+
+
+def is_legacy_path(value, root=None):
+    return any(_relative_path(value, old) is not None for old in legacy_path_roots(root))
+
+
+def asset_path(value, root=None):
+    """Resolve known old addresses locally, even when the old file still exists.
+
+    Missing local media stays missing. Never fall back to the original project.
+    Unrelated external inputs retain their explicit paths.
+    """
+    from app import paths
+    root = Path(root or paths.ROOT).resolve()
+    path = Path(value)
+    aliases = (config(root) or {}).get('project_path_aliases', [])
+    restore = root/'RESTORE-INFO.json'
+    if restore.is_file():
+        record = json.loads(restore.read_text('utf-8'))
+        aliases = [*aliases, *record.get('path_aliases', [])]
+        if record.get('source_root'):
+            aliases.append(record['source_root'])
+    for old in (*legacy_path_roots(root), *aliases):
+        parts = _relative_path(value, old)
+        if parts is not None:
+            path = root.joinpath(*parts)
+            break
+    path = (path if path.is_absolute() else root/path).resolve()
+    if is_legacy_path(path, root):
+        raise ValueError('素材路径指向已脱离的原项目，请使用本项目内的文件')
+    return path
+
+
 def install_original_write_guard():
-    """Refuse Python writes to the source checkout, including stale absolute paths."""
+    """Block both reads and writes through retired checkout addresses.
+
+    The old function name is retained for startup compatibility. Prefixes are
+    matched lexically: installing this guard never accesses the old checkout.
+    """
     import sys
     value = config()
     if not value or getattr(sys, '_hv_studio_guard', False):
         return
-    original = Path(value['original_root']).resolve()
+    originals = legacy_path_roots()
 
     def check(name):
         if isinstance(name, (str, bytes, os.PathLike)):
-            path = Path(os.fsdecode(name)).resolve()
-            if path.is_relative_to(original):
-                raise PermissionError('副本禁止写入原项目：' + str(path))
+            path = os.path.abspath(os.fsdecode(name))
+            if any(_relative_path(path, old) is not None for old in originals):
+                raise PermissionError('独立项目禁止访问原项目：' + str(path))
 
     def audit(event, args):
         if event == 'open':
-            name, mode, flags = args
-            if (mode and any(x in mode for x in 'wax+')) or flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_APPEND):
-                check(name)
+            check(args[0])
+        elif event in {'os.listdir', 'os.scandir'}:
+            check(args[0])
         elif event in {'os.remove', 'os.rmdir', 'os.mkdir', 'os.chmod', 'os.utime', 'os.truncate'}:
             check(args[0])
         elif event in {'os.rename', 'os.link', 'os.symlink'}:
@@ -44,13 +101,7 @@ def install_original_write_guard():
 def library_path(value, root=None):
     from app import paths
     root = Path(root or paths.ROOT).resolve()
-    cfg = config(root)
-    path = Path(value)
-    if cfg:
-        old = Path(cfg['original_root']).resolve()
-        if path.is_absolute() and path.resolve().is_relative_to(old):
-            path = root / path.resolve().relative_to(old)
-    path = (root / path).resolve() if not path.is_absolute() else path.resolve()
+    path = asset_path(value, root)
     if not path.is_relative_to(root):
         raise ValueError('素材必须在当前项目副本内')
     return path
@@ -71,12 +122,10 @@ def import_episode(old_id, new_id):
     script = library_path(raw['script_path'])
     if not script.is_file():
         raise ValueError('历史版本正文缺失')
-    cfg = config(paths.ROOT)
-    old_root = Path(cfg['original_root']).resolve() if cfg else paths.ROOT
     def rebase(item):
         if isinstance(item, dict): return {k: rebase(v) for k,v in item.items()}
         if isinstance(item, list): return [rebase(v) for v in item]
-        if isinstance(item, str) and (item.startswith(str(old_root)) or item.startswith(old_root.as_posix())):
+        if isinstance(item, str) and is_legacy_path(item, paths.ROOT):
             return str(library_path(item))
         return item
     data = rebase(copy.deepcopy(raw))

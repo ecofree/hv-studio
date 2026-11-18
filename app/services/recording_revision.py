@@ -104,6 +104,7 @@ def reuse_cuts(parent, data, units, ranges, rows, rate):
     spoken={u['unit_id']:u['approved_spoken_text'] for u in script['units']}
     kept={}
     for i,u in enumerate(units):
+        if rows[i].get('manual_location'):continue  # Explicit local corrections replace old cut bounds.
         oldunit,take=oldtakes.get(u['unit_id'],(None,None))
         if not oldunit or oldunit['text']!=u['display_text'] or spoken.get(u['unit_id'])!=u['approved_spoken_text']:continue
         span=edit.interval(oldunit['sample_start'],oldunit['sample_end'])

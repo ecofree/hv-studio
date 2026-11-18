@@ -19,10 +19,14 @@ def finish_receipt(ep_id, value, contract_path=None):
              str(Path(value['raw_master']).with_suffix('.chunks.json')),
              str(Path(value['master']).with_suffix('.level.json'))]
     chunks = read(files[3])
+    if value.get('voice_consistency_path'):
+        files.append(value['voice_consistency_path'])
     for row in chunks['chunks']:
         files.extend([row['raw_path'], row['receipt_path']])
         files.extend(row['content_qa']['inputs'])
         take_receipt = read(row['receipt_path'])
+        if take_receipt.get('kind') == 'internal_silence_repair_v1':
+            files.extend([take_receipt['provider_raw_path'],take_receipt['provider_receipt_path']])
         if take_receipt.get('kind') == 'compound_tts_take_v1':
             for take in take_receipt.get('subtakes', []):
                 files.extend(take[k] for k in ('provider_raw_path','provider_receipt_path','processed_path','trim_receipt_path'))
@@ -78,6 +82,17 @@ def validate_receipt(ep_id, source_map, *, current=True, deep=True):
                 if part['text'] != '\n\n'.join(units[u] for u in part['unit_ids']): raise ValueError('旧方案分段与原稿不一致')
                 seen.extend(part['unit_ids'])
             if seen != list(units): raise ValueError('原稿覆盖不完整')
+        elif contract and contract['version']==2:
+            # A locked passage may be subdivided for local TTS. Require the
+            # ordered fragments to reconstruct every original passage exactly.
+            i=0
+            for original in contract['parts']:
+                text=''
+                while len(text)<len(original['text']) and i<len(parts):
+                    text+=parts[i]['text'];i+=1
+                    if not original['text'].startswith(text):raise ValueError('配音片段偏离锁定正文')
+                if text!=original['text']:raise ValueError('配音片段未完整覆盖锁定正文')
+            if i!=len(parts):raise ValueError('配音片段包含额外正文')
         else: validate_parts(parts,doc)
     chunks = read(Path(r['raw_master']).with_suffix('.chunks.json'))
     if chunks['source_sha256'] != file_sha256(r['raw_master']) or len(parts) != len(chunks['chunks']):
@@ -101,17 +116,29 @@ def validate_receipt(ep_id, source_map, *, current=True, deep=True):
                 cursor=row['sample_end']
         if cursor != chunks['samples']: raise ValueError('合并音轨末尾存在未登记内容')
     def qa_matches(qa, text, audio_sha):
-        if (qa.get('status')!='passed_machine' or qa.get('findings')
+        if (qa.get('status') not in ('passed_machine','passed_user_confirmation') or qa.get('findings')
                 or qa.get('source_sha256')!=fingerprint(text) or qa.get('audio_sha256')!=audio_sha
                 or not qa.get('inputs') or not set(qa['inputs']) <= set(r['inputs'])):
             return False
         if any(r['inputs'].get(p)!=sha for p,sha in qa['inputs'].items()):return False
         from app.services.audio_content_qa import transcript
+        confirmations=[];recognitions=[]
         for p in qa['inputs']:
-            recognition=read(p);observed=recognition['result']
+            recognition=read(p)
+            if recognition.get('kind')=='user_content_confirmation_v1':
+                confirmations.append(recognition);continue
+            if 'result' not in recognition:return False
+            observed=recognition['result'];recognitions.append(observed)
             if (recognition['result_sha256']!=fingerprint(observed) or observed['audio_sha256']!=audio_sha
-                    or transcript(text,observed['text'])['findings']):return False
-        return True
+                    or (qa['status']=='passed_machine' and transcript(text,observed['text'])['findings'])):return False
+        if qa['status']=='passed_user_confirmation':
+            return (len(confirmations)==1 and len(recognitions)==1 and
+                    confirmations[0].get('audio_sha256')==audio_sha and
+                    confirmations[0].get('source_sha256')==fingerprint(text) and
+                    confirmations[0].get('reviewer')=='user' and confirmations[0].get('decision')=='pronunciation_confirmed' and
+                    confirmations[0].get('recognized_text')==recognitions[0]['text'] and
+                    qa.get('machine_findings')==transcript(text,recognitions[0]['text'])['findings'])
+        return bool(recognitions) and not confirmations
 
     for part, row in zip(parts,chunks['chunks']):
         for name in ('raw_path','receipt_path'):
@@ -121,6 +148,23 @@ def validate_receipt(ep_id, source_map, *, current=True, deep=True):
                 or row['instruction'] != part.get('instruction', row['instruction'])
                 or receipt.get('audio_sha256') != file_sha256(row['raw_path'])):
             raise ValueError('实际配音请求与文案或音轨不一致')
+        if receipt.get('kind') == 'internal_silence_repair_v1':
+            original=read(receipt['provider_receipt_path'])
+            if (receipt['provider_raw_sha256']!=file_sha256(receipt['provider_raw_path'])
+                or receipt['provider_receipt_sha256']!=file_sha256(receipt['provider_receipt_path'])
+                or original.get('audio_sha256')!=receipt['provider_raw_sha256']
+                or original.get('request')!=receipt.get('request')):
+                raise ValueError('静音修复缺少原始音频与请求凭据')
+            import wave
+            with wave.open(receipt['provider_raw_path'],'rb') as w:
+                raw=w.readframes(w.getnframes())
+            cursor=0; expected=bytearray()
+            for a,b in receipt['removed_sample_ranges']:
+                if not 0<=cursor<=a<b<=len(raw)//2:raise ValueError('静音修复范围无效')
+                expected.extend(raw[cursor*2:a*2]);cursor=b
+            expected.extend(raw[cursor*2:])
+            with wave.open(row['raw_path'],'rb') as w:
+                if w.readframes(w.getnframes())!=bytes(expected):raise ValueError('静音修复无法逐采样复现')
         if receipt.get('kind') == 'compound_tts_take_v1':
             subtakes=receipt.get('subtakes') or [];subrequests=[];spoken=[];cursor_bytes=[]
             if (receipt.get('source_text')!=part['text'] or len(subtakes)<2

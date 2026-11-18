@@ -19,6 +19,7 @@ from test_image_routing import generator, job, response
 pytestmark = pytest.mark.production
 
 
+@pytest.mark.api_transport
 def test_api_budget_and_path_guards_precede_any_dispatch(generator, monkeypatch, tmp_path, tmp_episodes):
     from app import paths
     from app.main import app

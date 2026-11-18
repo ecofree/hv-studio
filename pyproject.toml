@@ -9,6 +9,7 @@ markers = [
     "production: current V2 production contracts; default acceptance suite",
     "shared: shared adapters and maintenance; run for component changes",
     "legacy: optional legacy-preview compatibility; not production evidence",
+    "api_transport: requires a working local TestClient event loop",
     "NEEDS_FFMPEG: 用例需要本机 ffmpeg/ffprobe；缺件应 skip 而不是 red",
     "slow: 端到端/耗时用例（如 hv smoke 全链路）",
 ]

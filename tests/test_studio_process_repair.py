@@ -93,7 +93,7 @@ def test_completed_take_recovers_content_check_without_provider_retry(tmp_path):
 
 def contract(tmp_path):
     p=tmp_path/'contract.json'
-    c=dict(version=1,speaker='dylan',model='same-model',mode='custom',instruction='保持已确认说书人',engine_revision='same-engine',
+    c=dict(version=1,speaker='dylan',model='Qwen3-TTS-12Hz-1.7B-CustomVoice',mode='custom',instruction='保持已确认说书人',engine_revision='same-engine',
            source_sha256='source',generation={'temperature':.65},seed=42,evidence={},target_rate=1.2)
     c['selected_variant']='fixture'
     rows={'confirmation_path':dict(decision='accepted_for_use',selected_variant='fixture',source_sha256='source',target_rate=1.2),

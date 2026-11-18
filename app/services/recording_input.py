@@ -85,16 +85,30 @@ def parts_receipt(master):
     return value
 
 
+def joined_recording_path(selection, destination):
+    key = fingerprint(dict(clock='mono-pcm16-24000-no-added-gap-v1', selection=selection))
+    return Path(destination)/key/'master.wav'
+
+
+def selected_master_sha(selection, destination):
+    if not selection:
+        return None
+    if selection['kind'] == 'master':
+        return selection['files'][0]['sha256']
+    path = joined_recording_path(selection, destination)
+    receipt = parts_receipt(path) if path.is_file() else None
+    return receipt['track_sha256'] if receipt else None
+
+
 def materialize(selection, destination):
     """Keep a provided master in place. Join parts only once, on a sample clock."""
     validate(selection)
     if selection['kind']=='master':return Path(selection['files'][0]['path'])
     from app.services.external_narration import canonical_master
     from app.services.process_lock import wait_file_lock
-    key=fingerprint(dict(clock='mono-pcm16-24000-no-added-gap-v1',selection=selection))
-    folder=Path(destination)/key
+    target=joined_recording_path(selection, destination)
+    folder=target.parent
     folder.mkdir(parents=True,exist_ok=True)
-    target=folder/'master.wav'
     with wait_file_lock(folder/'parts.lock',timeout=600):
         if (folder/'parts.json').is_file():
             rec=parts_receipt(target)

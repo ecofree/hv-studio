@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import re
+from hashlib import sha256
 from pathlib import Path
 
 from app import paths
@@ -38,7 +39,7 @@ def set_disposition(ep_id, status, reason):
 
 def selectable(include_history=False):
     records = versions()['episodes']
-    ids = [p.stem for p in paths.episodes_dir().glob('*.json')]
+    ids = [p.stem for p in paths.episodes_dir().glob('*.json') if not _import_journal(p.stem).exists()]
     if not include_history:
         ids = [i for i in ids if records.get(i, {}).get('status') not in ('historical', 'excluded')]
     return sorted(ids, key=lambda i: (records.get(i, {}).get('status') != 'current', i))
@@ -55,6 +56,8 @@ def issues(ep_id, _seen=None):
     _seen.add(ep_id)
     state = disposition(ep_id)
     result = []
+    if _import_journal(ep_id).exists():
+        result.append('原稿导入尚未完成，请用同一组文件继续导入')
     if state['status'] in ('historical', 'excluded'):
         result.append('此版本仅供追溯，禁止作为新制作输入：' + state['reason'])
     value = contract(ep_id)
@@ -70,7 +73,8 @@ def issues(ep_id, _seen=None):
     from app.managers import load
     from app.services.script_handoff import verify_revision
     try:
-        root = Path(value['revision'])
+        from app.services.studio_workspace import asset_path
+        root = asset_path(value['revision'])
         verify_revision(root)
         if file_sha256(root / 'manifest.json') != value['manifest_sha256']:
             result.append('文案版本清单已改变')
@@ -78,7 +82,7 @@ def issues(ep_id, _seen=None):
             result.append('当前剧集没有绑定导入的用户原稿')
         for item in value['inputs']:
             for key in ('snapshot',):
-                if item.get(key) and file_sha256(item[key]) != item['sha256']:
+                if item.get(key) and file_sha256(asset_path(item[key])) != item['sha256']:
                     result.append('导入快照已改变，请恢复或建立新版本：' + item[key])
     except (OSError, ValueError, KeyError) as exc:
         result.append('文案版本核验失败：' + str(exc))
@@ -93,28 +97,41 @@ def require_usable(ep_id):
 
 def external_updates(ep_id):
     """Informational only: the imported snapshot remains the selected version."""
+    from app.services.studio_workspace import library_path
     result=[]
     for item in (contract(ep_id) or {}).get('inputs',[]):
-        for key in ('path','original_path'):
-            p=item.get(key)
-            if p and (not Path(p).is_file() or file_sha256(p)!=item['sha256']):result.append(p)
+        # original_path is historical provenance, never a live source to poll.
+        if item.get('path'):
+            p = library_path(item['path'])
+            if not p.is_file() or file_sha256(p)!=item['sha256']:result.append(str(p))
     return result
+
+
+def _import_journal(ep_id):
+    return paths.state_dir()/'source-imports'/(paths.validate_episode_id(ep_id)+'.json')
 
 
 def import_authoring(ep_id, title, source_file, *, tts_file=None, rule_files=(), scope='full',
                      adopt_existing=False):
-    """Create a fresh episode from identical user inputs. Never retarget old media."""
+    journal = _import_journal(ep_id)
+    with file_lock(journal.with_suffix('.lock')):
+        return _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, adopt_existing, journal)
+
+
+def _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, adopt_existing, journal):
+    """Replay an interrupted import only for the exact same source selection."""
     from app.services.script_handoff import derive, write_revision
-    from app.services.studio_workspace import library_path, config
+    from app.services.studio_workspace import library_path
     from app.services import studio_workflow as W
     paths.validate_episode_id(ep_id)
     if not title.strip() or scope not in ('full','pilot'):raise ValueError('标题或制作范围无效')
     existing_json=paths.episode_json(ep_id)
     existing_root=paths.episode_dir(ep_id)
-    if not adopt_existing and (existing_json.exists() or existing_root.exists()):
+    pending = json.loads(journal.read_text('utf-8')) if journal.exists() else None
+    if not pending and not adopt_existing and (existing_json.exists() or existing_root.exists()):
         raise ValueError('请使用新的版本名称；旧版本不覆盖')
-    existing_episode=None
-    if adopt_existing:
+    existing_episode=pending.get('original_episode') if pending else None
+    if adopt_existing and not pending:
         if not existing_json.is_file() or not existing_root.is_dir():
             raise ValueError('接管素材需要已有剧集登记和素材目录')
         if disposition(ep_id)['status'] in ('historical','excluded'):
@@ -132,23 +149,14 @@ def import_authoring(ep_id, title, source_file, *, tts_file=None, rule_files=(),
     supplied = [('authoring', source_file)]
     if tts_file: supplied.append(('tts_reference', tts_file))
     supplied += [('writing_rule', p) for p in rule_files]
-    cfg = config(paths.ROOT)
     inputs, contents = [], {}
     for role, filename in supplied:
         p = library_path(filename)
         data = p.read_bytes()
-        # A fresh standalone checkout has no original project. Compare against
-        # it only when that checkout actually exists; the local input is still
-        # snapshotted and hash-bound below.
-        original_root = Path(cfg['original_root']) if cfg else None
-        original = None if adopt_existing or not original_root or not original_root.is_dir() else original_root / p.relative_to(paths.ROOT)
-        if original is not None and not original.is_file():
-            original = None  # An independently authored file need not exist in the old project.
-        if original is not None and original.read_bytes() != data:
-            raise ValueError('副本文案或规则与原项目不一致，请先逐字同步：' + str(p))
+        # The selected local file is authoritative; freeze its exact bytes.
         contents[str(p)] = data
-        inputs.append(dict(role=role, path=str(p), sha256=file_sha256(p),
-                           original_path=str(original) if original else None))
+        inputs.append(dict(role=role, path=str(p), sha256=sha256(data).hexdigest(),
+                           original_path=None))
     source = contents[inputs[0]['path']].decode('utf-8')
     payloads = derive(source)
     if tts_file:
@@ -157,20 +165,25 @@ def import_authoring(ep_id, title, source_file, *, tts_file=None, rule_files=(),
         clean = lambda b: re.sub(r'\s+', '', b.decode('utf-8'))
         if clean(payloads['spoken.txt']) != clean(other['spoken.txt']):
             raise ValueError('原稿与 TTS 专版正文不一致；保留两份原文，禁止自动选择或改写')
+    intent = dict(title=title, scope=scope, adopt_existing=adopt_existing, inputs=inputs)
+    if pending and pending['intent'] != intent:
+        raise ValueError('此版本有未完成的导入，请使用原文件、标题和范围继续或选择新的版本名')
+    if not pending:
+        atomic_json(journal, dict(intent=intent, original_episode=existing_episode))
     root = paths.episode_dir(ep_id)
     target = write_revision(source, root/'editorial/revisions', dict(episode=ep_id, inputs=inputs))
     # The handoff directory exists, so construct only this new episode directly.
     if adopt_existing:
         status_before=existing_episode.get('status')
         existing_episode['script_path']=str(target/'narration.md')
-        if status_before=='audio_ready':
+        if status_before in ('audio_ready', 'completed') and not existing_episode.get('frames') and not existing_episode.get('shots'):
             # The prior episode registry used a status absent from this studio's
             # EpisodeStatus enum. Preserve that evidence and migrate its state.
             existing_episode['status']='scripted'
         from app.models import Episode
         Episode.model_validate(existing_episode)
         atomic_json(paths.episode_json(ep_id),existing_episode)
-        if status_before=='audio_ready':
+        if status_before in ('audio_ready', 'completed') and existing_episode['status']=='scripted':
             atomic_json(root/'studio/import.json',dict(version=1,legacy_status=status_before,
                 studio_status='scripted',source_sha256=file_sha256(target/'source.md'),
                 original_audio_path=existing_episode.get('audio_path'),
@@ -188,6 +201,8 @@ def import_authoring(ep_id, title, source_file, *, tts_file=None, rule_files=(),
         manifest_sha256=file_sha256(target/'manifest.json'), inputs=inputs,
         text_policy='verbatim_user_source', old_media_binding='historical_only',
         audio_binding='new_recording_required', approved=False))
-    W.save(ep_id, W.new(ep_id, scope=scope), expected_revision=0)
+    if not (root/'studio/workflow.json').exists():
+        W.save(ep_id, W.new(ep_id, scope=scope), expected_revision=0)
     set_disposition(ep_id, 'current', '用户最新原稿；正文逐字导入，未配音、未渲染')
+    journal.unlink()
     return target

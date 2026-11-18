@@ -139,6 +139,8 @@ def test_imported_rules_and_source_are_both_bound(tmp_path,tmp_episodes,monkeypa
     assert [p['text'] for p in C.load(C.path_for('imported-new'))['parts']]==['玄奘走出城门。']
     assert not W.review_valid('imported-new','editorial')
     (original/'rules.md').write_text('更新后的规则。',encoding='utf-8')
+    assert not Sources.external_updates('imported-new')
+    (tmp_path/'rules.md').write_text('本项目的新规则。',encoding='utf-8')
     assert Sources.external_updates('imported-new')
     C.load(C.path_for('imported-new'))
 

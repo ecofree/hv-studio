@@ -175,7 +175,7 @@ def _check_alignment(result, rows):
         raise ExternalNarrationError(
             f"{len(unaligned)}/{len(rows)} 个 unit 在录音里找不到对应语音："
             + ", ".join(unaligned[:5])
-            + "\n处置：这段剧本可能没有录，或被剪掉了。重录该段后重新导入。")
+            + "\n这表示自动定位失败，不代表缺录。请在制作页按前后文试听并保存局部起止位置，再继续本地切分与对齐；确认确实缺录后才补录。")
     thin = [(r["frame"], r["coverage"]) for r in rows
             if r["coverage"] < MIN_UNIT_COVERAGE]
     coverage = sorted(r["coverage"] for r in rows)
@@ -215,7 +215,7 @@ def cut_ranges(rows, total_samples, sample_rate):
                 f"{rows[k]['frame']} 与 {rows[k + 1]['frame']} 的语音区间在 "
                 f"{spans[k][1] / sample_rate:.2f}s 处重叠："
                 "这一段在录音里被读了两次，或 ASR 把邻段认成了本段。\n"
-                "处置：重录这两段之间的过渡后重新导入。")
+                "处置：先试听相邻段落并修正局部起止位置；确认确实重复或缺录后才修音。")
         share = min(pad, gap / 2)
         spans[k][1] += share
         spans[k + 1][0] -= share
@@ -289,6 +289,8 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None, prev
 
     say("把 ASR 词对齐到 v2 unit …")
     result, rows = _align_units(plan, asr["words"])
+    from app.services.recording_alignment_recovery import prepare as prepare_recovery
+    rows, range_inputs = prepare_recovery(plan, recording, rows, destination, with_inputs=True)
     summary = _check_alignment(result, rows)
     say(f"对齐准确率 {summary['accuracy']:.1%}，覆盖率 {summary['min_coverage']:.1%}"
         f"..{summary['max_coverage']:.1%}")
@@ -369,6 +371,7 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None, prev
         "samples": total,
         "sample_rate": rate,
         "source_recording": recording,
+        "alignment_range_inputs": range_inputs,
         "asr": dict(method="local-whisper-words+banded-dp",
                     sample_rate=asr["sample_rate"],
                     duration_s=asr["duration"],
@@ -377,6 +380,7 @@ def build(plan_path, master, destination, *, cache_dir=None, progress=None, prev
                     cache_dir=asr.get("cache_dir") or str(cache.resolve()),
                     **summary),
         "cut": dict(prior_manifest=str(prior_path) if prior_path else None,reused_pcm_slices=len(reused),pad_s=EDGE_PAD_S,
+                    manual_locations=[r['frame'] for r in rows if r.get('manual_location')],
                     min_unit_coverage=MIN_UNIT_COVERAGE,
                     speech_samples=sum(t["samples"] for t in takes),
                     covered_ratio=round(sum(t["samples"] for t in takes) / total, 4)),
@@ -402,6 +406,8 @@ def validate_external(manifest, *, min_coverage=MIN_UNIT_COVERAGE):
     verifies byte integrity for both provenances; this one verifies only what is
     specific to a recorded master. It never returns a truth it did not measure.
     """
+    from app.services.recording_alignment_recovery import validate_range_inputs
+    validate_range_inputs(manifest)
     if manifest.get("provenance") != PROVENANCE:
         raise ValueError(
             f"manifest provenance {manifest.get('provenance')!r} 不是 {PROVENANCE!r}")

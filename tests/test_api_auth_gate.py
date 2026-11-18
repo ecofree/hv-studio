@@ -58,6 +58,7 @@ def test_non_ascii_invalid_token_is_rejected_not_a_server_error(monkeypatch):
     assert exc.value.status_code==401
 
 
+@pytest.mark.api_transport
 def test_all_write_routes_keep_shared_auth_dependency(monkeypatch):
     # Exercise the public HTTP boundary, including lazily included routers.
     # An invalid token must reject every documented write before its handler.

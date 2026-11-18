@@ -54,16 +54,30 @@ def checkpoint_path(episode_id: str, label: str, ts: datetime | None = None) -> 
 CURRENT_SCHEMA = "1.0"
 
 
+def decode_episode(data: dict) -> Episode:
+    """Read older external-recording registrations without promoting approval.
+
+    Their 'completed' describes recording delivery, not a finished video. Keep
+    the original JSON untouched; production still verifies the selected media.
+    """
+    if (data.get('status') in ('audio_ready', 'completed') and data.get('audio_path')
+            and data.get('script_path') and not data.get('frames') and not data.get('shots')):
+        data = dict(data, status='scripted')
+    return Episode.model_validate(data)
+
+
 def load(episode_id: str) -> Episode:
     """从 episodes/{id}.json 加载。若文件不存在返回 DRAFT 状态的空 Episode。"""
     path = episode_path(episode_id)
     if not path.exists():
         return Episode(id=episode_id, title=episode_id, episode_number=0)
-    ep = Episode.model_validate_json(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
+    ep = decode_episode(data)
     # schema 兼容性检查：旧版无 schema_version → 视为 0.x 自动补 1.0（无破坏字段）
     if not ep.schema_version or ep.schema_version < CURRENT_SCHEMA:
         ep.schema_version = CURRENT_SCHEMA
-        save(ep)  # 升版后落盘一次，后续幂等
+        if data.get('status') not in ('audio_ready', 'completed'):
+            save(ep)  # 不覆盖仅交付录音的原始登记
     _normalize_asset_paths(ep)
     return ep
 
@@ -157,45 +171,29 @@ def save(ep: Episode) -> Path:
 # 资产路径可移植归一（2026-09-04：换盘符/换机仍可用）
 # ---------------------------------------------------------------------------
 def _normalize_asset_paths(ep: Episode) -> None:
-    """把 shot.image_path / frame.audio_path / ref_pack_paths 里【指向旧根】的
-    绝对路径重映射到当前 ROOT。
+    """Resolve old addresses locally in memory; preserve historical frame data.
 
-    历史数据里这些路径以 `D:/hv/...` 硬编码存储；若仓库整体搬移到其他盘/目录，
-    直接 Path() 会失效。这里在 load() 边界统一把「前缀 ≠ 当前 ROOT」的绝对路径
-    换头为当前 ROOT，使数据不动、消费方（compose/motion/voice）拿到的恒为有效
-    绝对路径。路径已是相对或本就属当前 ROOT 的跳过。
+    Missing local media never falls back to the retired checkout, even when the
+    original file exists. Explicit unrelated external inputs remain supported.
     """
-    cur = str(ROOT).replace("\\", "/").rstrip("/") + "/"
-    root_s = str(ROOT)
+    from app.services.studio_workspace import asset_path
 
     def remap(p: str | None) -> str | None:
         if not p:
             return p
-        norm = p.replace("\\", "/")
-        # 已是当前 ROOT 开头 → 不动
-        if norm.startswith(cur) or norm.startswith(root_s):
-            return p
-        # 绝对路径但前缀是【另一个根】（如搬走前的 D:/hv）→ 剥掉旧根头，
-        # 以相对段拼到当前 ROOT。相对路径（episodes/...）也在此收敛为绝对。
-        if Path(norm).is_absolute():
-            if Path(norm).exists():
-                return Path(norm).as_posix()
-            # 形如 D:/hv/episodes/... → 取旧根之后部分
-            idx = norm.find("/episodes/")
-            if idx >= 0:
-                norm = norm[idx + 1:]  # episodes/...
-            else:
-                return p  # 非仓库内绝对路径，不动（可能是 C:\ 系统文件）
-        return (ROOT / norm).as_posix()
+        return asset_path(p, ROOT).as_posix()
 
     for sh in ep.shots.values():
-        if sh.image_path:
-            sh.image_path = remap(sh.image_path)
+        for field in ('image_path', 'upscaled_path', 'motion_path', 'i2v_path', 'audio_segment_path'):
+            if getattr(sh, field):
+                setattr(sh, field, remap(getattr(sh, field)))
         if sh.ref_pack_paths:
             sh.ref_pack_paths = [remap(x) for x in sh.ref_pack_paths]
     for f in ep.frames:
         if f.audio_path:
             f.audio_path = remap(f.audio_path)
+    if ep.script_path:
+        ep.script_path = remap(ep.script_path)
 
 
 def rotate_checkpoints(episode_id: str, keep: int | None = None) -> list[Path]:

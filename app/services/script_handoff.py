@@ -144,11 +144,19 @@ def write_revision(source: str, revisions: Path, context: dict | None = None, *,
         if current != manifest:
             raise ValueError("Revision identity collision; original revision preserved")
         return target
-    target.mkdir(parents=True, exist_ok=False)
-    # A partially written directory is unimportable because it has no manifest.
-    for name, data in payloads.items():
-        (target / name).write_bytes(data)
-    (target / "manifest.json").write_bytes(_json(manifest))
+    from tempfile import TemporaryDirectory
+    target.parent.mkdir(parents=True, exist_ok=True)
+    with TemporaryDirectory(dir=target.parent) as stage:
+        prepared = Path(stage)/'revision'
+        prepared.mkdir()
+        for name, data in payloads.items():
+            (prepared/name).write_bytes(data)
+        (prepared/'manifest.json').write_bytes(_json(manifest))
+        try:
+            prepared.rename(target)
+        except OSError:
+            if not target.is_dir() or verify_revision(target) != manifest:
+                raise
     return target
 
 

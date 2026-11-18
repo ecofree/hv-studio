@@ -7,6 +7,7 @@ from app import paths
 from app.services.provenance import atomic_json, file_sha256, fingerprint
 from app.services.production_revision import write_once
 from app.services.process_lock import file_lock
+from app.services.qwen_voice import local_path
 
 RECIPE_KEYS = ('speaker', 'model', 'mode', 'instruction', 'engine_revision',
                'generation', 'seed', 'max_chunk_characters', 'target_rate',
@@ -14,7 +15,7 @@ RECIPE_KEYS = ('speaker', 'model', 'mode', 'instruction', 'engine_revision',
 
 
 def read(path):
-    return json.loads(Path(path).read_text('utf-8'))
+    return json.loads(local_path(path).read_text('utf-8'))
 
 
 def catalog():
@@ -32,7 +33,7 @@ def publish(name, confirmed_contract):
         archived = copy.deepcopy(original)
         replacements = {}
         for filename, sha in original['evidence'].items():
-            source = Path(filename)
+            source = local_path(filename)
             target = root/'evidence'/(sha+source.suffix)
             if target.exists():
                 if file_sha256(target) != sha: raise ValueError('声音证据副本已改变')
@@ -68,7 +69,7 @@ def load_scheme(path):
     scheme = read(path)
     if scheme.get('version') != 1 or scheme.get('approval_scope') != 'voice_settings_only':
         raise ValueError('未知系列声音方案')
-    if file_sha256(scheme['origin_path']) != scheme['origin_sha256']:
+    if file_sha256(local_path(scheme['origin_path'])) != scheme['origin_sha256']:
         raise ValueError('系列声音确认依据已改变')
     origin = load(scheme['origin_path'])
     if origin['version'] != 1 or scheme['recipe'] != {k:origin[k] for k in RECIPE_KEYS}:
@@ -80,7 +81,7 @@ def scheme_for_contract(contract_path):
     """Pilots inherit only the confirmed recipe, with a fresh exact source binding."""
     from app.services.studio_voice_contract import load
     c=load(contract_path)
-    if c['version']==2:return Path(c['scheme_path'])
+    if c['version']==2:return local_path(c['scheme_path'])
     for path in catalog():
         if read(path).get('adopted_from_sha256')==file_sha256(contract_path):
             load_scheme(path);return path
@@ -151,7 +152,7 @@ def bind_episode(ep_id, scheme_path, *, expected_identity):
     """Explicit metadata binding; never replaces an existing locked episode."""
     from app.services import studio_workflow as W
     from app.services.studio_voice_contract import path_for
-    scheme_path = Path(scheme_path).resolve(); recipe = load_scheme(scheme_path)['recipe']
+    scheme_path = local_path(scheme_path); recipe = load_scheme(scheme_path)['recipe']
     with file_lock(W.folder(ep_id)/'workflow.lock'):
         if W.identity(ep_id) != expected_identity: raise ValueError('文案或方案已更新，请重新载入')
         target = path_for(ep_id)
@@ -192,7 +193,8 @@ def prepare_episode(ep_id, scheme_path, *, expected_identity):
         raise ValueError('已有不同倍速方案，不能静默替换')
     if not policy.exists():
         write_once(policy,dict(version=1,target_rate=recipe['target_rate'],source='selected_series_voice',approved=False))
-    value['voice'].update(identity=recipe['speaker'],model=recipe['model'],delivery=recipe['instruction'])
+    from app.services.qwen_voice import effective
+    value['voice'].update(identity=recipe['speaker'],model=recipe['model'],delivery=effective(recipe)['instruction'])
     value['binding'] = W.binding(ep_id)
     W.save(ep_id,value,expected_revision=value['revision'])
     return bind_episode(ep_id,scheme_path,expected_identity=W.identity(ep_id))
@@ -202,7 +204,7 @@ def load_binding(path):
     from app.services import studio_workflow as W
     binding = read(path)
     if binding.get('version') != 2: raise ValueError('未知单集声音绑定')
-    if file_sha256(binding['scheme_path']) != binding['scheme_sha256']:
+    if file_sha256(local_path(binding['scheme_path'])) != binding['scheme_sha256']:
         raise ValueError('本集绑定的系列声音方案已改变')
     recipe = load_scheme(binding['scheme_path'])['recipe']
     if binding['source'] != source_binding(binding['episode_id']):

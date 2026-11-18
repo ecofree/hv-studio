@@ -276,7 +276,7 @@ def replace_source(ep_id,source,*,expected_identity):
     from app.services.studio_sources import contract, require_usable
     require_usable(ep_id)
     if contract(ep_id) or (folder(ep_id)/'parent.json').exists():
-        raise ValueError('此版本绑定用户原稿，请在原项目修改后导入新的独立版本；这里不改写正文')
+        raise ValueError('此版本绑定用户原稿，请在本项目的源稿中修改后导入新版本；这里不改写正文')
     from app.managers import load as load_episode,save as save_episode
     from app.services.script_handoff import write_revision
     with file_lock(folder(ep_id)/'workflow.lock'):
