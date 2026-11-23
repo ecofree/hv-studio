@@ -112,8 +112,13 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
     require_production(ep_id, requested, external_master=external_master)
     from app.services.production_metrics import measure
     from app.services.acoustic_session import job_session
-    with _episode_lock(ep_id), measure() as metrics, job_session() as acoustic:
+    from contextlib import ExitStack
+    from app.services.spec import using_video_format
+    with _episode_lock(ep_id), ExitStack() as session:
         ep = load(ep_id)
+        session.enter_context(using_video_format(ep.video_format))
+        metrics = session.enter_context(measure())
+        acoustic = session.enter_context(job_session())
         root = _episode_dir(ep_id) / "production/v2"
         root.mkdir(parents=True, exist_ok=True)
         _check_disk_space(root)
@@ -235,6 +240,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
             path = state.get("receipt_path")
             if not path: raise ValueError("missing v2 candidate; run stage compose with a reviewed timeline")
             receipt = N.read(path)
+            ep.video_format.require_match(receipt)
             from app.services.production_inputs import input_files
             if 'image_inputs' in state and state['image_inputs'] != input_files(ep_id):
                 raise ValueError('visual inputs changed; run images and timeline before compose')
@@ -535,6 +541,7 @@ def run(ep_id, stages=None, script_md=None, *, max_requests=0, max_characters=0,
                     timeline_path = Path(timeline or state.get("timeline_path", root / "timeline.json")).resolve()
                     if not timeline_path.is_file():
                         raise ValueError(f"missing reviewed shot/subtitle timeline: {timeline_path}")
+                    ep.video_format.require_match(N.read(timeline_path))
                     state["timeline_path"] = str(timeline_path)
                     prepare_cards(manifest)
                     try:

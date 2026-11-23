@@ -42,7 +42,7 @@ from app.services.upscale import upscale
 # 输出规格常量（FPS/W/H/HEAD_MS/TAIL_MS/NARRATION_SR）统一来自 spec（整改 C1）。
 # 由 motion 转手的 FPS/W/H 保留（motion re-export，值同源）；间隔与采样率直接从
 # spec 取，不再在本模块另写一份。
-from app.services.spec import HEAD_MS, NARRATION_SR, TAIL_MS  # noqa: F401
+from app.services.spec import HEAD_MS, NARRATION_SR, TAIL_MS, VideoFormat, current_video_format  # noqa: F401
 
 # P1-6（2026-09-05）：原 `BASE = ROOT / "episodes"` 已删。它是 import 期常量，
 # 测试无法重定向 → 测试只能真写 D:/hv/episodes/，再靠「会话末按前缀通配删」
@@ -229,14 +229,21 @@ def _sub_font_path() -> str:
 def _sub_font_size() -> int:
     cfg = _subtitle_cfg()
     v = getattr(cfg, "font_size", None) if cfg else None
-    return int(v) if v else DEFAULT_FONT_SIZE
+    size = int(v) if v else DEFAULT_FONT_SIZE
+    return max(1, round(size * .70)) if current_video_format() == VideoFormat.LANDSCAPE else size
 
 
 def _sub_bottom() -> int:
     """字幕块底边 y 坐标（bottom-anchor，由下向上生长，永不越过底栏安全区）。"""
     cfg = _subtitle_cfg()
     v = getattr(cfg, "margin_bottom", None) if cfg else None
-    return H - (int(v) if v else DEFAULT_MARGIN_BOTTOM)
+    margin = int(v) if v else DEFAULT_MARGIN_BOTTOM
+    fmt = current_video_format()
+    return fmt.size[1] - (round(margin * .25) if fmt == VideoFormat.LANDSCAPE else margin)
+
+
+def _subtitle_width():
+    return current_video_format().size[0] - 150
 
 
 def _sub_stroke() -> int:
@@ -423,7 +430,7 @@ def _draw_subtitle(img: Image.Image, text: str, hl: tuple[int, int] | None = Non
     t = subtitle_display_text(text)
     if not t:
         t = text
-    lines = _wrap(d, t, font, TEXT_W)
+    lines = _wrap(d, t, font, _subtitle_width())
     heights = [d.textbbox((0, 0), ln, font=font)[3] for ln in lines]
     total_h = sum(heights) + LINE_GAP * (len(heights) - 1)
     # 字幕块底边对齐 config subtitle.margin_bottom，多行字幕从底边向上生长，
@@ -440,7 +447,7 @@ def _draw_subtitle(img: Image.Image, text: str, hl: tuple[int, int] | None = Non
         acc += len(ln)
     for i, ln in enumerate(lines):
         w = d.textbbox((0, 0), ln, font=font)[2]
-        x = (W - w) // 2
+        x = (img.width - w) // 2
         base, end = starts[i]
         segs = [(ln, SUB_FILL)]
         if hl and hl[0] < end and hl[1] > base:
@@ -1072,12 +1079,14 @@ def _run_audio_mux(video_src: Path, audio_src: Path, out_path: Path,
     用 .tmp 原子收口：失败时 .tmp 不留，成功才 os.replace 成真名。
     """
     tmp = out_path.with_suffix(".tmp")
+    output_audio_rate = current_video_format().output_audio_rate
     mux = [
         "ffmpeg", "-y", "-v", "error",
         "-i", str(video_src), "-i", str(audio_src),
         "-map", "0:v:0", "-map", "1:a:0",
         "-c:v", "copy",
         "-c:a", audio_codec, "-b:a", audio_bitrate,
+        *(["-ar", str(output_audio_rate)] if output_audio_rate else []),
         # 不用 -shortest：旁白与视频帧数由 timeline 精确对齐（见历史注释），
         # -shortest 会在低内存下缓冲波动时提前截断成片。
         "-movflags", "+faststart",

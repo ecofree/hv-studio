@@ -7,6 +7,8 @@ import ntpath
 import os
 from pathlib import Path, PureWindowsPath, PurePosixPath
 
+from app.services.spec import VideoFormat
+
 
 def config(root=None):
     if root is None:
@@ -107,7 +109,7 @@ def library_path(value, root=None):
     return path
 
 
-def import_episode(old_id, new_id):
+def import_episode(old_id, new_id, *, video_format=None):
     """Copy frame structure; no splitter, old receipt rewrite or approval promotion."""
     from app import paths
     from app.services.provenance import atomic_json, file_sha256
@@ -129,6 +131,7 @@ def import_episode(old_id, new_id):
             return str(library_path(item))
         return item
     data = rebase(copy.deepcopy(raw))
+    data['video_format'] = VideoFormat(video_format if video_format is not None else raw.get('video_format', 'portrait')).value
     folder = paths.episode_dir(new_id)
     folder.mkdir(parents=True)
     local_script = folder / 'script_narration.md'
@@ -158,7 +161,7 @@ def import_episode(old_id, new_id):
     return receipt
 
 
-def create_episode(ep_id, title, source, *, scope='pilot'):
+def create_episode(ep_id, title, source, *, scope='pilot', video_format=VideoFormat.PORTRAIT):
     from app import paths
     from app.models import Episode
     from app.services.provenance import atomic_json
@@ -166,10 +169,11 @@ def create_episode(ep_id, title, source, *, scope='pilot'):
     from app.services import studio_workflow as W
     paths.validate_episode_id(ep_id)
     if paths.episode_json(ep_id).exists() or paths.episode_dir(ep_id).exists(): raise ValueError('剧集已存在')
+    video_format = VideoFormat(video_format)
     if not title.strip() or not parse_document(source)['units']: raise ValueError('请填写标题与可朗读正文')
     root=paths.episode_dir(ep_id);root.mkdir(parents=True)
     script=root/'script_narration.md';script.write_text(source,encoding='utf-8')
-    ep=Episode(id=ep_id,title=title,episode_number=0,script_path=str(script))
+    ep=Episode(id=ep_id,title=title,episode_number=0,script_path=str(script),video_format=video_format)
     atomic_json(paths.episode_json(ep_id),ep.model_dump(mode='json'))
     W.save(ep_id,W.new(ep_id,scope=scope),expected_revision=0)
     return ep_id
@@ -189,7 +193,9 @@ def create_pilot(parent_id,new_id,start,end):
     if sum(len(u['source_text']) for u in units)>800:raise ValueError('样片最多选取 800 字，请缩短范围')
     identity=W.identity(parent_id)
     source='### 【第一幕：样片验证】\n\n'+'\n\n'.join(u['source_text'] for u in units)
-    create_episode(new_id,parent['brief']['title'] or '短样片',source,scope='pilot')
+    from app.managers import load
+    create_episode(new_id,parent['brief']['title'] or '短样片',source,scope='pilot',
+                   video_format=load(parent_id).video_format)
     child=W.load(new_id);new_units=W.document(new_id)['units']
     if [u['source_text'] for u in new_units]!=[u['source_text'] for u in units]:
         raise ValueError('所选内容不能无损建立样片，已保留独立草稿供检查')

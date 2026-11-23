@@ -112,13 +112,13 @@ def _import_journal(ep_id):
 
 
 def import_authoring(ep_id, title, source_file, *, tts_file=None, rule_files=(), scope='full',
-                     adopt_existing=False):
+                     adopt_existing=False, video_format=None):
     journal = _import_journal(ep_id)
     with file_lock(journal.with_suffix('.lock')):
-        return _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, adopt_existing, journal)
+        return _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, adopt_existing, journal, video_format)
 
 
-def _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, adopt_existing, journal):
+def _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, adopt_existing, journal, video_format):
     """Replay an interrupted import only for the exact same source selection."""
     from app.services.script_handoff import derive, write_revision
     from app.services.studio_workspace import library_path
@@ -165,7 +165,12 @@ def _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, ad
         clean = lambda b: re.sub(r'\s+', '', b.decode('utf-8'))
         if clean(payloads['spoken.txt']) != clean(other['spoken.txt']):
             raise ValueError('原稿与 TTS 专版正文不一致；保留两份原文，禁止自动选择或改写')
+    from app.services.spec import VideoFormat
+    selected_format = VideoFormat(video_format if video_format is not None else
+                                  (existing_episode or {}).get('video_format', 'portrait'))
     intent = dict(title=title, scope=scope, adopt_existing=adopt_existing, inputs=inputs)
+    if selected_format is VideoFormat.LANDSCAPE:
+        intent['video_format'] = selected_format.value
     if pending and pending['intent'] != intent:
         raise ValueError('此版本有未完成的导入，请使用原文件、标题和范围继续或选择新的版本名')
     if not pending:
@@ -176,6 +181,7 @@ def _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, ad
     if adopt_existing:
         status_before=existing_episode.get('status')
         existing_episode['script_path']=str(target/'narration.md')
+        existing_episode['video_format'] = selected_format.value
         if status_before in ('audio_ready', 'completed') and not existing_episode.get('frames') and not existing_episode.get('shots'):
             # The prior episode registry used a status absent from this studio's
             # EpisodeStatus enum. Preserve that evidence and migrate its state.
@@ -190,7 +196,8 @@ def _import_authoring(ep_id, title, source_file, tts_file, rule_files, scope, ad
                 narration_revision=str(target),approvals_imported=False))
     else:
         from app.models import Episode
-        ep = Episode(id=ep_id, title=title, episode_number=0, script_path=str(target/'narration.md'))
+        ep = Episode(id=ep_id, title=title, episode_number=0, script_path=str(target/'narration.md'),
+                     video_format=selected_format)
         atomic_json(paths.episode_json(ep_id), ep.model_dump(mode='json'))
     for item in inputs:
         snapshot = root/'editorial/inputs'/item['sha256']/Path(item['path']).name

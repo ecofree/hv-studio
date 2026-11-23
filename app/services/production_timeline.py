@@ -98,6 +98,10 @@ def build(ep, manifest_path, alignment_path, image_assets, scene_plan_path, dest
                     # and the dual human reviews at publish. Renaming it would
                     # orphan every timeline on disk, so it stays with this note.
                     review_required=True)
+    from app.services.spec import VideoFormat, using_video_format
+    fmt = VideoFormat(getattr(ep, 'video_format', VideoFormat.PORTRAIT))
+    if fmt is VideoFormat.LANDSCAPE:
+        timeline['video_format'] = fmt.value
     bgm = pick_bgm(get_settings().profile_name)
     from app.services.production_inputs import input_files
     timeline['inputs'].update({p:sha for p,sha in input_files(ep.id).items() if sha is not None})
@@ -109,7 +113,8 @@ def build(ep, manifest_path, alignment_path, image_assets, scene_plan_path, dest
     design_path = episode_dir(ep.id) / 'directing.json'
     if design_path.is_file():
         from app.services.directing import apply
-        timeline = apply(manifest, timeline, design_path, image_assets, destination)
+        with using_video_format(fmt):
+            timeline = apply(manifest, timeline, design_path, image_assets, destination)
     validate_timeline(manifest, timeline)
     path = Path(destination)/(fingerprint(timeline)+'.json'); atomic_json(path, timeline)
     return path

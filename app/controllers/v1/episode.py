@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from app.controllers.v1.auth import require_token
 from app.managers import load, save
 from app.managers.episode import episode_path
+from app.services.spec import VideoFormat
 
 router = APIRouter()
 
@@ -37,7 +38,7 @@ def get_production(episode_id: str):
 
 
 @router.post("/{episode_id}/init")
-def init_episode(episode_id: str, _tok=Depends(require_token)):
+def init_episode(episode_id: str, _tok=Depends(require_token), video_format: VideoFormat = VideoFormat.PORTRAIT):
     """新建 episode。已存在 → 409，绝不静默覆盖。
 
     旧行为是 `Episode(...)` 后无条件 `save()`：一个 POST 就能把已有集的全部
@@ -50,7 +51,7 @@ def init_episode(episode_id: str, _tok=Depends(require_token)):
             status_code=409,
             detail=f"episode {episode_id} 已存在（{episode_path(episode_id)}）；"
                    f"init 不会覆盖，如需重置请先删除该 json")
-    ep = Episode(id=episode_id, title=episode_id, episode_number=0)
+    ep = Episode(id=episode_id, title=episode_id, episode_number=0, video_format=video_format)
     p = save(ep)
     return {"created": str(p)}
 

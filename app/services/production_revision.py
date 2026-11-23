@@ -177,6 +177,8 @@ def verify_amendment(path):
         raise ValueError('origin archive changed')
     archive = verify_archive(r['origin_archive_path'])
     old = archived_json(archive, archive['receipt_path'])
+    from app.services.spec import VideoFormat
+    VideoFormat.from_record(old).require_match(r)
     for key in ('candidate_path','candidate_sha256','samples','sample_rate','expected_frames'):
         if r[key] != old[key]: raise ValueError('metadata amendment changed media or clock')
     if any(file_sha256(p) != h for p,h in r['inputs'].items()):
@@ -212,6 +214,8 @@ def register_existing_full(ep_id, receipt_path, *, expected_identity):
     root = paths.episode_dir(ep_id)/'production/v2'
     receipt_path = Path(receipt_path).resolve()
     r = verify_amendment(receipt_path)
+    from app.managers import load
+    load(ep_id).video_format.require_match(r)
     media_probe = probe_existing_media(r)
     m, t = read(r['manifest_path']), read(r['timeline_path'])
     expected = [(u['unit_id'],u['source_text']) for u in W.document(ep_id)['units']]
@@ -255,9 +259,11 @@ def probe_existing_media(receipt):
     video=[s for s in streams if s['codec_type']=='video'];audio=[s for s in streams if s['codec_type']=='audio']
     if len(video)!=1 or len(audio)!=1:raise ValueError('registered media needs one video and one audio stream')
     v,a=video[0],audio[0];seconds=receipt['samples']/receipt['sample_rate']
-    if (v['width'],v['height'])!=(1080,1920) or int(v['nb_read_packets'])!=receipt['expected_frames']:
+    from app.services.spec import VideoFormat
+    fmt = VideoFormat.from_record(receipt)
+    if (v['width'],v['height'])!=fmt.size or int(v['nb_read_packets'])!=receipt['expected_frames']:
         raise ValueError('registered media frame geometry/count mismatch')
-    if (v['avg_frame_rate']!='25/1' or int(a['sample_rate'])!=receipt['sample_rate'] or
+    if (v['avg_frame_rate']!='25/1' or int(a['sample_rate'])!=(fmt.output_audio_rate or receipt['sample_rate']) or
         abs(float(v['duration'])-seconds)>.045 or abs(float(a['duration'])-seconds)>.08):
         raise ValueError('registered media sample clock mismatch')
     return dict(frames=int(v['nb_read_packets']),sample_rate=int(a['sample_rate']),

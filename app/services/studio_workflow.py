@@ -34,9 +34,14 @@ def document(ep_id):
     from app.managers import load
     from app.orchestrator import _load_script_md
     from app.services.script_document import parse_document
-    text = _load_script_md(load(ep_id))
+    from app.services.spec import VideoFormat
+    ep = load(ep_id)
+    text = _load_script_md(ep)
     if not text.strip(): raise ValueError('请先导入正文')
-    return parse_document(text)
+    result = parse_document(text)
+    if ep.video_format is VideoFormat.LANDSCAPE:
+        result['video_format'] = ep.video_format.value
+    return result
 
 
 def binding(ep_id):
@@ -45,7 +50,10 @@ def binding(ep_id):
     for name in ('scene_plan.json', 'image_prompts.json', 'editorial/source-binding.json', 'studio/playback-policy.json', 'studio/parent.json'):
         p = paths.episode_dir(ep_id) / name
         if p.exists(): files[name] = file_sha256(p)
-    return dict(source_sha256=d['source_sha256'], visual_inputs=files)
+    result = dict(source_sha256=d['source_sha256'], visual_inputs=files)
+    if 'video_format' in d:
+        result['video_format'] = d['video_format']
+    return result
 
 
 def new(ep_id, *, scope='full'):
@@ -124,7 +132,9 @@ def validate(ep_id, value):
                 or type(anchor['text_start']) is not int or not 0<=anchor['text_start']<len(units[anchor['unit_id']])):
             raise ValueError('标题卡必须绑定当前正文')
         spec=overlay.Spec(start_ms=0,end_ms=event['duration_ms'],**event['card'])
-        overlay.validate([spec],total_ms=event['duration_ms'])
+        from app.services.spec import VideoFormat, using_video_format
+        with using_video_format(VideoFormat.from_record(value['binding'])):
+            overlay.validate([spec],total_ms=event['duration_ms'])
     return value
 
 

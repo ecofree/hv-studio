@@ -14,6 +14,7 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from app.services.spec import VideoFormat
 from .shot import Shot
 
 
@@ -91,6 +92,7 @@ class Episode(BaseModel):
     id: str                              # episode-001
     schema_version: str = "1.0"          # M2 固化：episode.json schema 版本
     title: str
+    video_format: VideoFormat = VideoFormat.PORTRAIT
     series: str = "汉武大帝"
     episode_number: int = 1
     status: EpisodeStatus = EpisodeStatus.DRAFT

@@ -133,10 +133,15 @@ def test_changed_external_master_cannot_reuse_old_manifest(production_episode,mo
 
 
 @pytest.mark.NEEDS_FFMPEG
-def test_public_entry_renders_and_verifies_without_touching_legacy(production_episode,monkeypatch):
+@pytest.mark.parametrize('video_format', ['portrait', 'landscape'])
+def test_public_entry_renders_and_verifies_without_touching_legacy(production_episode,monkeypatch,video_format):
     from app.orchestrator import produce
     from app.services import asr_check, local_asr
+    from app.managers import save
+    from app.services.spec import VideoFormat
     ep,directory,_=production_episode
+    ep.video_format = VideoFormat(video_format)
+    save(ep)
     monkeypatch.setattr(N,'_provider',offline_provider)
     monkeypatch.setattr(asr_check,'check',lambda audio,text,**kwargs:{'status':'passed',
         'audio_sha256':file_sha256(audio),'expected_sha256':fingerprint(text),
@@ -160,13 +165,18 @@ def test_public_entry_renders_and_verifies_without_touching_legacy(production_ep
     monkeypatch.setattr(local_asr,'recognize',cached_recognition)
     image=directory/'image.png';image.write_bytes(png())
     timeline=directory/'timeline.json'
-    atomic_json(timeline,{'shots':[{'id':'s1','sample_start':0,'sample_end':m['samples'],'image_path':str(image)}],
+    atomic_json(timeline,{**({'video_format': video_format} if video_format == 'landscape' else {}),
+        'shots':[{'id':'s1','sample_start':0,'sample_end':m['samples'],'image_path':str(image)}],
         'subtitles':[dict(unit_id=u['unit_id'],sample_start=u['sample_start'],sample_end=u['sample_end'],
                           text_start=0,text_end=len(u['text']),text=u['text']) for u in m['alignment']]})
     # Title-card authoring now requires the real quality timing report.
     r=produce(ep.id,stages=['quality','compose','verify'],timeline=str(timeline))
     assert r['run_ok'] and r['status']=='CANDIDATE' and not r['approved'], r
     assert recognized==[str(Path(t['audio_path']).resolve()) for t in m['takes']]
+    receipt = N.read(N.read(state_path)['receipt_path'])
+    assert VideoFormat.from_record(receipt) == ep.video_format
+    contract = receipt['integrity']['contract']
+    assert (contract['width'], contract['height']) == ep.video_format.size
     from app.services.production_quality import decision_identity
     report=N.read(N.read(state_path)['quality_path'])
     assert report['decision_sha256']==decision_identity()

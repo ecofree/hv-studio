@@ -16,6 +16,8 @@ gpt-image-2 生图服务（subrouter.ai 中转）。
 """
 from __future__ import annotations
 
+from app.services.spec import VideoFormat
+
 import base64
 import os
 import time
@@ -477,6 +479,7 @@ class ImageJob:
     _attempts: int = field(default=0, repr=False)
     _transient: int = field(default=0, repr=False)
     _last_err: str | None = field(default=None, repr=False)
+    video_format: VideoFormat = VideoFormat.PORTRAIT
 
     @property
     def out(self) -> Path:
@@ -541,7 +544,7 @@ class ImageJob:
             receipt = {"request_fingerprint": expected,
                        "output_sha256": file_sha256(candidate), "dimensions": list(dims),
                        "candidate_path": str(candidate.resolve())}
-            receipt['video_fit'] = source_fit(dims)
+            receipt['video_fit'] = source_fit(dims, self.video_format.size)
             if self.out.exists():
                 shutil.copy2(self.out, target / ("previous" + self.out.suffix))
             if self.receipt_path.exists():
@@ -836,6 +839,9 @@ def source_fit(size, target=(1080, 1920)):
     """Describe the existing v2 cover transform; raw pixels stay untouched."""
     w, h = size
     tw, th = target
+    if target == VideoFormat.LANDSCAPE.size and VideoFormat.LANDSCAPE.uses_inset(size):
+        return dict(mode='contain', target=list(target), scale=min(tw / w, th / h),
+                    retained_area=1.0, content_approved=False)
     scale = max(tw / w, th / h)
     return dict(mode='fit_cover_v2', target=list(target), scale=scale,
                 retained_area=(tw / scale) * (th / scale) / (w * h),

@@ -29,8 +29,15 @@ def cmd_episode(args):
     if args.action != "audit-wav" and not args.episode_id:
         raise SystemExit("error: episode_id 必填（audit-wav 加 --all 可省略）")
 
+    selected_format = getattr(args, "video_format", None)
+    if selected_format and args.action != "init":
+        raise SystemExit("--video-format 用于新建版本，请在 episode init 时指定")
     if args.action == "init":
-        ep = Episode(id=args.episode_id, title=args.episode_id, episode_number=0)
+        from app.managers.episode import episode_path
+        if episode_path(args.episode_id).exists():
+            raise SystemExit("剧集已存在，请使用新的版本名称")
+        ep = Episode(id=args.episode_id, title=args.episode_id, episode_number=0,
+                     video_format=selected_format or "portrait")
         p = save(ep)
         print(f"created: {p}")
     elif args.action == "show":
@@ -370,14 +377,16 @@ def cmd_polyphone(args):
 
 def cmd_config(_args):
     from app.config.config import get_settings
+    from app.services.spec import VideoFormat
     s = get_settings()
     import json
     print(json.dumps({
         "profile": s.profile_name,
         "image_model": s.image_model,
         "image_size": s.image_size,
-        "video_dimensions": [1080, 1920],
-        "image_fit": "measure source image, then scale and crop to cover",
+        "video_dimensions": VideoFormat.PORTRAIT.size,
+        "video_formats": {fmt.value: fmt.size for fmt in VideoFormat},
+        "image_fit": "cover; landscape contains portrait and square plates with soft side fill",
         "channels": [c.name for c in s.channels],
         "video": {"engine": s.video.primary.engine, "endpoint": s.video.primary.endpoint},
         "vram_GB": s.runtime.vram.measured_usable_GB,
@@ -439,6 +448,7 @@ def main():
                    help="[produce] 指定阶段，可多次：--stage tts --stage compose")
     p.add_argument("--merge-short", action="store_true",
                    help="仅 legacy-preview：合并短帧；不控制 v2 旁白单元")
+    p.add_argument("--video-format", choices=["portrait", "landscape"], help="新建剧集的画幅")
     p.add_argument("--pipeline", choices=["v2", "legacy-preview"], default="v2")
     p.add_argument("--max-requests", type=int, default=0, help="本轮最多新增 TTS 请求，默认 0")
     p.add_argument("--max-characters", type=int, default=0)

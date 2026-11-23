@@ -22,11 +22,62 @@ compose 模块级 import 了 managers / motion / upscale / config / numpy / PIL�
 """
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
+from enum import Enum
+
 
 # ---- 输出规格 ----
 FPS = 25
 W = 1080
 H = 1920
+
+
+class VideoFormat(str, Enum):
+    PORTRAIT = "portrait"
+    LANDSCAPE = "landscape"
+
+    @property
+    def size(self) -> tuple[int, int]:
+        return (H, W) if self is VideoFormat.LANDSCAPE else (W, H)
+
+    @classmethod
+    def from_record(cls, record):
+        return cls(record.get("video_format", cls.PORTRAIT))
+
+    def require_match(self, record):
+        if self != self.from_record(record):
+            raise ValueError("剧集、时间轴与候选成片的画幅不一致，请按当前画幅重建时间轴和成片")
+
+    def uses_inset(self, size) -> bool:
+        return self is VideoFormat.LANDSCAPE and size[0] <= size[1]
+
+    @property
+    def output_audio_rate(self) -> int | None:
+        return 48000 if self is VideoFormat.LANDSCAPE else None
+
+    def image_size(self, configured: str) -> str:
+        # The relay supplies a 3:2 plate; the camera frames it for 16:9.
+        return "1536x1024" if self is VideoFormat.LANDSCAPE else configured
+
+    def frame_prompt(self, prompt: str) -> str:
+        if self is VideoFormat.LANDSCAPE:
+            return ("Compose for a wide 16:9 frame. Keep faces and key action within "
+                    "the central 80% of the image height. " + prompt)
+        return prompt
+
+
+_active_format = ContextVar("video_format", default=VideoFormat.PORTRAIT)
+current_video_format = _active_format.get
+
+
+@contextmanager
+def using_video_format(value):
+    token = _active_format.set(VideoFormat(value))
+    try:
+        yield
+    finally:
+        _active_format.reset(token)
 
 # ---- 旁白隔离间隙（呼吸感）----
 # 组间（不同底图之间）前加 HEAD_MS、后加 TAIL_MS，避免两句旁白贴在一起。

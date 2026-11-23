@@ -2,6 +2,12 @@
 
 本项目是独立的视频工作台。启动 `studio.bat`；活动作品和状态位于 `workspace/episodes`、`workspace/state`。原项目 `D:/hv` 不改动，根目录 `episodes/` 是历史素材库。
 
+## 制作横屏或竖屏视频
+
+运行 `studio.bat`，在左侧新建作品、从同步原稿导入或从历史素材建立新版本时选择「视频画幅」。选择「横屏 16:9（哔哩哔哩 / YouTube）」后，v2 输出 1920×1080、25 fps 的 H.264 MP4，AAC 音轨为 48 kHz。已有剧集默认使用 1080×1920。两个画幅可以分别使用独立版本名称，同一份原稿可以分别导入。
+
+横屏制作会请求宽幅底图，为 16:9 镜头的上下裁切留出空间。复用竖图或方图时，完整原图居中，左右使用柔化背景。字幕、片头和幕卡按所选画幅排版。命令行也可以用 `cli.bat episode init my-wide-01 --video-format landscape` 创建横屏版本。
+
 ## 在新 Windows 电脑安装
 
 1. 克隆本仓库，安装 Windows 版 Python 3.13 和 FFmpeg（`ffmpeg`、`ffprobe` 均需在 PATH；也可自行放在 `tools/ffmpeg/bin`）。

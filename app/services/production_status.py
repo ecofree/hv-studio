@@ -69,7 +69,8 @@ def _get_status(ep_id):
             result['blockers'].append(dimension+': '+str(exc))
             result.update(approved=False, delivery_ready=False)
     try:
-        if fingerprint(_load_script_md(load(ep_id))) != state['source_sha256']: raise ValueError('source changed')
+        ep = load(ep_id)
+        if fingerprint(_load_script_md(ep)) != state['source_sha256']: raise ValueError('source changed')
         result['source_current'] = True
         if state.get('manifest_path'):
             from app.services.studio_workflow import folder
@@ -86,6 +87,7 @@ def _get_status(ep_id):
             raise ValueError('visual inputs changed; rebuild images and timeline')
         if state.get('receipt_path'):
             receipt = read(state['receipt_path'])
+            ep.video_format.require_match(receipt)
             if state.get('timeline_path'):
                 from app.services.production_v2 import check_overlay_receipt
                 check_overlay_receipt(ep_id, read(state['timeline_path']), receipt)

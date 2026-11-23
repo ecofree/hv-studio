@@ -187,9 +187,11 @@ with st.expander("生图渠道、图像参数和多音字"):
                 st.caption(f"ok {ok_rate*100:.0f}% · {h['n_history']} 次 · "
                            f"quota ${h['last_quota_usd'] or '—'}")
     c1, c2, c3 = st.columns(3)
-    c1.metric("请求 size", s.image_size)
-    c2.metric("成片尺寸", "1080×1920")
-    c3.metric("底图适配", "等比放大并裁切")
+    from app.services.spec import VideoFormat
+    wide = VideoFormat.LANDSCAPE
+    c1.metric("竖屏请求尺寸", s.image_size)
+    c2.metric("横屏请求尺寸", wide.image_size(s.image_size))
+    c3.metric("成片尺寸（竖 / 横）", " / ".join("×".join(map(str, f.size)) for f in VideoFormat))
     text = st.text_area("多音字原文", value="张骞被匈奴扣押十年，单于冒顿派阏氏看守")
     if text:
         st.code(preprocess(text), language="text")

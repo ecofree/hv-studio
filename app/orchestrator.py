@@ -245,9 +245,11 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
     prim = getattr(get_settings().image, "primary", None)
     model = (getattr(prim, "model", None) or getattr(prim, "engine", None)
              or getattr(im, "engine", None) or "gpt-image-2")
-    size = (getattr(prim, "size", None) or getattr(im, "size", None) or "1080x1920")
+    from app.managers import load
+    video_format = load(ep_id).video_format
+    size = video_format.image_size(getattr(prim, "size", None) or getattr(im, "size", None) or "1080x1920")
     quality = (getattr(prim, "quality", None) or getattr(im, "quality", None) or "low")
-    suffix = getattr(im, "style_suffix", "") or ""
+    suffix = video_format.frame_prompt(getattr(im, "style_suffix", "") or "")
     neg = getattr(im, "negative_clause", "") or ""
 
     # strict_param_validation：非法参数在**花钱之前**拒绝整批，而不是等中转站
@@ -323,6 +325,7 @@ def build_image_jobs(ep_id: str, prescreen: bool = True,
             req=request,
             out_path=shots_d / f"{key}.png",
             reference_paths=references,
+            video_format=video_format,
         ))
 
     if prescreen and (blocked or warned):
@@ -724,6 +727,10 @@ def produce(ep_id, stages=None, script_md=None, *, pipeline="v2", **options):
     if pipeline == "legacy-preview":
         if stages is None or any(s in ('assets', 'tts', 'images') for s in stages):
             raise ValueError('paid legacy stages are retired; use v2 with an explicit durable budget')
+        from app.managers import load
+        from app.services.spec import VideoFormat
+        if load(ep_id).video_format == VideoFormat.LANDSCAPE:
+            raise ValueError('横屏版本请使用 v2 制作流程')
         return produce_legacy(ep_id, stages=stages, script_md=script_md, **options)
     if pipeline != "v2":
         raise ValueError("pipeline must be v2 or legacy-preview")

@@ -9,6 +9,15 @@ import streamlit as st
 from app import paths
 from app.services import studio_workspace as S, studio_workflow as W
 from app.services import studio_sources as Sources
+from app.services.spec import VideoFormat
+from app.managers import load as load_episode
+
+FORMAT_LABELS = {VideoFormat.PORTRAIT: '竖屏 9:16', VideoFormat.LANDSCAPE: '横屏 16:9（哔哩哔哩 / YouTube）'}
+
+
+def format_picker(key):
+    return st.selectbox('视频画幅', list(VideoFormat), format_func=FORMAT_LABELS.get, key=key)
+
 
 st.set_page_config(page_title='历史创作工作台',page_icon=':material/movie:',layout='wide')
 st.title('历史创作工作台')
@@ -27,6 +36,7 @@ with st.sidebar:
         st.caption('读取本项目中的原稿并保存冻结快照。正文与配套 TTS 文本不一致时停止导入。')
         with st.form('import-authoring'):
             author_id=st.text_input('新原稿版本名称',placeholder='history-user-02')
+            author_format = format_picker('author-format')
             author_title=st.text_input('原稿作品标题')
             author_file=st.text_input('原稿文件路径')
             tts_file=st.text_input('配套 TTS 文本路径（可留空）')
@@ -34,7 +44,7 @@ with st.sidebar:
             if st.form_submit_button('逐字导入并绑定新版本'):
                 try:
                     Sources.import_authoring(author_id,author_title,author_file,tts_file=tts_file or None,
-                        rule_files=[p.strip() for p in rules.splitlines() if p.strip()])
+                        rule_files=[p.strip() for p in rules.splitlines() if p.strip()], video_format=author_format)
                     st.success('原文已完整保留；旧音轨和旧审核未继承。');st.rerun()
                 except (ValueError,OSError,KeyError) as exc:st.error(str(exc))
     with st.expander('从历史素材建立新版本'):
@@ -42,21 +52,23 @@ with st.sidebar:
         if old:
             with st.form('import-history'):
                 old_id=st.selectbox('历史剧集',old)
+                history_format = format_picker('history-format')
                 new_id=st.text_input('新版本名称',value='history-studio-01')
                 if st.form_submit_button('复制为独立创作版本'):
                     try:
-                        S.import_episode(old_id,new_id);W.save(new_id,W.new(new_id),expected_revision=0)
+                        S.import_episode(old_id,new_id,video_format=history_format);W.save(new_id,W.new(new_id),expected_revision=0)
                         st.success('已复制正文与帧结构；历史审批未继承。');st.rerun()
                     except (ValueError,OSError,KeyError) as exc:st.error(str(exc))
     with st.expander('新建作品或短样片'):
         with st.form('new-work'):
+            new_format = format_picker('new-format')
             ident=st.text_input('版本名称',placeholder='history-pilot-01')
             title=st.text_input('作品标题')
             source=st.text_area('正文',height=160,help='保留唯一正文。可使用“### 【第一幕：标题】”组织内容。')
             scope=st.selectbox('制作范围',['短样片','完整作品'])
             if st.form_submit_button('建立创作草稿'):
                 try:
-                    S.create_episode(ident,title,source,scope='pilot' if scope=='短样片' else 'full');st.rerun()
+                    S.create_episode(ident,title,source,scope='pilot' if scope=='短样片' else 'full',video_format=new_format);st.rerun()
                 except (ValueError,OSError) as exc:st.error(str(exc))
     st.caption('原稿与旧素材保留。新任务使用本项目工作区；模型调用默认零预算。')
 
@@ -73,6 +85,7 @@ if chosen:
     with st.container(horizontal=True):
         st.metric('创作方案','已审核' if state['editorial_approved'] else '待完善')
         st.metric('短样片（可选）','已确认' if state['pilot_approved'] else '按需制作')
+        st.metric('视频画幅', FORMAT_LABELS[load_episode(chosen).video_format])
         st.metric('制作范围','短样片' if state['scope']=='pilot' else '完整作品')
     pages=[
         st.Page('app_pages/brief.py',title='写稿与史实',icon=':material/search:'),

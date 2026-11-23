@@ -65,8 +65,8 @@ TEXT_STROKE = (12, 12, 12)
 
 
 def _canvas():
-    from app.services import compose as C
-    return C.W, C.H
+    from app.services.spec import current_video_format
+    return current_video_format().size
 
 
 @dataclass(frozen=True)
@@ -123,7 +123,7 @@ def _fit(draw, text: str, size: int, max_w: int) -> tuple[int, bool]:
     clamp -- the viewer sees a truncated title and no error anywhere.
     """
     from app.services import compose as C
-    floor = max(48, int(size * 0.6))
+    floor = min(size, max(48, int(size * 0.6)))
     s = size
     while s > floor:
         if draw.textbbox((0, 0), text, font=C._get_font(s))[2] <= max_w:
@@ -167,7 +167,10 @@ def measure(spec: Spec) -> dict:
     if spec.episode:
         wanted.append((spec.episode, EPISODE_SIZE))
     rows, shrunk = [], False
+    scale = .65 if W > H else 1.0
+    pad_y = round(PAD_Y * scale)
     for text, size in wanted:
+        size = round(size * scale)
         size, was_shrunk = _fit(draw, text, size, max_w)
         shrunk = shrunk or was_shrunk
         rows.append((text, size))
@@ -178,7 +181,7 @@ def measure(spec: Spec) -> dict:
         if pd.textbbox((0, 0), text, font=C._get_font(size))[2] > max_w:
             errors.append(f"overlay text still overflows at minimum size: {text!r}")
     probe.close()
-    height = sum(s for _, s in rows) + PAD_Y * (len(rows) + 1)
+    height = sum(s for _, s in rows) + pad_y * (len(rows) + 1)
     anchor = ANCHOR_Y.get(spec.kind, 0.5) if spec.anchor_y is None else spec.anchor_y
     if not 0.0 <= anchor <= 1.0:
         errors.append("overlay anchor outside [0,1]")
@@ -186,7 +189,7 @@ def measure(spec: Spec) -> dict:
     top = int(centre - height / 2)
     if top < 0 or top + height > H:
         errors.append("overlay outside vertical safe area")
-    return {"rows": rows, "top": top, "height": height, "shrunk": shrunk, "errors": errors}
+    return {"rows": rows, "top": top, "height": height, "pad_y": pad_y, "shrunk": shrunk, "errors": errors}
 
 
 def validate(specs: list[Spec], total_ms: int | None = None) -> list[dict]:
@@ -225,6 +228,7 @@ def rasterise(spec: Spec, alpha: float = 1.0) -> tuple[Image.Image, tuple[int, i
 
     block_w = max(widths) + PAD_X * 2
     block_h = layout["height"]
+    pad_y = layout["pad_y"]
     block_w = min(block_w, W)
     tile = Image.new("RGBA", (block_w, block_h), (0, 0, 0, 0))
     td = ImageDraw.Draw(tile)
@@ -235,10 +239,10 @@ def rasterise(spec: Spec, alpha: float = 1.0) -> tuple[Image.Image, tuple[int, i
     if spec.scrim:
         td.rounded_rectangle([0, 0, block_w - 1, block_h - 1], radius=28, fill=SCRIM)
         if spec.episode:
-            td.rectangle([PAD_X - 18, PAD_Y - 6, PAD_X - 12, block_h - PAD_Y + 6],
+            td.rectangle([PAD_X - 18, pad_y - 6, PAD_X - 12, block_h - pad_y + 6],
                          fill=EPISODE_FILL)
 
-    y = PAD_Y
+    y = pad_y
     for (text, size), box in zip(rows, boxes):
         font = font_cache[(text, size)]
         x = (block_w - (box[2] - box[0])) // 2 - box[0]
@@ -248,7 +252,7 @@ def rasterise(spec: Spec, alpha: float = 1.0) -> tuple[Image.Image, tuple[int, i
                 stroke_width=stroke, stroke_fill=(0, 0, 0, 200))
         td.text((x, y), text, font=font, fill=fill,
                 stroke_width=stroke, stroke_fill=TEXT_STROKE)
-        y += size + PAD_Y // 2
+        y += size + pad_y // 2
 
     if alpha < 1.0:
         level = max(0, min(255, int(round(alpha * 255))))
@@ -282,7 +286,7 @@ class Plan:
             alpha = _f(spec, ms)
             if alpha <= 0.0:
                 continue
-            key = (i, round(alpha * (ALPHA_BUCKETS - 1)))
+            key = (i, round(alpha * (ALPHA_BUCKETS - 1)), _canvas())
             tile = self._cache.get(key)
             if tile is None:
                 tile = rasterise(spec, key[1] / (ALPHA_BUCKETS - 1))

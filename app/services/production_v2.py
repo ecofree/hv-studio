@@ -8,6 +8,7 @@ import threading
 import uuid
 import time
 
+from app.services.spec import VideoFormat, current_video_format, using_video_format
 from app.services.narration_pipeline import read, validate_assembly
 from app.services.provenance import atomic_json, file_sha256, fingerprint
 
@@ -19,6 +20,11 @@ def frame_boundary(sample, sr, fps=25):
 
 
 def validate_timeline(manifest, timeline, *, all_declared_proofs=False):
+    with using_video_format(VideoFormat.from_record(timeline)):
+        return _validate_timeline(manifest, timeline, all_declared_proofs)
+
+
+def _validate_timeline(manifest, timeline, all_declared_proofs):
     sr, total = manifest["sample_rate"],manifest["samples"]
     shots=timeline["shots"]
     cursor=0
@@ -121,7 +127,7 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
     """Yield final RGB24 frames; overlays and word highlights use the exact sample clock."""
     from PIL import Image
     from app.services.compose import _fade_to_black
-    from app.services.motion import apply_grade, plan_frames, camera_frames, camera_crop
+    from app.services.motion import apply_grade, plan_frames, camera_frames, camera_crop, inset_backdrop, inset_plate
     from app.services.scene_animation import Scene, validate as validate_animation
 
     cue_index = 0
@@ -146,15 +152,23 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                 graded = apply_grade(original, spec.grade)
                 if graded is not original: original.close()
                 original = graded
-            frames = None
+            frames = backdrop = inset = None
             try:
                 shot_first = frame_boundary(shot['sample_start'], sample_rate)
                 shot_last = frame_boundary(shot['sample_end'], sample_rate)
                 scene = Scene(original, shot['animation'], shot_first, shot_last) if shot.get('animation') is not None else None
                 # Compute the complete trajectory; splitting a shot must not restart motion.
-                boxes = plan_frames(*original.size, (shot_last-shot_first)/25.0, spec, 25)[first-shot_first:last-shot_first]
+                fmt = current_video_format()
+                if fmt.uses_inset(original.size):
+                    backdrop = inset_backdrop(original, fmt.size)
+                    # Keep the complete portrait source visible throughout the shot.
+                    boxes = [(0, 0, *fmt.size)] * (last - first)
+                    if not scene:
+                        inset = inset_plate(original, backdrop)
+                else:
+                    boxes = plan_frames(*original.size, (shot_last-shot_first)/25.0, spec, 25)[first-shot_first:last-shot_first]
                 previous_key, pixels = None, None
-                frames = (((b,None,True) for b in boxes) if scene else camera_frames(original,boxes))
+                frames = (((b,None,True) for b in boxes) if scene else camera_frames(inset or original,boxes))
                 for offset, (box, base, last_use) in enumerate(frames):
                     global_frame = first + offset
                     sample = global_frame * sample_rate // 25
@@ -179,7 +193,7 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                     if key != previous_key:
                         if scene:
                             with scene.frame(global_frame) as animated:
-                                frame = camera_crop(animated,box)
+                                frame = inset_plate(animated, backdrop) if backdrop is not None else camera_crop(animated, box)
                         else:
                             frame = base.copy() if not last_use and (dim or tiles or cue_text) else base
                         if overlays:
@@ -202,6 +216,8 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                     yield pixels
             finally:
                 if frames is not None: frames.close()
+                if inset is not None: inset.close()
+                if backdrop is not None: backdrop.close()
                 original.close()
     finally:
         if subtitle_tile is not None:subtitle_tile.close()
@@ -216,9 +232,10 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
     expected = sum(last - first for _, first, last in rows)
     temp = Path(out_path).with_suffix(Path(out_path).suffix + ".tmp")
     _safe_unlink(temp)
+    width, height = current_video_format().size
     cmd = [
         "ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "rgb24",
-        "-s", "1080x1920", "-r", "25", "-i", "-", *vcodec,
+        "-s", f"{width}x{height}", "-r", "25", "-i", "-", *vcodec,
         "-pix_fmt", "yuv420p", "-an", "-f", "mp4", str(temp),
     ]
     proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
@@ -262,6 +279,11 @@ def _encode_v2_segment(rows, specs, cues, sample_rate, out_path, vcodec, timeout
 
 
 def timeline_cards(ep_id, timeline, total_ms):
+    with using_video_format(VideoFormat.from_record(timeline)):
+        return _timeline_cards(ep_id, timeline, total_ms)
+
+
+def _timeline_cards(ep_id, timeline, total_ms):
     from app.services import overlay, overlay_author
     sidecar = overlay.path_for(ep_id) if ep_id else None
     directed = overlay.load_path(timeline['overlay_path'], total_ms=total_ms).specs if timeline.get('overlay_path') else []
@@ -270,13 +292,20 @@ def timeline_cards(ep_id, timeline, total_ms):
 
 
 def check_overlay_receipt(ep_id, timeline, receipt):
+    fmt = VideoFormat.from_record(timeline)
+    fmt.require_match(receipt)
+    with using_video_format(fmt):
+        _check_cards(ep_id, timeline, receipt)
+
+
+def _check_cards(ep_id, timeline, receipt):
     if not timeline.get('overlay_path'):
         return
     from app.services import overlay
     if not overlay.path_for(ep_id).is_file():
         return
     total_ms = round(receipt['samples']*1000/receipt['sample_rate'])
-    _, expected = timeline_cards(ep_id, timeline, total_ms)
+    _, expected = _timeline_cards(ep_id, timeline, total_ms)
     recorded = receipt.get('effective_overlay_sha256')
     if recorded is None:
         old = overlay.load_path(timeline['overlay_path'], total_ms=total_ms)
@@ -286,7 +315,20 @@ def check_overlay_receipt(ep_id, timeline, receipt):
 
 
 def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=None, on_verified=None):
-    """Render a v2 candidate with resumable, shot-boundary video segments."""
+    """Render and validate against one immutable timeline snapshot."""
+    import hashlib
+    import json
+    from app.services.audio_disposition import require_usable
+    manifest = validate_assembly(manifest_path)
+    require_usable(manifest)
+    data = Path(timeline_path).read_bytes()
+    timeline = json.loads(data)
+    with using_video_format(VideoFormat.from_record(timeline)):
+        return _render_timeline(manifest_path, manifest, timeline_path, timeline, hashlib.sha256(data).hexdigest(),
+                                output_dir, timeout, progress, on_verified)
+
+
+def _render_timeline(manifest_path, manifest, timeline_path, timeline, timeline_sha, output_dir, timeout, progress, on_verified):
     from PIL import Image
     from app.models.shot import MotionSpec
     from app.services.compose import (
@@ -295,18 +337,14 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
     )
     from app.services.media_integrity import verify_media
     from app.config.config import ROOT, get_settings
-    from app.services.audio_disposition import require_usable
-
-    manifest = validate_assembly(manifest_path)
-    require_usable(manifest)
-    timeline = read(timeline_path)
     proofs=validate_timeline(manifest, timeline, all_declared_proofs=True)
     check_font_available()
 
     inputs = {
         str(Path(p).resolve()): file_sha256(p)
-        for p in [manifest_path, timeline_path, manifest["master_path"], _sub_font_path()]
+        for p in [manifest_path, manifest["master_path"], _sub_font_path()]
     }
+    inputs[str(Path(timeline_path).resolve())] = timeline_sha
     for path, sha in timeline.get('inputs', {}).items():
         if file_sha256(path) != sha: raise ValueError('timeline source input changed')
         inputs[str(Path(path).resolve())] = sha
@@ -324,7 +362,11 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
     except ValueError:
         ep_id = None
     if ep_id:
+        from app.managers import load
+        from app.paths import episode_json
         from app.services import overlay as _ov_mod
+        if episode_json(ep_id).is_file():
+            load(ep_id).video_format.require_match(timeline)
         sidecar = _ov_mod.path_for(ep_id)
         if sidecar.is_file():
             inputs[str(sidecar.resolve())] = file_sha256(sidecar)
@@ -361,7 +403,9 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
     import sys
     from app.services.local_asr import runtime_versions
     core_lock = ROOT/'requirements.core.lock.txt'
-    runtime = {'python': sys.version.split()[0]}
+    fmt = current_video_format()
+    width, height = fmt.size
+    runtime = {'python': sys.version.split()[0], 'video_format': fmt.value}
     if core_lock.is_file():
         inputs[str(core_lock.resolve())] = file_sha256(core_lock)
         runtime['packages'] = runtime_versions(Path(sys.executable), core_lock)
@@ -391,7 +435,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
     candidate_receipt = target / "candidate.json"
     if candidate_receipt.is_file():
         receipt = read(candidate_receipt)
-        if (receipt.get("inputs") == inputs and Path(receipt.get('candidate_path','')).is_file() and
+        if (VideoFormat.from_record(receipt) == fmt and receipt.get("inputs") == inputs and Path(receipt.get('candidate_path','')).is_file() and
                 file_sha256(receipt["candidate_path"]) == receipt.get("candidate_sha256")):
             return candidate_receipt
 
@@ -523,7 +567,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
         integrity = verify_media(
             candidate, expected_frames=expected_frames,
             expected_samples=manifest["samples"], sample_rate=sr,
-            timeout=mux_timeout,
+            width=width, height=height, timeout=mux_timeout, output_audio_rate=fmt.output_audio_rate,
         )
         if on_verified is not None:
             on_verified(integrity)
@@ -532,6 +576,7 @@ def _render(manifest_path, timeline_path, output_dir, timeout=300, *, progress=N
                 raise ValueError("input changed while rendering")
         receipt = {
             "candidate_path": str(candidate.resolve()),
+            "video_format": fmt.value,
             "candidate_sha256": integrity["sha256"],
             "effective_overlay_sha256": overlay_sha,
             "timeline_path": str(Path(timeline_path).resolve()),
@@ -605,6 +650,10 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
     quality_path = receipt.get('quality_report_path')
     if relative_pointer.is_relative_to(episodes_dir().resolve()):
         eid = relative_pointer.relative_to(episodes_dir().resolve()).parts[0]
+        from app.managers import load
+        from app.paths import episode_json
+        if episode_json(eid).is_file():
+            load(eid).video_format.require_match(receipt)
         timeline_path = receipt.get('timeline_path')
         state_path = relative_pointer.parent/'run.json'
         current = read(state_path) if state_path.is_file() else {}
@@ -634,8 +683,11 @@ def _publish(receipt_path, review_path, listening_review_path, pointer_path):
     if content_drift: raise ValueError("candidate input changed after review")
     if file_sha256(receipt["candidate_path"])!=receipt["candidate_sha256"]:
         raise ValueError("candidate bytes changed after review")
+    fmt = VideoFormat.from_record(receipt)
+    width, height = fmt.size
     verified=verify_media(receipt["candidate_path"],expected_frames=receipt["expected_frames"],
-                 expected_samples=receipt["samples"],sample_rate=receipt["sample_rate"])
+                 expected_samples=receipt["samples"],sample_rate=receipt["sample_rate"],
+                 width=width, height=height, output_audio_rate=fmt.output_audio_rate)
     if verified["sha256"]!=receipt["candidate_sha256"]:raise ValueError("candidate changed during verification")
     atomic_json(pointer_path,{"candidate_path":receipt["candidate_path"],"sha256":receipt["candidate_sha256"],
                 "receipt":str(Path(receipt_path).resolve()),"review":str(Path(review_path).resolve()),

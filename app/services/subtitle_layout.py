@@ -1,5 +1,6 @@
 """One measured subtitle contract for planning, rendering and acceptance."""
 from PIL import Image, ImageDraw
+from app.services.spec import VideoFormat, current_video_format
 
 
 def measure(text):
@@ -9,14 +10,16 @@ def measure(text):
     font = C._get_font(C._sub_font_size())
     canvas = Image.new('RGB', (1, 1))
     draw = ImageDraw.Draw(canvas)
-    lines = C._wrap(draw, C.subtitle_display_text(text) or text, font, C.TEXT_W)
+    fmt = current_video_format()
+    safe_width = C._subtitle_width()
+    lines = C._wrap(draw, C.subtitle_display_text(text) or text, font, safe_width)
     boxes = [draw.textbbox((0, 0), line, font=font) for line in lines]
     height = sum(b[3] for b in boxes) + C.LINE_GAP * (len(lines)-1)
     stroke = C._sub_stroke()
     top = C._sub_bottom()-height-stroke-4
     rectangles=[]; y=top
     for line, box in zip(lines, boxes):
-        x=(C.W-box[2])//2
+        x=(fmt.size[0]-box[2])//2
         rectangles.extend([draw.textbbox((x,y),line,font=font,stroke_width=stroke),
                            draw.textbbox((x+3,y+4),line,font=font,stroke_width=stroke)])
         y+=box[3]+C.LINE_GAP
@@ -25,13 +28,14 @@ def measure(text):
     errors = []
     if not text.strip(): errors.append('empty subtitle')
     if len(lines) > 2: errors.append('subtitle exceeds two lines')
-    if any(len(line) > cfg.max_chars_per_line for line in lines):
+    max_chars = cfg.max_chars_per_line * (2 if fmt == VideoFormat.LANDSCAPE else 1)
+    if any(len(line) > max_chars for line in lines):
         errors.append('subtitle line exceeds character limit')
     if actual[1] < cfg.margin_top:
         errors.append('subtitle outside top safe area')
     if actual[3] > C._sub_bottom(): errors.append('subtitle outside bottom safe area')
-    if actual[0] < 0 or actual[2] > C.W: errors.append('subtitle outline outside horizontal safe area')
-    if any(b[2] > C.TEXT_W for b in boxes): errors.append('subtitle outside horizontal safe area')
+    if actual[0] < 0 or actual[2] > fmt.size[0]: errors.append('subtitle outline outside horizontal safe area')
+    if any(b[2] > safe_width for b in boxes): errors.append('subtitle outside horizontal safe area')
     canvas.close()
     return {'lines': lines, 'line_count': len(lines), 'height': height,
             'top': top, 'actual_bbox': actual, 'errors': errors}
@@ -62,7 +66,7 @@ def overlay(text, hl=None):
     the tile is no longer constant for the cue.
     """
     from app.services.compose import _draw_subtitle
-    canvas = Image.new('RGBA', (1080, 1920), (0, 0, 0, 0))
+    canvas = Image.new('RGBA', current_video_format().size, (0, 0, 0, 0))
     _draw_subtitle(canvas, text, hl)
     box = canvas.getbbox()
     tile = canvas.crop(box) if box else Image.new('RGBA', (1, 1))

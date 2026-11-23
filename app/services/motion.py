@@ -49,7 +49,7 @@ from app.models import MotionSpec, Shot
 # 输出规格常量统一由 app.services.spec 提供（整改 C1）。此处 re-export 是为了
 # 兼容既有的 `from app.services.motion import FPS, W, H` 写法（compose 在用），
 # 值本身只有 spec 里那一份。
-from app.services.spec import FPS, H, W  # noqa: F401  (re-export)
+from app.services.spec import FPS, H, W, current_video_format  # noqa: F401  (re-export)
 
 CRF = 18
 PRESET = "medium"
@@ -160,9 +160,10 @@ def frame_box(iw: int, ih: int, z: float, px: float, py: float, geometry_version
     """
     # 只有 fit_cover_v2 换过裁切几何；explicit_traj_v1 走下面 else 的 scale=1.0，
     # 与 legacy 逐位一致 —— 它只改轨迹来源，不改构图。别把两者合并。
-    scale = min(iw / W, ih / H) if geometry_version == "fit_cover_v2" else 1.0
-    cw = W * scale / max(0.01, z)
-    ch = H * scale / max(0.01, z)
+    width, height = current_video_format().size
+    scale = min(iw / width, ih / height) if geometry_version == "fit_cover_v2" else 1.0
+    cw = width * scale / max(0.01, z)
+    ch = height * scale / max(0.01, z)
     x = (iw - cw) * min(1.0, max(0.0, px))
     y = (ih - ch) * min(1.0, max(0.0, py))
     x0 = int(round(min(max(0.0, x), max(0.0, iw - cw))))
@@ -186,16 +187,33 @@ def frames_for_duration_ms(duration_ms: float, fps: int = FPS) -> int:
     return max(1, int(round((duration_ms or 0) / 1000.0 * fps)))
 
 
-def camera_crop(image, box):
+def camera_crop(image, box, canvas=None):
     """The common, pixel-exact camera operation for both render paths."""
     from PIL import Image
+    canvas = canvas or current_video_format().size
     crop = image.crop(box)
-    if crop.size == (W,H):
+    if crop.size == canvas:
         return crop
     try:
-        return crop.resize((W,H), Image.Resampling.LANCZOS)
+        return crop.resize(canvas, Image.Resampling.LANCZOS)
     finally:
         crop.close()
+
+
+def inset_backdrop(image, canvas):
+    """Prepare the soft side fill once per portrait or square plate."""
+    from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+    with ImageOps.fit(image, (160, 90)) as small, small.filter(ImageFilter.GaussianBlur(7)) as blurred:
+        with ImageEnhance.Brightness(blurred).enhance(.5) as dark:
+            return dark.resize(canvas, Image.Resampling.BILINEAR)
+
+
+def inset_plate(image, backdrop):
+    from PIL import Image, ImageOps
+    frame = backdrop.copy()
+    with ImageOps.contain(image, frame.size, Image.Resampling.LANCZOS) as fitted:
+        frame.paste(fitted, ((frame.width - fitted.width) // 2, (frame.height - fitted.height) // 2))
+    return frame
 
 
 def camera_frames(image, boxes):
@@ -203,6 +221,7 @@ def camera_frames(image, boxes):
     from collections import deque
     from concurrent.futures import ThreadPoolExecutor
     from itertools import groupby
+    canvas = current_video_format().size
     groups = ((box,sum(1 for _ in group)) for box,group in groupby(boxes))
     with ThreadPoolExecutor(max_workers=3,thread_name_prefix='studio-camera') as pool:
         pending = deque()
@@ -210,7 +229,7 @@ def camera_frames(image, boxes):
             item = next(groups,None)
             if item:
                 box,count=item
-                pending.append((box,count,pool.submit(camera_crop,image,box)))
+                pending.append((box,count,pool.submit(camera_crop,image,box,canvas)))
         for _ in range(3):submit()
         try:
             while pending:

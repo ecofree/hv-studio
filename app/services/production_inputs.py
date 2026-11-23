@@ -68,7 +68,10 @@ def prepare(ep, plan_path, root, *, preview=False):
         from app.orchestrator import _word_hit, _STYLE_BANNED_LATIN, _STYLE_BANNED_CJK
         from app.orchestrator import _TEXT_REQUEST_CJK, _TEXT_REQUEST_LATIN
         from app.services.image import validate_image_params
-        bad_params = validate_image_params(primary.size, primary.quality,
+        from app.services.spec import VideoFormat
+        video_format = VideoFormat(getattr(ep, 'video_format', VideoFormat.PORTRAIT))
+        size = video_format.image_size(primary.size)
+        bad_params = validate_image_params(size, primary.quality,
                                            primary.model or primary.engine)
         if bad_params:
             raise ValueError("image params invalid before any paid call: " + "; ".join(bad_params))
@@ -125,8 +128,9 @@ def prepare(ep, plan_path, root, *, preview=False):
                     raise ValueError(f'image brief {key}: {reason}')
                 prompt = _compose_prompt(norm, style.style_suffix, style.negative_clause)
             model=briefs.get('images',{}).get(key,{}).get('model') or primary.model or primary.engine
-            req = ImageGenRequest(model=model, prompt=prompt, size=primary.size, quality=primary.quality)
-            job = ImageJob(key, req, root/'images'/(key+'.png'))
+            prompt = video_format.frame_prompt(prompt)
+            req = ImageGenRequest(model=model, prompt=prompt, size=size, quality=primary.quality)
+            job = ImageJob(key, req, root/'images'/(key+'.png'), video_format=video_format)
             # Old narration-derived fingerprints remain readable for cache recovery.
             # New paid work must use an authored visual brief, not raw narration.
             job.source_brief_missing = key not in briefs.get('images', {})

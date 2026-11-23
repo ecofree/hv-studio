@@ -12,7 +12,7 @@ def _tool_hash(path, size, changed, modified):
     return file_sha256(path)
 
 
-def verification_contract(frames, samples, rate, width=1080, height=1920):
+def verification_contract(frames, samples, rate, width=1080, height=1920, output_audio_rate=None):
     tools={}
     for name in ('ffprobe','ffmpeg'):
         path=shutil.which(name)
@@ -20,13 +20,14 @@ def verification_contract(frames, samples, rate, width=1080, height=1920):
         stat=Path(path).stat()
         tools[name]=_tool_hash(path,stat.st_size,stat.st_ctime_ns,stat.st_mtime_ns)
     return dict(tools=tools,validator_sha256=file_sha256(__file__), expected_frames=frames,
-                expected_samples=samples, sample_rate=rate, width=width, height=height)
+                expected_samples=samples, sample_rate=rate, width=width, height=height,
+                output_audio_rate=output_audio_rate)
 
 
 def verify_media(path, expected_frames=None, expected_samples=None, sample_rate=None,
-                 width=1080, height=1920, timeout=300):
+                 width=1080, height=1920, timeout=300, output_audio_rate=None):
     path = Path(path)
-    contract=verification_contract(expected_frames,expected_samples,sample_rate,width,height)
+    contract=verification_contract(expected_frames,expected_samples,sample_rate,width,height,output_audio_rate)
     before = file_sha256(path)
     probe = subprocess.run(["ffprobe","-v","error","-count_packets","-show_streams",
                             "-show_format","-of","json",str(path)],
@@ -39,6 +40,8 @@ def verify_media(path, expected_frames=None, expected_samples=None, sample_rate=
     video,audio=videos[0],audios[0]
     if (video["width"],video["height"])!=(width,height):
         raise ValueError("candidate dimensions mismatch")
+    if output_audio_rate and int(audio["sample_rate"]) != output_audio_rate:
+        raise ValueError("candidate output audio sample rate mismatch")
     if expected_frames is not None and int(video["nb_read_packets"])!=expected_frames:
         raise ValueError("candidate frame count mismatch")
     if expected_samples is not None:
@@ -52,7 +55,7 @@ def verify_media(path, expected_frames=None, expected_samples=None, sample_rate=
                    check=True,capture_output=True,timeout=timeout)
     if file_sha256(path) != before:
         raise ValueError("candidate changed during full decode")
-    if contract!=verification_contract(expected_frames,expected_samples,sample_rate,width,height):
+    if contract!=verification_contract(expected_frames,expected_samples,sample_rate,width,height,output_audio_rate):
         raise ValueError("verification tool changed during full decode")
     return {"status":"passed","sha256":before,"path":str(path.resolve()),"streams":info["streams"],
             "contract":contract,
@@ -62,11 +65,15 @@ def verify_media(path, expected_frames=None, expected_samples=None, sample_rate=
 def verify_for_run(receipt, decoded_here=None, *, timeout=300):
     """Caller has validated the current input hashes, candidate bytes and timeline."""
     frames,samples,rate=(receipt[k] for k in ('expected_frames','samples','sample_rate'))
+    from app.services.spec import VideoFormat
+    fmt = VideoFormat.from_record(receipt)
+    width, height = fmt.size
     integrity=receipt.get('integrity',{})
     if (decoded_here and integrity==decoded_here and integrity.get('status')=='passed'
             and integrity.get('path')==str(Path(receipt['candidate_path']).resolve())
             and integrity.get('sha256')==receipt['candidate_sha256']
-            and integrity.get('contract')==verification_contract(frames,samples,rate)):
+            and integrity.get('contract')==verification_contract(frames,samples,rate,width,height,fmt.output_audio_rate)):
         return 'full_decode_in_this_run'
-    verify_media(receipt['candidate_path'],expected_frames=frames,expected_samples=samples,sample_rate=rate,timeout=timeout)
+    verify_media(receipt['candidate_path'],expected_frames=frames,expected_samples=samples,sample_rate=rate,width=width,height=height,timeout=timeout,
+                 output_audio_rate=fmt.output_audio_rate)
     return 'independent_full_decode'
