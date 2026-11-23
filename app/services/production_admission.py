@@ -70,7 +70,11 @@ def inputs(ep_id, *, _legacy=False):
         jobs = include_registered(ep_id, build_image_jobs(ep_id, strict=True, create_output_dir=False))
     else:
         from app.services.production_inputs import storyboard_jobs
-        jobs, _ = storyboard_jobs(ep_id, scene, briefs, directions, create_output_dir=False)
+        from app.services.graphics_timeline import local_jobs
+        graphics = local_jobs(load(ep_id),document,scene,directions)
+        jobs, _ = storyboard_jobs(ep_id, scene, briefs, directions, create_output_dir=False, graphics=graphics)
+        if (folder/'studio/graphics.json').is_file():
+            files.append(folder/'studio/graphics.json')
     if not jobs: raise ValueError('image jobs missing')
     from app.services.studio_image_reuse import validate_scene_source
     validate_scene_source(scene,document)

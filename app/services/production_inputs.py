@@ -8,21 +8,27 @@ def input_files(ep_id):
     """Authored visual inputs, including absence so newly added briefs invalidate reuse."""
     from app.paths import episode_dir
     directory = episode_dir(ep_id)
+    names = ['scene_plan.json', 'image_prompts.json', 'directing.json',
+             'production/v2/source_image_briefs.json', 'studio/image-reuse.json']
+    if (directory/'studio/graphics.json').is_file():
+        names.append('studio/graphics.json')
     return {str((directory/name).resolve()): file_sha256(directory/name) if (directory/name).is_file() else None
-            for name in ('scene_plan.json', 'image_prompts.json', 'directing.json',
-                         'production/v2/source_image_briefs.json', 'studio/image-reuse.json')}
+            for name in names}
 
 
-def storyboard_jobs(ep_id, scene, briefs, directing, *, create_output_dir):
+def storyboard_jobs(ep_id, scene, briefs, directing, *, create_output_dir, graphics=None):
     from app.orchestrator import build_image_jobs
     from app.services.existing_images import include_registered
     from app.services.studio_image_reuse import validate_motions
     validate_motions(scene, directing)
     used = {s['image'] for s in scene.get('scenes', scene.get('unit_scenes', []))}
     used.update(e['image_id'] for e in directing.get('visual_events', []))
-    keys = used.intersection(briefs)
+    graphics = graphics or {}
+    keys = used.intersection(briefs) - graphics.keys()
     generated = build_image_jobs(ep_id, only=keys, strict=True, create_output_dir=create_output_dir) if keys else []
-    return include_registered(ep_id, generated, only=used), used
+    remaining = used-graphics.keys()
+    images = include_registered(ep_id,generated,only=remaining) if remaining else []
+    return images+list(graphics.values()), used
 
 
 def prepare(ep, plan_path, root, *, preview=False):
@@ -36,14 +42,16 @@ def prepare(ep, plan_path, root, *, preview=False):
     prompt_path = episode_dir/'image_prompts.json'
     directing_path = episode_dir/'directing.json'
     directing = read(directing_path) if directing_path.is_file() else {}
+    from app.services.graphics_timeline import local_jobs
     if scene_path.exists() != prompt_path.exists():
         raise ValueError('scene_plan.json and image_prompts.json must be supplied together')
     if scene_path.exists():
         scene = read(scene_path)
         image_briefs = read(prompt_path)
-        jobs, used = storyboard_jobs(ep.id, scene, image_briefs, directing, create_output_dir=not preview)
         from app.services.studio_image_reuse import validate_scene_source
         validate_scene_source(scene, plan)
+        graphics = local_jobs(ep,plan,scene,directing)
+        jobs, used = storyboard_jobs(ep.id, scene, image_briefs, directing, create_output_dir=not preview, graphics=graphics)
         if 'scenes' in scene:
             from app.services.production_timeline import scene_bindings
             source_manifest = {'alignment': [dict(unit_id=u['unit_id'], text=u['source_text']) for u in plan['units']]}
@@ -56,6 +64,7 @@ def prepare(ep, plan_path, root, *, preview=False):
     else:
         from app.services.studio_image_reuse import validate_motions
         validate_motions({}, directing)
+        graphics = local_jobs(ep,plan,{},directing)
         # Deterministic source-derived draft; semantic review remains explicit.
         # No added historical facts or silent LLM/provider calls.
         settings = get_settings(); style = settings.get_profile().image; primary = settings.image.primary
@@ -73,7 +82,7 @@ def prepare(ep, plan_path, root, *, preview=False):
         size = video_format.image_size(primary.size)
         bad_params = validate_image_params(size, primary.quality,
                                            primary.model or primary.engine)
-        if bad_params:
+        if bad_params and any(f'unit-{i:03}' not in graphics for i in range(len(plan['units']))):
             raise ValueError("image params invalid before any paid call: " + "; ".join(bad_params))
         storyboard = {'schema_version': 'source-storyboard-v1', 'source_sha256': plan['source_sha256'],
                       'review_required': True, 'unit_scenes': []}
@@ -90,6 +99,8 @@ def prepare(ep, plan_path, root, *, preview=False):
             storyboard['image_briefs_sha256'] = file_sha256(brief_path)
         blocked, warned = [], []
         for i, unit in enumerate(plan['units']):
+            if f'unit-{i:03}' in graphics:
+                continue
             text = briefs.get('images', {}).get(f'unit-{i:03}', {}).get('en', unit['source_text']) or ""
             norm = " ".join(text.split())
             if not norm:
@@ -118,6 +129,10 @@ def prepare(ep, plan_path, root, *, preview=False):
                   f"已保留但请复核: {warned[:5]}")
         for i, unit in enumerate(plan['units']):
             key = f'unit-{i:03}'
+            storyboard['unit_scenes'].append(dict(image=key, unit_id=unit['unit_id']))
+            if key in graphics:
+                jobs.append(graphics[key])
+                continue
             prompt = ('Historical documentary scene illustrating the following narration. '
                       'No written text, captions or watermark. Narration: '+unit['source_text']+' '+style.style_suffix+' '+style.negative_clause)
             if key in briefs.get('images', {}):
@@ -136,7 +151,8 @@ def prepare(ep, plan_path, root, *, preview=False):
             job.source_brief_missing = key not in briefs.get('images', {})
             jobs.append(job)
             prompts[key] = {'prompt': prompt, 'unit_id': unit['unit_id']}
-            storyboard['unit_scenes'].append(dict(image=key, unit_id=unit['unit_id']))
+        unit_keys = {s['image'] for s in storyboard['unit_scenes']}
+        jobs.extend(job for key,job in graphics.items() if key not in unit_keys)
         folder = root/'storyboards'/fingerprint([storyboard, prompts])
         scene_path = folder/'scene_plan.json'
         scene = storyboard

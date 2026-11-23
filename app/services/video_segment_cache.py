@@ -41,6 +41,15 @@ def segment_fingerprint(rows, specs, cues, sample_rate, inputs, shared,
                           image_sha256=inputs[str(Path(shot['image_path']).resolve())]))
         if shot.get('animation') is not None:
             shots[-1]['animation'] = shot['animation']
+        if 'camera_samples' in shot:
+            shots[-1]['camera_samples'] = shot['camera_samples']
+        if shot.get('graphic'):
+            from app.services import information_design
+            shots[-1]['graphic_layout'] = inputs[str(Path(information_design.__file__).resolve())]
+            if index and shot['graphic']['step']>1:
+                prior = specs[index-1][0]
+                if prior.get('graphic',{}).get('id')==shot['graphic']['id']:
+                    shots[-1]['previous_plate'] = inputs[str(Path(prior['image_path']).resolve())]
     # Match the renderer's integer sample clock, including a cue beginning
     # inside a frame. Extra boundary cues are harmless conservative invalidation.
     visible = [dict(text=c['text'], sample_start=c['sample_start'], sample_end=c['sample_end'])

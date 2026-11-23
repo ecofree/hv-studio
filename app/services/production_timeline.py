@@ -7,6 +7,17 @@ from app.services.provenance import atomic_json, file_sha256, fingerprint
 def normalized(text): return ''.join(c for c in text if c.isalnum())
 
 
+def acoustic_offsets(manifest, evidence):
+    anchors, cursor = {}, 0
+    for unit in manifest['alignment']:
+        for word in evidence['words'][unit['unit_id']]:
+            key = cursor+len(normalized(unit['text'][:word['text_start']]))
+            anchors.setdefault(key, word['sample_start'])
+        cursor += len(normalized(unit['text']))
+    anchors[0], anchors[cursor] = 0, manifest['samples']
+    return anchors
+
+
 def scene_bindings(ep, manifest, scene_plan):
     """Use legacy frame ranges only when their full source is identical."""
     if normalized(''.join(f.text for f in ep.frames)) != normalized(''.join(u['text'] for u in manifest['alignment'])):
@@ -38,13 +49,7 @@ def timed_scenes(ep, manifest, plan, evidence):
                          source_end=offsets[s['unit_id']]+len(normalized(units[s['unit_id']]['text'])),
                          motion=s.get('motion'), grades=s.get('grades', [])) for s in plan['unit_scenes']]
     # Source character starts bind to acoustic word starts, not char-proportional timing.
-    anchors, cursor = {}, 0
-    for unit in manifest['alignment']:
-        for word in evidence['words'][unit['unit_id']]:
-            key = cursor+len(normalized(unit['text'][:word['text_start']]))
-            anchors.setdefault(key, word['sample_start'])
-        cursor += len(normalized(unit['text']))
-    anchors[0], anchors[cursor] = 0, manifest['samples']
+    anchors = acoustic_offsets(manifest,evidence)
     result, end = [], 0
     for scene in bindings:
         a, b = scene['source_start'], scene['source_end']
@@ -53,7 +58,7 @@ def timed_scenes(ep, manifest, plan, evidence):
             raise ValueError('scene change falls inside an acoustic word; adjust the source scene boundary')
         result.append((scene,anchors[a],anchors[b]))
         end=b
-    if end!=cursor:raise ValueError('scene source coverage incomplete')
+    if end!=max(anchors):raise ValueError('scene source coverage incomplete')
     return result
 
 
@@ -113,8 +118,19 @@ def build(ep, manifest_path, alignment_path, image_assets, scene_plan_path, dest
     design_path = episode_dir(ep.id) / 'directing.json'
     if design_path.is_file():
         from app.services.directing import apply
+        from app.services import studio_graphics, graphics_timeline
+        hidden = {}
+        if studio_graphics.path_for(ep.id).is_file():
+            doc = {'units':[dict(unit_id=u['unit_id'],source_text=u['text']) for u in manifest['alignment']]}
+            hidden = graphics_timeline.local_jobs(ep,doc,plan,read(design_path))
         with using_video_format(fmt):
-            timeline = apply(manifest, timeline, design_path, image_assets, destination)
+            timeline = apply(manifest, timeline, design_path, image_assets, destination,hidden_plates=hidden)
+    from app.services import graphics_timeline
+    if (episode_dir(ep.id)/'studio/graphics.json').is_file():
+        with using_video_format(fmt):
+            require_evidence(manifest,timeline)
+    graphics_timeline.apply(ep.id, manifest, evidence, timeline)
+    graphics_timeline.check_current(ep.id, timeline)
     validate_timeline(manifest, timeline)
     path = Path(destination)/(fingerprint(timeline)+'.json'); atomic_json(path, timeline)
     return path

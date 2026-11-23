@@ -152,13 +152,20 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                 graded = apply_grade(original, spec.grade)
                 if graded is not original: original.close()
                 original = graded
-            frames = backdrop = inset = None
+            frames = backdrop = inset = previous_plate = None
             try:
-                shot_first = frame_boundary(shot['sample_start'], sample_rate)
-                shot_last = frame_boundary(shot['sample_end'], sample_rate)
+                camera_start,camera_end = shot.get('camera_samples',(shot['sample_start'],shot['sample_end']))
+                shot_first = frame_boundary(camera_start, sample_rate)
+                shot_last = frame_boundary(camera_end, sample_rate)
                 scene = Scene(original, shot['animation'], shot_first, shot_last) if shot.get('animation') is not None else None
                 # Compute the complete trajectory; splitting a shot must not restart motion.
                 fmt = current_video_format()
+                reveal = min(6,shot_last-shot_first)
+                if index and shot.get('graphic',{}).get('step',1)>1 and first<shot_first+reveal:
+                    prior = specs[index-1][0]
+                    if prior.get('graphic',{}).get('id')==shot['graphic']['id']:
+                        with Image.open(prior['image_path']) as opened:
+                            previous_plate = opened.convert('RGB')
                 if fmt.uses_inset(original.size):
                     backdrop = inset_backdrop(original, fmt.size)
                     # Keep the complete portrait source visible throughout the shot.
@@ -189,11 +196,14 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                         tiles = overlays.layers_at(g_ms)
                         dim = overlays.dim_at(g_ms)
                     ov_key = (tuple(id(t) for t, _b in tiles), dim_key(dim))
-                    key = (tuple(box), cue_text, hl, ov_key, global_frame if scene else None)
+                    blend = (global_frame-shot_first+1)/reveal if previous_plate is not None else 1.
+                    key = (tuple(box), cue_text, hl, ov_key, global_frame if scene or blend<1 else None)
                     if key != previous_key:
                         if scene:
                             with scene.frame(global_frame) as animated:
                                 frame = inset_plate(animated, backdrop) if backdrop is not None else camera_crop(animated, box)
+                        elif blend<1:
+                            frame = Image.blend(previous_plate,base,blend)
                         else:
                             frame = base.copy() if not last_use and (dim or tiles or cue_text) else base
                         if overlays:
@@ -202,7 +212,11 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                                 if frame is not base and frame is not faded: frame.close()
                                 frame = faded
                             for tile, at in tiles:
-                                frame.paste(tile, at, tile)
+                                if shot.get('graphic'):
+                                    from app.services.information_design import paste_heading
+                                    paste_heading(frame,tile,at,fmt)
+                                else:
+                                    frame.paste(tile, at, tile)
                         if cue_text:
                             if subtitle_key != (cue_text, hl):
                                 if subtitle_tile is not None: subtitle_tile.close()
@@ -218,6 +232,7 @@ def frame_pixels(rows, specs, cues, sample_rate, overlays=None, karaoke=None):
                 if frames is not None: frames.close()
                 if inset is not None: inset.close()
                 if backdrop is not None: backdrop.close()
+                if previous_plate is not None: previous_plate.close()
                 original.close()
     finally:
         if subtitle_tile is not None:subtitle_tile.close()
@@ -292,6 +307,8 @@ def _timeline_cards(ep_id, timeline, total_ms):
 
 
 def check_overlay_receipt(ep_id, timeline, receipt):
+    from app.services.graphics_timeline import check_current
+    check_current(ep_id,timeline)
     fmt = VideoFormat.from_record(timeline)
     fmt.require_match(receipt)
     with using_video_format(fmt):
@@ -367,6 +384,8 @@ def _render_timeline(manifest_path, manifest, timeline_path, timeline, timeline_
         from app.services import overlay as _ov_mod
         if episode_json(ep_id).is_file():
             load(ep_id).video_format.require_match(timeline)
+            from app.services.graphics_timeline import check_current
+            check_current(ep_id,timeline)
         sidecar = _ov_mod.path_for(ep_id)
         if sidecar.is_file():
             inputs[str(sidecar.resolve())] = file_sha256(sidecar)
@@ -375,6 +394,8 @@ def _render_timeline(manifest_path, manifest, timeline_path, timeline, timeline_
     from app.services.video_segment_cache import DEPENDENCIES
     render_sources = [ROOT/name for name in (*DEPENDENCIES, 'app/services/sound_design.py',
                                               'app/services/bgm.py', 'app/services/upscale.py')]
+    if any(s.get('graphic') for s in timeline['shots']):
+        render_sources.append(ROOT/'app/services/information_design.py')
     for dependency in render_sources + list((ROOT / "app/config").glob("*.yaml")):
         inputs[str(dependency.resolve())] = file_sha256(dependency)
     for dependency in [ROOT / "bin/local_asr_worker.py", ROOT / "requirements.asr.lock.txt"]:

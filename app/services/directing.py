@@ -42,7 +42,7 @@ def effective_cards(manifest, design, evidence, sidecar):
     return overlay_author.combined_cards(sidecar, cards, round(manifest['samples']*1000/manifest['sample_rate']))
 
 
-def apply(manifest, timeline, design_path, image_assets, destination):
+def apply(manifest, timeline, design_path, image_assets, destination, *, hidden_plates=()):
     from app.services.forced_alignment import require_evidence
     from app.services import overlay
     from app.models.shot import MotionSpec
@@ -69,7 +69,7 @@ def apply(manifest, timeline, design_path, image_assets, destination):
             shots.append(dict(id=f'directed-{i:03}', image_id=key, image_path=image_assets[key],
                               sample_start=a, sample_end=b, motion=spec.model_dump(mode='json'),
                               source_anchor=event['at'], purpose=event.get('purpose', '')))
-            if event.get('animation') is not None:
+            if event.get('animation') is not None and key not in hidden_plates:
                 from app.services.scene_animation import validate as validate_animation
                 shots[-1]['animation'] = validate_animation(event['animation'], file_sha256(image_assets[key]))
         result['shots'] = shots

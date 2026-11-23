@@ -8,6 +8,8 @@ eid,v,doc=current();s=W.status(eid)
 st.subheader('把已经选定的方案做成完整作品')
 from app.webui.attraction_panel import render as render_attraction
 render_attraction(eid,doc)
+from app.webui.graphics_panel import render as render_graphics
+render_graphics(eid,doc)
 state_path=paths.episode_dir(eid)/'production/v2/run.json'
 full_candidate=None
 if state_path.is_file():

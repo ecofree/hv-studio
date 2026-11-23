@@ -35,14 +35,15 @@ def assign(eid, target_keys, source_key, *, expected_identity):
 
 def apply(eid,jobs):
     from app.services.existing_images import ExistingImage
+    from app.services.graphics_timeline import GraphicPlate
     path=W.folder(eid)/'image-reuse.json'
-    if not path.exists():return jobs
+    if not path.exists() or all(isinstance(j,GraphicPlate) for j in jobs):return jobs
     row=W.read(path)
     if row.get('source_sha256')!=W.document(eid)['source_sha256']:
         raise ValueError('正文已变化，请重新选择复用底图')
     result=[]
     for job in jobs:
-        if job.id in row['images']:
+        if job.id in row['images'] and not isinstance(job,GraphicPlate):
             job=ExistingImage(job.id,row['images'][job.id],path,dict(source_sha256=row['source_sha256']))
             job.is_done()
         result.append(job)
@@ -221,6 +222,12 @@ def _coverage(eid, state, doc, master, scene_path, audio_mode, prepared, planned
                 raise ValueError('导演节点时间范围无效')
             spans=[(e['image_id'],a,b) for e,a,b in zip(events,starts,starts[1:]+[total])]
     keys = {k for k,_,_ in spans}
+    if (root/'studio/graphics.json').is_file():
+        from app.services.graphics_timeline import local_jobs
+        for key,job in local_jobs(load(eid),doc,plan,design).items():
+            effective[key] = str(job.out)
+        if exact:
+            effective.update({s['image_id']:s['image_path'] for s in timeline['shots'] if s.get('graphic')})
     local_missing = sorted(k for k in local & keys if k not in effective or not Path(effective[k]).is_file())
     present = {k for k in keys if k in effective and Path(effective[k]).is_file()}
     names={};aliases={}
