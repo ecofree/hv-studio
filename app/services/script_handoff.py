@@ -11,12 +11,18 @@ import re
 from pathlib import Path
 
 from app.services.script_document import parse_document
+from app.services.onscreen_tables import find_tables
 
 VERSION = "writing-handoff-3"
 PREVIOUS_VERSION = "writing-handoff-2"
 LEGACY_VERSION = "writing-handoff-1"
 PLAIN_VERSION = "writing-handoff-plain-1"
 PLAIN_APPENDIX_VERSION = "writing-handoff-plain-2"
+TABLE_VERSION = "writing-handoff-4"
+PLAIN_TABLE_VERSION = "writing-handoff-plain-3"
+TABLE_VERSIONS = (TABLE_VERSION, PLAIN_TABLE_VERSION)
+PLAIN_VERSIONS = (PLAIN_VERSION, PLAIN_APPENDIX_VERSION, PLAIN_TABLE_VERSION)
+VERSIONS = (VERSION, PREVIOUS_VERSION, LEGACY_VERSION, TABLE_VERSION, *PLAIN_VERSIONS)
 ACT_HEAD = re.compile(r"^#{1,6}\s*【第[^\n】]{1,30}幕[^\n】]*[：:]", re.M)
 QA_APPENDIX = re.compile(r"^#{1,6}[ \t]+本集完成度与质量审查指标[ \t]*\r?$", re.M)
 
@@ -37,14 +43,14 @@ def _json(value) -> bytes:
 
 def derive(source: str, *, version=None) -> dict[str, bytes]:
     if version is None:
-        version = VERSION if narration_end(source) < len(source) else PREVIOUS_VERSION
-    if version not in (VERSION, PREVIOUS_VERSION, LEGACY_VERSION, PLAIN_VERSION, PLAIN_APPENDIX_VERSION):
+        version = TABLE_VERSION if find_tables(source) else VERSION if narration_end(source) < len(source) else PREVIOUS_VERSION
+    if version not in VERSIONS:
         raise ValueError("Unsupported writing handoff version")
     match = ACT_HEAD.search(source)
-    if not match and version not in (PLAIN_VERSION, PLAIN_APPENDIX_VERSION):
+    if not match and version not in PLAIN_VERSIONS:
         raise ValueError("找不到幕标题；保留原稿，未生成旁白。请使用 ### 【第一幕：标题】")
     start = match.start() if match else 0
-    end = narration_end(source) if version in (VERSION, PLAIN_APPENDIX_VERSION) else len(source)
+    end = narration_end(source) if version in (VERSION, PLAIN_APPENDIX_VERSION,*TABLE_VERSIONS) else len(source)
     body = source[start:end]
     # Keep authored bytes (including BOM/CRLF) untouched. The derived Markdown
     # uses LF, with an explicit map back to the authored character coordinates.
@@ -57,7 +63,8 @@ def derive(source: str, *, version=None) -> dict[str, bytes]:
             chars.append('\n' if source[pos] == '\r' else source[pos])
             author_map.append(pos)
         body = ''.join(chars)
-    document = parse_document(body, "narration.md", authoring_layout=version != LEGACY_VERSION)
+    document = parse_document(body,"narration.md",authoring_layout=version!=LEGACY_VERSION,
+                              display_tables=version in TABLE_VERSIONS)
     problems = [f"{c['cue_id']}: 未识别标注 {c['raw_text'][:80]}"
                 for c in document["delivery_cues"] if not c["recognized"]]
     problems += [f"{b['block_id']}: 非正文区需要明确标记或移回正文"
@@ -126,7 +133,9 @@ def derive(source: str, *, version=None) -> dict[str, bytes]:
 def write_revision(source: str, revisions: Path, context: dict | None = None, *, allow_plain=False) -> Path:
     """Validate before writing; identical imports are idempotent."""
     version=PLAIN_VERSION if allow_plain and not ACT_HEAD.search(source) else VERSION
-    if version == VERSION and narration_end(source) == len(source):
+    if find_tables(source):
+        version=PLAIN_TABLE_VERSION if version==PLAIN_VERSION else TABLE_VERSION
+    elif version == VERSION and narration_end(source) == len(source):
         version = PREVIOUS_VERSION
     elif version == PLAIN_VERSION and narration_end(source) < len(source):
         version = PLAIN_APPENDIX_VERSION
@@ -164,7 +173,7 @@ def verify_revision(target: Path) -> dict:
     target = Path(target)
     manifest = json.loads((target / "manifest.json").read_text(encoding="utf-8"))
     version = manifest.get("schema_version")
-    if version not in (VERSION, PREVIOUS_VERSION, LEGACY_VERSION, PLAIN_VERSION, PLAIN_APPENDIX_VERSION):
+    if version not in VERSIONS:
         raise ValueError("Unsupported writing handoff version")
     expected = derive((target / "source.md").read_bytes().decode("utf-8"), version=version)
     expected_hashes = {name: _sha(data) for name, data in expected.items()}

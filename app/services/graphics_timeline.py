@@ -95,8 +95,10 @@ def local_jobs(ep, document, scene, directing):
 def check_current(eid, timeline):
     path = G.path_for(eid)
     recorded = timeline.get('inputs',{}).get(str(path.resolve()))
-    if (file_sha256(path) if path.is_file() else None)!=recorded:
+    plan,revision=G.snapshot(eid)
+    if revision!=recorded:
         raise ValueError('本集图文已变化，请重新建立时间轴')
+    if plan: G.check_sources(eid,plan['graphics'])
 
 
 def apply(eid, manifest, evidence, timeline):
@@ -123,6 +125,13 @@ def apply(eid, manifest, evidence, timeline):
                 raise ValueError(f'「{s["title"]}」的切换原句须从实测词首开始，请调整原句') from exc
         if times!=sorted(set(times)) or (spans and times[0]<spans[-1][1]):
             raise ValueError('图文在录音中的切点重叠，请调整原句')
+        if s.get('timing')=='span':
+            start,end=times
+            pages=len(s['plates'][fmt.value])
+            times=[start+(end-start)*i//pages for i in range(pages)]+[end]
+            frames=[frame_boundary(t,manifest['sample_rate']) for t in times]
+            if len(set(frames))!=len(frames):
+                raise ValueError('所选展示时段不足以容纳每一页，请延长展示时段或拆表')
         for i,(a,b) in enumerate(zip(times,times[1:])):
             sha = s['plates'][fmt.value][i]
             p = str(plate(eid,sha))

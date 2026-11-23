@@ -38,7 +38,17 @@ def document(ep_id):
     ep = load(ep_id)
     text = _load_script_md(ep)
     if not text.strip(): raise ValueError('请先导入正文')
-    result = parse_document(text)
+    from app.services.onscreen_tables import find_tables
+    from app.services.studio_sources import contract
+    bound=contract(ep_id)
+    tables=True
+    if bound and find_tables(text):
+        from app.services.script_handoff import TABLE_VERSIONS
+        from app.services.studio_workspace import asset_path
+        manifest=asset_path(bound['revision'])/'manifest.json'
+        if file_sha256(manifest)!=bound['manifest_sha256']: raise ValueError('原稿版本清单已改变')
+        tables=read(manifest)['schema_version'] in TABLE_VERSIONS
+    result = parse_document(text,display_tables=tables)
     if ep.video_format is VideoFormat.LANDSCAPE:
         result['video_format'] = ep.video_format.value
     return result

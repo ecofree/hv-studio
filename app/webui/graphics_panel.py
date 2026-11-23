@@ -22,10 +22,11 @@ _EXAMPLES = {
 _WAREHOUSES = ('官仓与户籍的数字','用户提供的第二张样表节选 · 数值及口径待编审核对',
                '项目\t样表数字\t上屏口径\t待核出处\n回洛仓\t约七百座仓窖\t遗址总量估算\t洛阳回洛仓考古材料\n均田授田\t露田八十亩，永业田二十亩\t法令标准\t《隋书·食货志》\n大索貌阅\t隐丁四十四万三千\t丁数与口数分列\t《隋书·食货志》')
 _HINTS = {
-    'table':'首行填列名，第一列填每行主题。横版逐行显示，竖版每次讲一行。',
+    'table':'首行填列名，第一列填每行主题。横屏并排对照，竖屏每页一行。表格文字只用于画面。',
     'bars':'每行填项目、非负数值、可选的显示文字。所有数值共用同一单位。',
     'person':'每行填一个字段名及相应内容，例如“身份”和“隋朝大臣”。',
     'route':'每行填地名、横向位置、纵向位置、事件说明。左上角为 0、0，右下角为 1、1。',
+    'campaign':'每行填阶段、地点、来处、行动方、守方、事件。地点取自底图。来处留空时仅标所在地点，阵营未知可留空。',
 }
 
 
@@ -59,11 +60,22 @@ def _editor(eid,document):
     scope = 'graphics-'+eid+'-'+G.source_key(document)[:12]+'-'+str(revision)[:12]
     key = st.selectbox('本集图文',['',*entries],format_func=lambda k:entries[k]['title'] if k else '新增图文',key=scope)
     old = entries.get(key,{})
+    evidence_image=None
+    if not key or (old.get('kind') in ('table','bars') and st.checkbox('重新提取这则图文的资料',key=scope+'-replace-'+key)):
+        from app.webui.graphic_sources_panel import extract
+        draft,evidence_image=extract(eid,document,scope+'-extract-'+key,old.get('evidence'))
+        if draft:
+            from app.services.provenance import fingerprint
+            old=draft
+            scope+='-'+fingerprint(old)[:16]
+    elif old.get('evidence') and st.checkbox('查看这则图文的原始资料',key=scope+'-evidence-'+key):
+        from app.webui.graphic_sources_panel import show_evidence
+        show_evidence(eid,old['evidence'],None,scope+'-original-'+key)
     kind = st.selectbox('画面类型',list(G.KINDS),index=list(G.KINDS).index(old.get('kind','table')),
                         format_func=G.KINDS.get,key=scope+'-kind-'+key)
     prefix = scope+'-'+key+'-'+kind
     existing = old.get('kind')==kind
-    example = st.checkbox('填入示例数据',key=prefix+'-example') if not existing else False
+    example = st.checkbox('填入示例数据',key=prefix+'-example') if not existing and kind!='campaign' else False
     prefix += '-example' if example else '-edit'
     title,source,grid = _EXAMPLES[kind] if example else ('','','')
     if kind=='table' and example:
@@ -74,11 +86,21 @@ def _editor(eid,document):
     if existing:
         rows = old['rows']
         grid = _grid([old['columns'],*rows] if kind=='table' else rows)
-    title = st.text_input('上屏标题或人物姓名',value=old.get('title',title) if existing else title,key=prefix+'-title')
-    source = st.text_input('上屏资料出处',value=old.get('source',source) if existing else source,key=prefix+'-source')
+        title,source=old['title'],old['source']
     unit = detail = ''
     upload = None
     media = old.get('media') if existing else None
+    atlas=None
+    if kind=='campaign':
+        from app.webui.atlas_panel import edit,share
+        atlas,upload,atlas_key,media,story=edit(eid,old if existing else {},prefix,_grid)
+        if atlas is None: return
+        prefix=atlas_key
+        if story:
+            title,source,grid=story['title'],story['source'],_grid(story['rows'])
+            old={}
+    title = st.text_input('上屏标题或人物姓名',value=title,key=prefix+'-title')
+    source = st.text_input('上屏资料出处',value=source,key=prefix+'-source')
     if kind=='bars':
         unit = st.text_input('统一单位',value=old.get('unit','两 / 每千枚' if example else ''),key=prefix+'-unit')
     if kind=='person':
@@ -92,6 +114,7 @@ def _editor(eid,document):
             media = None
     grid = st.text_area('数据行',value=grid,height=150,help=_HINTS[kind]+' 支持从表格粘贴、CSV 和 Markdown 表格。',
                         key=prefix+'-data')
+    if atlas is not None: share(eid,atlas,media,upload,prefix,title,source,grid)
     first = st.selectbox('开始旁白段',ids,index=ids.index(old['first_unit']) if old.get('first_unit') in ids else 0,
                          format_func=lambda u:texts[u][:75],key=prefix+'-first')
     lasts = ids[ids.index(first):]
@@ -100,7 +123,12 @@ def _editor(eid,document):
     st.text('\n'.join(texts[u] for u in ids[ids.index(first):ids.index(last)+1]))
     start = st.text_input('入场原句（留空从段首开始）',value=old.get('start_quote',''),key=prefix+'-start')
     stop = st.text_input('在哪句之前退出（留空用到段末）',value=old.get('stop_before',''),key=prefix+'-stop')
-    if st.button('按数据行名称匹配原句',key=prefix+'-suggest'):
+    timing='quotes'
+    if kind in ('table','bars'):
+        timing=st.radio('换页方式',['span','quotes'],horizontal=True,
+            format_func=lambda v:'按展示时长自动分页' if v=='span' else '按指定原句切换',
+            index=1 if existing and old.get('timing','quotes')=='quotes' else 0,key=prefix+'-timing')
+    if timing=='quotes' and st.button('按数据行名称匹配原句',key=prefix+'-suggest'):
         data = G.parse_grid(grid)[1:] if kind=='table' else G.parse_grid(grid)
         scope_units = {'units':document['units'][ids.index(first):ids.index(last)+1]}
         suggestions = []
@@ -113,8 +141,11 @@ def _editor(eid,document):
             suggestions.append(row[0])
         else:
             st.session_state[prefix+'-quotes'] = '\n'.join(suggestions)
-    quotes = st.text_area('从第 2 条开始，每条对应一句旁白原文，按出现顺序每行一句',
-                          value='\n'.join(old.get('quotes',[])),key=prefix+'-quotes')
+    quotes=''
+    if timing=='quotes':
+        suggestions=old.get('quotes') or [m['quote'] if m else '' for m in old.get('evidence',{}).get('links',[])[1:]]
+        quotes=st.text_area('从第 2 条开始，每条对应一句旁白原文，按出现顺序每行一句',
+                            value='\n'.join(suggestions),key=prefix+'-quotes')
     fmt = st.radio('预览画幅',list(VideoFormat),format_func=lambda f:'横屏 16:9' if f==VideoFormat.LANDSCAPE else '竖屏 9:16',
                    horizontal=True,key=prefix+'-format')
     step = st.number_input('预览第几条',min_value=1,step=1,key=prefix+'-step')
@@ -128,16 +159,18 @@ def _editor(eid,document):
     rows = G.parse_grid(grid)
     columns = rows.pop(0) if kind=='table' and rows else []
     entry = dict(kind=kind,title=title.strip(),source=source.strip(),unit=unit,detail=detail,
-                 rows=rows,columns=columns,media=media,first_unit=first,last_unit=last,
+                 rows=rows,columns=columns,media=media,first_unit=first,last_unit=last,timing=timing,
                  start_quote=start.strip(),stop_before=stop.strip(),quotes=[s.strip() for s in quotes.splitlines() if s.strip()])
+    if atlas is not None: entry['atlas']=atlas
+    if old.get('evidence') and kind in ('table','bars'): entry['evidence']=old['evidence']
     if preview:
         # Preview the draft artwork before the editor has chosen all the word anchors.
-        G.validate_spec(dict(entry,quotes=['']*max(0,len(rows)-1)))
+        G.validate_spec(dict(entry,quotes=['']*max(0,len(rows)-1) if timing=='quotes' else []))
         if step>len(rows):
             raise ValueError('预览条目超出数据行数')
         with G.open_media(eid,entry,upload) as medium, G.render_plate(entry,step-1,fmt,medium) as im:
             im.thumbnail((940,700))
             st.image(im)
     if commit:
-        G.save(eid,key or uuid.uuid4().hex[:12],entry,document,revision,upload=upload)
+        G.save(eid,key or uuid.uuid4().hex[:12],entry,document,revision,upload=upload,evidence_image=evidence_image)
         st.rerun()

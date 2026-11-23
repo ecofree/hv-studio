@@ -142,6 +142,7 @@ def test_production_page_preview_save_and_remove(tmp_episodes):
     widget('text_input','上屏标题或人物姓名').set_value('钱重')
     widget('text_input','上屏资料出处').set_value('用户表一')
     widget('text_area','数据行').set_value('阶段\t每千枚重量\n开皇\t四斤二两\n私铸\t二斤')
+    widget('radio','换页方式').set_value('quotes').run()
     widget('text_area','从第 2 条开始，每条对应一句旁白原文，按出现顺序每行一句').set_value('后来')
     widget('button','预览这一条').click().run()
     assert not app.exception and not G.path_for(eid).exists()

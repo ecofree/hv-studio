@@ -20,6 +20,7 @@ if design_path.exists():
                        '环境与视差':a['motion_intent'],'画面边界':a['visual_limits']} for a in acts['acts']],hide_index=True)
         for issue in acts.get('unresolved',[]):st.caption(issue)
 with st.expander('查看正文与来源版本'):
+    st.caption('在需要展示数据的讲述段后写「【上屏表格：标题】」，下一行粘贴 Markdown 或制表符表格。该表仅作画面，配音沿用作者的旁白。')
     from app.managers import load
     from app.orchestrator import _load_script_md
     source=_load_script_md(load(eid));identity=W.identity(eid)
@@ -40,6 +41,8 @@ with st.expander('查看正文与来源版本'):
                 try:
                     W.replace_source(eid,edited,expected_identity=identity);st.success('旧正文保留；新的主张与分镜需重新核对。');st.rerun()
                 except (ValueError,OSError) as exc:st.error(str(exc))
+from app.webui.graphics_panel import render as render_graphics
+render_graphics(eid,doc)
 if v['binding']!=W.binding(eid):
     st.warning('正文或底图需求有更新，请重新绑定。正文变更需要复核史实；仅改画面不撤销正文确认。')
     if st.button('将方案重新绑定到当前正文和底图需求'):

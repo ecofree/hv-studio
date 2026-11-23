@@ -12,13 +12,13 @@ from PIL import Image, ImageOps
 
 from app import paths
 from app.services import studio_workflow as workflow
-from app.services.information_design import render_plate
+from app.services.information_design import page_steps, render_plate
 from app.services.provenance import atomic_json, file_sha256, fingerprint, replace_file
 from app.services.spec import VideoFormat
 from app.services.studio_attraction import locate, source_key
 
 
-KINDS = {'table':'对照表', 'bars':'条形对比', 'person':'人物简介', 'route':'历史路线'}
+KINDS = {'table':'对照表', 'bars':'条形对比', 'person':'人物简介', 'route':'历史路线','campaign':'历史战役地图'}
 
 
 def path_for(eid):
@@ -78,7 +78,7 @@ def validate_spec(s):
             raise ValueError('表格需要 2–5 个具名列，第一列作为竖版每页的标题')
         sizes = {len(cols)}
     else:
-        sizes = {'bars':{2,3},'person':{2},'route':{4}}[kind]
+        sizes = {'bars':{2,3},'person':{2},'route':{4},'campaign':{6}}[kind]
     if any(len(r) not in sizes or not r[0].strip() for r in rows):
         raise ValueError('数据列数与所选类型不符，或有行缺少名称')
     if kind=='bars':
@@ -90,7 +90,13 @@ def validate_spec(s):
         for row in rows:
             if any(_number(v)>1 for v in row[1:3]):
                 raise ValueError('地标位置须在 0 到 1 之间')
-    if len(s.get('quotes',[])) != len(rows)-1:
+    if kind=='campaign':
+        from app.services.historical_atlas import validate
+        validate(s['atlas'],rows)
+    if s.get('timing','quotes') not in ('quotes','span'): raise ValueError('未知的图文换页方式')
+    if s.get('timing')=='span':
+        if kind not in ('table','bars') or s.get('quotes'): raise ValueError('资料自动分页只需指定入场和退出位置')
+    elif len(s.get('quotes',[])) != len(rows)-1:
         raise ValueError(f'第一条随画面入场。请为后续 {len(rows)-1} 条各填一条旁白原句，每行一条')
 
 
@@ -106,7 +112,7 @@ def offsets(document):
 def quote_anchors(s,units):
     def find(quote,scope):
         return locate({'units':scope},quote) if quote else None
-    return ([find(s.get('start_quote'),units[:1])]+[find(q,units) for q in s['quotes']],
+    return ([find(s.get('start_quote'),units[:1])]+[find(q,units) for q in s.get('quotes',[])],
             find(s.get('stop_before'),units[-1:]))
 
 
@@ -195,15 +201,31 @@ def current(eid, document):
         identity = source_key(document)
         if plan.get('version')!=1 or any(s['bound_to']!=identity for s in plan['graphics'].values()):
             raise ValueError('图文属于另一版旁白，请在制作页重新绑定')
+        check_sources(eid,plan['graphics'])
     return plan,digest
+
+
+def check_sources(eid,entries):
+    from app.services.graphic_extraction import bind_original,script_input
+    proofs={(s['evidence']['origin'],s['evidence']['sha256']) for s in entries.values() if s.get('evidence')}
+    script_digest=None
+    for origin,digest in proofs:
+        if origin=='剧本':
+            if script_digest is None: script_digest=hashlib.sha256(script_input(eid).encode()).hexdigest()
+            if script_digest!=digest: raise ValueError('剧本资料已变化，请从当前版本重新提取')
+        elif origin=='截图':
+            bind_original(eid,dict(origin=origin,sha256=digest),None)
 
 
 def _plates(eid,entry,media,previous):
     from app.services import information_design
     from app.services.compose import _sub_font_path
-    fields = ('kind','title','source','rows','columns','unit','detail','media')
-    identity = fingerprint([[entry.get(k) for k in fields],file_sha256(information_design.__file__),
-                            file_sha256(_sub_font_path())])
+    fields = ('kind','title','source','rows','columns','unit','detail','media','timing')
+    inputs = [[entry.get(k) for k in fields],file_sha256(information_design.__file__),file_sha256(_sub_font_path())]
+    if entry['kind']=='campaign':
+        from app.services import historical_atlas
+        inputs.extend([entry['atlas'],file_sha256(historical_atlas.__file__)])
+    identity = fingerprint(inputs)
     if previous.get('layout_identity')==identity:
         old = previous['plates']
         files = [media_path(eid,sha,'graphics-plates') for values in old.values() for sha in values]
@@ -212,14 +234,14 @@ def _plates(eid,entry,media,previous):
     plates = {}
     for fmt in VideoFormat:
         images = []
-        for step in range(len(entry['rows'])):
+        for step in page_steps(entry,fmt):
             with render_plate(entry,step,fmt,media) as im:
                 images.append(_store_png(eid,im,'graphics-plates'))
         plates[fmt.value] = images
     return identity,plates
 
 
-def save(eid, key, spec, document, expected, *, upload=None):
+def save(eid, key, spec, document, expected, *, upload=None, evidence_image=None):
     """Build both layouts, then atomically replace one binding. Readers see one revision."""
     from app.services.process_lock import file_lock
     key = paths.validate_episode_id(key)
@@ -240,6 +262,15 @@ def save(eid, key, spec, document, expected, *, upload=None):
         intervals({k:s for k,s in entries.items() if s['bound_to']==identity},document)
         if spec is not None:
             entry = entries[key]
+            evidence=entry.get('evidence')
+            if evidence:
+                from app.services.graphic_extraction import bind_original
+                if evidence.get('source_identity')!=identity:
+                    raise ValueError('资料原句属于另一版旁白，请从当前剧本或已保存的原图重新提取')
+                if evidence['origin']=='截图':
+                    bind_original(eid,evidence,evidence_image)
+                else:
+                    check_sources(eid,{key:entry})
             with open_media(eid,entry,upload) as media:
                 if upload is not None:
                     entry['media'] = _store_png(eid,media,'graphics-media')
@@ -247,6 +278,8 @@ def save(eid, key, spec, document, expected, *, upload=None):
                 entry['layout_identity'],entry['plates'] = _plates(eid,entry,media,previous)
         if source_key(workflow.document(eid))!=identity:
             raise ValueError('保存期间旁白已更新，请重新绑定')
+        if spec is not None and (entry.get('evidence') or {}).get('origin')=='剧本':
+            check_sources(eid,{key:entry})
         if before:
             atomic_json(path.parent/'graphics-history'/(actual+'.json'),before)
         if entries:

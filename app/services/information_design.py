@@ -65,19 +65,37 @@ def _table(d, s, step, box, wide):
             block(d, (x, top+16, r, top+62), header, 30, color=TEAL, minimum=26)
             block(d, (x, top+65, r, top+height-4), cell, 42, minimum=30)
         return
-    # Measure every row at its actual column width before laying out the page.
-    # Three short rows can share a spread. A dense row gets its own spread.
+    edges,pages=_table_pages(s,box)
+    page=next(page for page in pages if page[-1][0]>=step)
+    for i,h in enumerate(headers):
+        block(d,(edges[i]+12,y,edges[i+1]-12,y+65),h,32,color=TEAL,minimum=24)
+    top=y+70
+    for index,h in page:
+        timed=s.get('timing')=='span'
+        if index>step and not timed: break
+        focus=index==step and not timed
+        if focus:
+            d.rounded_rectangle((x,top,r,top+h-3),radius=10,fill=PANEL)
+            d.rectangle((x,top+6,x+5,top+h-9),fill=ACCENT)
+        d.line((x,top,r,top),fill=LINE,width=2)
+        for j,cell in enumerate(rows[index]):
+            block(d,(edges[j]+14,top+13,edges[j+1]-14,top+h-4),cell,30,
+                  color=ACCENT if j==0 and (focus or timed) else TEXT,minimum=28)
+        top+=h
+
+
+def _table_pages(s,box):
+    x,y,r,b=box
+    headers,rows=s['columns'],s['rows']
     weights = [max(5, min(21, max(len(h), max(len(row[i]) for row in rows))**.77))
                for i, h in enumerate(headers)]
     edges = [x]
     for i in range(len(headers)):
         edges.append(x+round((r-x)*sum(weights[:i+1])/sum(weights)))
-    for i, h in enumerate(headers):
-        block(d, (edges[i]+12,y,edges[i+1]-12,y+65), h, 32, color=TEAL, minimum=24)
-    top, height = y+70, b-y-70
-    page = []
+    height=b-y-70
+    pages=[[]]
     font = _get_font(30)
-    for index, row in enumerate(rows[:step+1]):
+    for index, row in enumerate(rows):
         line_count = 1
         for j, value in enumerate(row):
             width = edges[j+1]-edges[j]-30
@@ -93,19 +111,9 @@ def _table(d, s, step, box, wide):
         need = max(76, line_count*40+30)
         if need > height:
             raise ValueError('横版表格的单行文字太多，请分成两条资料')
-        if sum(h for _,h in page)+need > height:
-            page = []
-        page.append((index, need))
-    for index, h in page:
-        focus = index == step
-        if focus:
-            d.rounded_rectangle((x,top,r,top+h-3), radius=10, fill=PANEL)
-            d.rectangle((x,top+6,x+5,top+h-9), fill=ACCENT)
-        d.line((x,top,r,top), fill=LINE, width=2)
-        for j, cell in enumerate(rows[index]):
-            block(d, (edges[j]+14,top+13,edges[j+1]-14,top+h-4), cell, 30,
-                  color=ACCENT if focus and j == 0 else TEXT, minimum=28)
-        top += h
+        if sum(h for _,h in pages[-1])+need>height: pages.append([])
+        pages[-1].append((index,need))
+    return edges,pages
 
 
 def _bars(d, s, step, box, wide):
@@ -230,6 +238,22 @@ def _route(image, d, s, step, box, wide, media):
     block(d,(tx,ty+155,r,b),s['rows'][step][3],36,minimum=28)
 
 
+def _box(fmt):
+    x=112 if fmt is VideoFormat.LANDSCAPE else 84
+    footer=786 if fmt is VideoFormat.LANDSCAPE else 1320
+    return x,HEADER_END[fmt]+124,fmt.size[0]-x,footer-22
+
+
+def page_steps(spec,fmt):
+    count=len(spec['rows'])
+    if spec.get('timing')=='span':
+        if spec['kind']=='table' and fmt is VideoFormat.LANDSCAPE:
+            return [page[-1][0] for page in _table_pages(spec,_box(fmt))[1]]
+        if spec['kind']=='bars':
+            return [min(i+3,count-1) for i in range(0,count,4)]
+    return list(range(count))
+
+
 def render_plate(spec, step, video_format, media=None):
     fmt = VideoFormat(video_format)
     w,h = fmt.size
@@ -243,14 +267,24 @@ def render_plate(spec, step, video_format, media=None):
         d.line((x,top+1,r,top+1),fill=LINE,width=2)
         d.line((x,top+1,x+78,top+1),fill=ACCENT,width=5)
         block(d,(x,top+19,r-140,top+105),spec['title'],60 if wide else 56,minimum=38)
-        d.text((r,top+30),f'{step+1} / {len(spec["rows"])}',font=_get_font(28),fill=MUTED,anchor='rt')
-        box = (x,top+124,r,footer-22)
+        if spec.get('timing')=='span':
+            pages=page_steps(spec,fmt)
+            page=next(i for i,last in enumerate(pages) if last>=step)
+            step=pages[page]
+            counter=f'{page+1} / {len(pages)}' if len(pages)>1 else ''
+        else:
+            counter=f'{step+1} / {len(spec["rows"])}'
+        d.text((r,top+30),counter,font=_get_font(28),fill=MUTED,anchor='rt')
+        box = _box(fmt)
         if spec['kind']=='table':
             _table(d,spec,step,box,wide)
         elif spec['kind']=='bars':
             _bars(d,spec,step,box,wide)
         elif spec['kind']=='person':
             _person(image,d,spec,step,box,wide,media)
+        elif spec['kind']=='campaign':
+            from app.services.historical_atlas import draw
+            draw(image,d,spec,step,box,wide,media)
         else:
             _route(image,d,spec,step,box,wide,media)
         d.line((x,footer,r,footer),fill=LINE,width=2)

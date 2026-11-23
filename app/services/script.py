@@ -373,6 +373,9 @@ def strip_script_markdown(text: str) -> str:
     白名单共用 module 常量，杜绝两处各飘各的第二次。
     """
     kept: list[str] = []
+    from app.services.onscreen_tables import find_tables
+    for table in reversed(find_tables(text)):
+        text=text[:table['start']]+'\n\n'+text[table['end']:]
     for para in MD_PARA_SPLIT.split(text):
         lines: list[str] = []
         for line in para.splitlines():

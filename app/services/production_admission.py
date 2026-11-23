@@ -184,11 +184,11 @@ def _studio_inputs(ep_id):
     """Use the same visual and recording preparation as interactive production."""
     from app.managers import load
     from app.orchestrator import _load_script_md
-    from app.services.script_document import parse_document
+    from app.services.studio_workflow import document
     from app.services.production_inputs import prepare, input_files
     from app.services.recording_input import episode_source
     from app.services.recording_alignment_recovery import range_identity
-    ep=load(ep_id);text=_load_script_md(ep);doc=parse_document(text)
+    ep=load(ep_id);text=_load_script_md(ep);doc=document(ep_id)
     jobs,_=prepare(ep,doc,episode_dir(ep_id)/'production/v2',preview=True)
     audio=episode_source(ep_id,source_text=text)
     unsupported=[c for c in doc.get('delivery_cues',[]) if c['intent']!='pause']

@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 from app.services.provenance import fingerprint
+from app.services.onscreen_tables import find_tables
 
 _META = re.compile(r"^(?:作品类型|预估时长|时长预估|核心切口|格式规范|标题|作者|版本|目标时长)\s*[：:]")
 # 元数据行的通用形状：`标签：值`。比 _META 的硬编码白名单宽得多 —— 白名单依赖
@@ -57,13 +58,15 @@ _CLAUSE_END = re.compile(r"[；：，]")
 
 
 
-def parse_document(source: str, source_name: str = "script.md", *, authoring_layout=True) -> dict:
+def parse_document(source: str, source_name: str = "script.md", *, authoring_layout=True, display_tables=True) -> dict:
     blocks, units, cues = [], [], []
     offset = 0
     paragraph = []
     occurrences = {}
     narration_column = None
     cue_spans = _cue_spans(source)
+    display_ranges=iter(find_tables(source) if display_tables else ())
+    display=next(display_ranges,None)
     registered = set()
     end_card = False
 
@@ -152,6 +155,13 @@ def parse_document(source: str, source_name: str = "script.md", *, authoring_lay
         block = {"block_id": f"b-{len(blocks):05d}", "start": start, "end": end,
                  "raw_text": line, "kind": "narration", "text": "", "source_map": [], "excluded": []}
         blocks.append(block)
+        if display and start>=display['end']: display=next(display_ranges,None)
+        if display and display['start']<=start<display['end']:
+            flush()
+            narration_column=None
+            block['kind']='metadata'
+            block['excluded'].append(dict(start=start,end=end,reason='onscreen_table'))
+            continue
         # Explicit authoring fields are retained as inspectable blocks. Unknown
         # list annotations stop handoff instead of becoming accidental narration.
         if authoring_layout:
