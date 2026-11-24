@@ -276,6 +276,7 @@ def render_plate(spec, step, video_format, media=None):
             counter=f'{step+1} / {len(spec["rows"])}'
         d.text((r,top+30),counter,font=_get_font(28),fill=MUTED,anchor='rt')
         box = _box(fmt)
+        credit=spec['source']
         if spec['kind']=='table':
             _table(d,spec,step,box,wide)
         elif spec['kind']=='bars':
@@ -283,12 +284,13 @@ def render_plate(spec, step, video_format, media=None):
         elif spec['kind']=='person':
             _person(image,d,spec,step,box,wide,media)
         elif spec['kind']=='campaign':
-            from app.services.historical_atlas import draw
+            from app.services.historical_atlas import credit as map_credit, draw
             draw(image,d,spec,step,box,wide,media)
+            credit=map_credit(spec,step,wide)
         else:
             _route(image,d,spec,step,box,wide,media)
         d.line((x,footer,r,footer),fill=LINE,width=2)
-        block(d,(x,footer+10,r,footer+(66 if wide else 86)),spec['source'],28,color=MUTED,minimum=24)
+        block(d,(x,footer+10,r,footer+(66 if wide else 86)),credit,28,color=MUTED,minimum=24)
         return image
     except BaseException:
         image.close()

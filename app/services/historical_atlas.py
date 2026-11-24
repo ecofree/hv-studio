@@ -58,6 +58,21 @@ def validate(atlas,events=None):
         _coordinate(x)
         _coordinate(y)
         names.add(name)
+    if 'geography' in atlas:
+        from app.services.atlas_terrain import map_sites, tile_keys
+        geo = atlas['geography']
+        if not isinstance(geo,dict) or geo.get('projection')!='EPSG:3857':
+            raise ValueError('地图投影与高程底图不匹配')
+        if geo.get('tile_count')!=len(tile_keys(geo.get('bounds'),geo.get('zoom'))):
+            raise ValueError('高程瓦片与地图范围记录不一致')
+        if type(geo.get('river_lines')) is not int or geo['river_lines']<0:
+            raise ValueError('河网记录无效')
+        for k in ('terrain_sha256','rivers_sha256','raster_sha256'):
+            if not isinstance(geo.get(k),str) or not re.fullmatch(r'[0-9a-f]{64}',geo[k]):
+                raise ValueError('地图数据指纹无效')
+        if map_sites(atlas.get('sites'),geo['bounds'])!=atlas['places']:
+            raise ValueError('经纬度地标与底图标记不一致')
+        names = {row[0] for row in atlas['sites'] if row[3] not in ('山地','河流')}
     features=atlas.get('features',[])
     if not isinstance(features,list) or len(features)>40: raise ValueError('地形线格式无效')
     for f in features:
@@ -67,13 +82,22 @@ def validate(atlas,events=None):
     if events is not None and (not isinstance(events,list) or not 1<=len(events)<=48):
         raise ValueError('每个战役模板需要 1–48 个阶段')
     for row in events or []:
-        if not isinstance(row,list) or len(row)!=6 or not all(isinstance(v,str) for v in row):
-            raise ValueError('事件列为阶段、地点、来处、行动方、守方、事件')
-        title,where,origin,actor,defender,event = row
+        if not isinstance(row,list) or len(row) not in (6,8) or not all(isinstance(v,str) for v in row):
+            raise ValueError('事件依次填写阶段、地点、来处、行动方、守方、事件，可另加时间与简短史料出处')
+        title,where,origin,actor,defender,event = row[:6]
         if where not in names or (origin and origin not in names):
             raise ValueError('事件引用了底图里没有的地点')
         if not title.strip() or not event.strip(): raise ValueError('请填写阶段与事件说明')
         if actor and actor==defender: raise ValueError('行动方与守方相同，请核对本阶段记载')
+        if (len(row)==8 and not (row[6].strip() and row[7].strip())) or ('geography' in atlas and len(row)!=8):
+            raise ValueError(f'请填写阶段「{title}」的时间与简短史料出处')
+
+
+def verify_media(atlas,media):
+    if 'geography' in atlas:
+        from app.services.atlas_terrain import raster_identity
+        if media is None or raster_identity(media)!=atlas['geography']['raster_sha256']:
+            raise ValueError('底图图片与经纬度范围的校验记录不一致，请重新导入或生成')
 
 
 def _story(atlas,story):
@@ -90,9 +114,11 @@ def _story(atlas,story):
 
 def bundle(atlas,media,story=None):
     story=_story(atlas,story)
+    verify_media(atlas,media)
     # A package can travel between episodes. Omit episode IDs, timings and approvals.
-    base={k:atlas[k] for k in ('name','period','source','places','features') if k in atlas}
-    record=json.dumps(dict(version=1,atlas=base,story=story),ensure_ascii=False).encode()
+    base={k:atlas[k] for k in ('name','period','source','places','features','geography','sites') if k in atlas}
+    expanded='geography' in base or (story and any(len(row)==8 for row in story['rows']))
+    record=json.dumps(dict(version=2 if expanded else 1,atlas=base,story=story),ensure_ascii=False).encode()
     if len(record)>256_000: raise ValueError('地图文字资料过大，请分成多个模板')
     out=io.BytesIO()
     with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as archive:
@@ -113,13 +139,15 @@ def unpack(data):
             if names not in (['atlas.json'],['atlas.json','base.png']) or z.getinfo('atlas.json').file_size>256_000:
                 raise ValueError('请选择由工作台导出的历史底图包')
             record=json.loads(z.read('atlas.json'))
-            if record.get('version')!=1: raise ValueError('未知的历史底图版本')
+            if record.get('version') not in (1,2): raise ValueError('未知的历史底图版本')
             atlas=record.get('atlas')
             story=_story(atlas,record.get('story'))
-            if 'base.png' not in names: return atlas,None,story
+            if 'base.png' not in names:
+                verify_media(atlas,None)
+                return atlas,None,story
             if z.getinfo('base.png').file_size>50_000_000: raise ValueError('地图底图文件过大')
             raw=z.read('base.png')
-            with open_upload(raw): pass
+            with open_upload(raw) as media: verify_media(atlas,media)
             return atlas,raw,story
     except (zipfile.BadZipFile,KeyError,UnicodeError,AttributeError,RuntimeError) as exc:
         raise ValueError('历史底图包内容不完整') from exc
@@ -167,6 +195,7 @@ def draw(image,d,s,step,box,wide,media):
     def xy(a,b):
         return mx+round(float(a)*(mw-1)),my+round(float(b)*(mh-1))
     atlas=s['atlas']
+    geography=atlas.get('geography')
     for name,kind,line in atlas.get('features',[]):
         coords=[xy(*p) for p in points(line)]
         color='#678f9c' if kind=='河流' else '#86795f'
@@ -174,21 +203,41 @@ def draw(image,d,s,step,box,wide,media):
         if name:
             px,py=coords[len(coords)//2]
             d.text((px,py-13),name,font=_get_font(23),fill=color,anchor='mb',stroke_width=1,stroke_fill=PANEL)
-    places={name:(xy(a,b0),note) for name,a,b0,note in atlas['places']}
+    physical = {row[0]:row[3] for row in atlas.get('sites',[]) if row[3] in ('河流','山地')}
+    places={name:(xy(a,b0),note) for name,a,b0,note in atlas['places'] if name not in physical}
+    for name,a,b0,_ in atlas['places']:
+        if name in physical:
+            px,py=xy(a,b0)
+            font=_get_font(28)
+            inset=round(font.getlength(name)/2)+8
+            px=max(x+inset,min(px,right-inset))
+            py=max(y+20,min(py,bottom-20))
+            color='#c2d8d7' if physical[name]=='河流' else '#ddccac'
+            d.text((px,py),name,font=font,fill=color,anchor='mm',stroke_width=2,stroke_fill='#263128')
     rows=s['rows'][:step+1]
-    for i,(_,place,origin,_,_,_) in enumerate(rows):
+    for i,row in enumerate(rows):
+        _,place,origin,*_=row
         if not origin or place==origin: continue
         start,end=places[origin][0],places[place][0]
         dx,dy=end[0]-start[0],end[1]-start[1]
         length=math.hypot(dx,dy)
         if length<1: continue
         color=ACCENT if i==step else '#a28e6e'
-        d.line((start,end),fill=color,width=7 if i==step else 4)
         dx,dy=dx/length,dy/length
+        width=7 if i==step else 4
+        if geography:
+            # A connection between attested places describes direction, not a surveyed route.
+            for offset in range(0,math.ceil(length),22):
+                stop=min(offset+13,length)
+                segment=[(start[0]+dx*k,start[1]+dy*k) for k in (offset,stop)]
+                d.line(segment,fill='#382e27',width=width+4)
+                d.line(segment,fill=color,width=width)
+        else:
+            d.line((start,end),fill=color,width=width)
         ax,ay=start[0]+.56*(end[0]-start[0]),start[1]+.56*(end[1]-start[1])
         d.polygon([(ax+12*dx,ay+12*dy),(ax-8*dx-7*dy,ay-8*dy+7*dx),
                    (ax-8*dx+7*dy,ay-8*dy-7*dx)],fill=color)
-    title,focus,_,actor,defender,event=rows[-1]
+    title,focus,_,actor,defender,event=rows[-1][:6]
     active=places[focus][0]
     for name,(pos,_) in places.items():
         cx,cy=pos
@@ -210,7 +259,8 @@ def draw(image,d,s,step,box,wide,media):
             occupied.append((lx,ly,lx+tw,ly+38))
             break
     tx,ty=(right+45,y+3) if wide else (x,bottom+20)
-    block(d,(tx,ty,r,ty+51),atlas['period'],32,color=MUTED,minimum=26)
+    period=rows[-1][6] if len(rows[-1])==8 else atlas['period']
+    block(d,(tx,ty,r,ty+51),period,32,color=MUTED,minimum=26)
     block(d,(tx,ty+53,r,ty+122),title+' · '+focus,43,color=TEXT,minimum=30)
     pos=ty+128
     for label,value,color in [('攻方' if defender else '行动方',actor,ACCENT),('守方',defender,TEAL)]:
@@ -221,3 +271,13 @@ def draw(image,d,s,step,box,wide,media):
             pos+=45
     detail=places[focus][1]
     block(d,(tx,pos+6,r,b),event+('  '+detail if detail else ''),34,minimum=26)
+
+
+def credit(spec,step,wide):
+    row=spec['rows'][step]
+    text=row[7] if len(row)==8 else spec['source']
+    if 'geography' in spec['atlas']:
+        from app.services.atlas_terrain import CREDITS
+        # Include geography credits in the video as well as the portable reference record.
+        text+=(' · ' if wide else '\n')+CREDITS+' · 路线示意'
+    return text

@@ -78,7 +78,7 @@ def validate_spec(s):
             raise ValueError('表格需要 2–5 个具名列，第一列作为竖版每页的标题')
         sizes = {len(cols)}
     else:
-        sizes = {'bars':{2,3},'person':{2},'route':{4},'campaign':{6}}[kind]
+        sizes = {'bars':{2,3},'person':{2},'route':{4},'campaign':{6,8}}[kind]
     if any(len(r) not in sizes or not r[0].strip() for r in rows):
         raise ValueError('数据列数与所选类型不符，或有行缺少名称')
     if kind=='bars':
@@ -272,6 +272,9 @@ def save(eid, key, spec, document, expected, *, upload=None, evidence_image=None
                 else:
                     check_sources(eid,{key:entry})
             with open_media(eid,entry,upload) as media:
+                if entry['kind']=='campaign':
+                    from app.services.historical_atlas import verify_media
+                    verify_media(entry['atlas'],media)
                 if upload is not None:
                     entry['media'] = _store_png(eid,media,'graphics-media')
                 previous = (before or {}).get('graphics',{}).get(key,{})
